@@ -1,7 +1,7 @@
 # auto_tag/audio_recognize.py
 """
 Recognise audio files with Shazam, optionally rename or copy them,
-and update metadata (tags, cover art).
+and update metadata (tags, cover art).  Optionally only tag without renaming.
 
 OGG files are converted to WAV via soundfile/libsndfile (no ffmpeg),
 but if conversion or recognition on WAV fails, we fall back to the
@@ -40,14 +40,15 @@ async def find_and_recognize_audio_files(
     output_dir: str | None = None,
     plex_structure: bool = False,
     copy_to: str | None = None,
+    tag_only: bool = False,
 ) -> None:
     """
     Walk folder_path, recognise each file, then move or copy/tag it.
-    copy_to, if given, is the base dir to copy files into (instead of moving).
+    - copy_to: if given, base dir to copy files into (instead of moving)
+    - tag_only: if True, update tags/cover only on the original file (no rename/move).
     """
     exts = {e.lower().lstrip(".") for e in extensions}
     audio_files: list[str] = []
-
     for root, _, files in os.walk(folder_path):
         if "test" in os.path.basename(root).lower():
             continue
@@ -73,6 +74,7 @@ async def find_and_recognize_audio_files(
             output_dir=output_dir,
             plex_structure=plex_structure,
             copy_to=copy_to,
+            tag_only=tag_only,
         )
         if "error" in res and trace:
             print(f"[{os.path.basename(path)}] {res['error']}")
@@ -93,17 +95,17 @@ async def recognize_and_rename_file(
     output_dir: str | None,
     plex_structure: bool,
     copy_to: str | None = None,
+    tag_only: bool = False,
 ) -> dict:
     """
     Recognise file_path with Shazam, then move or copy & tag it.
-    - If copy_to is set, the file is **copied** to that directory (with or
-      without Plex subfolders) and the original remains untouched.
-    - Otherwise it is **moved** (renamed) in place or under the output_dir.
+    - If tag_only is True, only update metadata on the original file_path.
+    - Else if copy_to is set, copy; otherwise rename/move.
     """
     ext = os.path.splitext(file_path)[1].lower()
     tmp_wav: str | None = None
 
-    # 1) For OGG, try to convert to WAV first
+    # 1) For OGG, attempt WAV conversion for recognition
     input_path = file_path
     if ext == ".ogg":
         fd, tmp_wav = tempfile.mkstemp(suffix=".wav")
@@ -115,7 +117,7 @@ async def recognize_and_rename_file(
         except Exception as exc:
             if trace:
                 print(f"[{os.path.basename(file_path)}] OGG→WAV failed: {exc}")
-            input_path = file_path  # fallback
+            input_path = file_path
 
     # 2) Recognise with retries
     out = None
@@ -133,7 +135,7 @@ async def recognize_and_rename_file(
         if attempt < nbr_retry:
             await asyncio.sleep(delay)
 
-    # Fallback for OGG if WAV recognition failed
+    # Fallback to original OGG if WAV recognition failed
     if ext == ".ogg" and out is None and input_path != file_path:
         for attempt in range(1, nbr_retry + 1):
             try:
@@ -144,13 +146,12 @@ async def recognize_and_rename_file(
             except Exception as exc:
                 if trace:
                     print(
-                        f"[{os.path.basename(file_path)}] OGG fallback"
-                        f" attempt {attempt}: {exc}"
+                        f"[{os.path.basename(file_path)}] OGG fallback {attempt}: {exc}"
                     )
             if attempt < nbr_retry:
                 await asyncio.sleep(delay)
 
-    # cleanup
+    # cleanup temp WAV
     if tmp_wav and os.path.exists(tmp_wav):
         os.remove(tmp_wav)
 
@@ -159,7 +160,7 @@ async def recognize_and_rename_file(
             print(f"Shazam failed: {file_path}")
         return {"file_path": file_path, "error": "Recognition failed"}
 
-    # 3) Extract metadata
+    # 3) Extract & sanitize metadata
     track = out["track"]
     title = track.get("title", "Unknown Title")
     artist = track.get("subtitle", "Unknown Artist")
@@ -170,19 +171,19 @@ async def recognize_and_rename_file(
     s_artist = sanitize(artist, trace)
     s_album = sanitize(album, trace)
 
-    # 4) Build filename
+    # 4) Build final name (if renaming)
     if plex_structure:
         new_name = f"{s_title}{ext}"
     else:
         new_name = f"{s_title} - {s_artist} - {s_album}{ext}"
 
-    # 5) Determine the root folder for the new file
+    # 5) Determine target directory
     root_dir = copy_to or output_dir or os.path.dirname(file_path)
     if plex_structure:
         root_dir = os.path.join(root_dir, s_artist, s_album)
     os.makedirs(root_dir, exist_ok=True)
 
-    # 6) Ensure uniqueness
+    # 6) Unique filename
     new_path = os.path.join(root_dir, new_name)
     count = 1
     while os.path.exists(new_path) and new_path != file_path:
@@ -190,8 +191,30 @@ async def recognize_and_rename_file(
         new_path = f"{stem} ({count}){e2}"
         count += 1
 
-    # 7) Move or copy & tag
-    if modify:
+    # 7) Tag-only branch: update tags on original file
+    if tag_only and modify:
+        try:
+            if ext == ".mp3":
+                update_mp3_tags(file_path, s_title, s_artist, s_album)
+                if cover:
+                    update_mp3_cover_art(file_path, cover, trace)
+            else:
+                update_ogg_tags(
+                    file_path, s_title, s_artist, s_album, cover, trace
+                )
+        except Exception as exc:
+            return {"file_path": file_path, "error": f"Tag error: {exc}"}
+        return {
+            "file_path": file_path,
+            "new_file_path": file_path,
+            "title": s_title,
+            "author": s_artist,
+            "album": s_album,
+            "cover_link": cover,
+        }
+
+    # 8) Move or copy & tag
+    if modify and not tag_only:
         try:
             if copy_to:
                 shutil.copy2(file_path, new_path)
@@ -202,11 +225,10 @@ async def recognize_and_rename_file(
                 update_mp3_tags(new_path, s_title, s_artist, s_album)
                 if cover:
                     update_mp3_cover_art(new_path, cover, trace)
-            else:  # .ogg
+            else:
                 update_ogg_tags(
                     new_path, s_title, s_artist, s_album, cover, trace
                 )
-
         except Exception as exc:
             return {"file_path": file_path, "error": f"Tag error: {exc}"}
 
@@ -266,7 +288,6 @@ def update_ogg_tags(
             if audio is None:
                 raise RuntimeError("Unsupported OGG type for tagging")
 
-    # Mutagen expects tag values as lists
     audio["TITLE"] = [title]
     audio["ARTIST"] = [artist]
     audio["ALBUM"] = [album]

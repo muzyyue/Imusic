@@ -20,8 +20,7 @@ def str2bool(v):
 
 async def main():
     parser = argparse.ArgumentParser(
-        description="Process audio files with Shazam recognition and optional"
-        "renaming and tagging."
+        description="Process audio files with Shazam recognition and optional renaming and tagging."
     )
     parser.add_argument(
         "-di",
@@ -43,15 +42,14 @@ async def main():
         "--delay",
         type=int,
         default=10,
-        help="Delay in seconds between retries if Shazam API call fails"
-        "(default: 10)",
+        help="Delay in seconds before retrying Shazam (default: 10)",
     )
     parser.add_argument(
         "-n",
         "--nbrRetry",
         type=int,
         default=3,
-        help="Number of retries for Shazam API call if it fails (default: 3)",
+        help="Number of retries if Shazam fails (default: 3)",
     )
     parser.add_argument(
         "-tr",
@@ -60,7 +58,7 @@ async def main():
         nargs="?",
         const=True,
         default=False,
-        help="Enable tracing output (default: false)",
+        help="Enable tracing/debug output (default: false)",
     )
     parser.add_argument(
         "-g",
@@ -69,7 +67,7 @@ async def main():
         nargs="?",
         const=True,
         default=True,
-        help="Launch the GUI (default: true)",
+        help="Launch the GUI instead of CLI (default: true)",
     )
     parser.add_argument(
         "-e",
@@ -89,7 +87,7 @@ async def main():
         "-p",
         "--plex",
         action="store_true",
-        help="Organize output into Plex structure: Artist/Album/Title.ext",
+        help="Organize output into Plex structure Artist/Album/Title.ext",
     )
     parser.add_argument(
         "-c",
@@ -98,13 +96,22 @@ async def main():
         default=None,
         help="Copy files to this directory instead of moving them",
     )
+    parser.add_argument(
+        "-to",
+        "--tag_only",
+        type=str2bool,
+        nargs="?",
+        const=True,
+        default=False,
+        help="Only update tags/cover art (no rename/move)",
+    )
 
     args = parser.parse_args()
 
     if args.gui:
         launch_gui()
     else:
-        exts = [ext.strip().lower() for ext in args.extensions.split(",")]
+        exts = [x.strip().lower() for x in args.extensions.split(",")]
         await find_and_recognize_audio_files(
             folder_path=args.directory,
             modify=args.modify,
@@ -115,6 +122,7 @@ async def main():
             output_dir=args.output,
             plex_structure=args.plex,
             copy_to=args.copy,
+            tag_only=args.tag_only,
         )
 
 
