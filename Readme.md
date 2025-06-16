@@ -58,7 +58,8 @@ python main.py [options]
 | `-e`  | `--extensions` | Comma-separated list of extensions to process (e.g. `mp3,ogg`).                                               | `mp3,ogg`     |
 | `-o`  | `--output`     | Base output directory for moved files (keeps original folder if omitted).                                     | *same folder* |
 | `-p`  | `--plex`       | Organise output into Plex structure `Artist/Album/Title.ext` (CLI equivalent of the GUI’s Plex button).       | *off*         |
-| `-c`  | `--copy-to`    | **(New)** Instead of moving, **copy** processed files into this directory (can still use `--plex` structure). | *None*        |
+| `-c`  | `--copy-to`    | Instead of moving, **copy** processed files into this directory (can still use `--plex` structure). | *None*        |
+| `-to`  | `--tag-only`  | Apply the modification only to the tags of the file and not the filenames. | `False`        |
 | `-h`  | `--help`       | Show the help message and exit.                                                                               | —             |
 
 
