@@ -1,5 +1,22 @@
 # 项目变更历史
 
+## v0.3.0 (2026-04-13)
+- **BREAKING**: GUI 框架从 tkinter 迁移到 PySide6 + QFluentWidgets
+- feat(gui): 完成 Fluent Design 风格 UI 重构
+  - 使用 FluentWindow 作为主窗口，侧边导航栏切换页面
+  - 主页（HomePage）：音频识别功能完整实现
+  - 设置页面（SettingsPage）：语言和主题切换
+  - 识别工作线程（RecognizeWorker）：QThread 异步处理
+- feat(i18n): 国际化系统支持英文/中文切换
+  - 翻译文件：en.json、zh.json
+  - 翻译器：Translator 类 + tr() 便捷函数
+- feat(config): 配置管理模块
+  - 语言/主题偏好持久化到 ~/.mp3shazamautotag/config.json
+- chore: 更新依赖
+  - 新增 PySide6、PySide6-Fluent-Widgets
+- chore: 更新构建脚本支持 PySide6 打包
+- 删除旧的 tkinter GUI 文件
+
 ## v0.2.5 (2026-04-13)
 - feat(gui): 创建设置页面 SettingsPage
   - 实现语言切换功能（English/中文）

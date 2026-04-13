@@ -1,4 +1,21 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+构建脚本
+
+该脚本用于构建 MP3 Shazam Auto Tag 的可执行文件。
+使用 PyInstaller 将应用程序打包为独立的可执行文件。
+
+功能：
+    - 创建虚拟环境
+    - 安装依赖
+    - 运行测试
+    - 构建可执行文件
+
+使用方法：
+    python build_tools/build_exe.py
+"""
+
 import os
 import shutil
 import subprocess
@@ -6,6 +23,15 @@ import sys
 
 
 def run(cmd, **kwargs):
+    """
+    执行命令并检查返回码
+
+    Args:
+        cmd (list): 命令及参数列表
+        **kwargs: 传递给 subprocess.run 的额外参数
+
+    如果命令返回非零退出码，脚本将终止。
+    """
     print(f"\n$ {' '.join(cmd)}")
     res = subprocess.run(cmd, check=False, **kwargs)
     if res.returncode != 0:
@@ -14,7 +40,16 @@ def run(cmd, **kwargs):
 
 
 def main():
-    # This script lives in <project_root>/build_tools/
+    """
+    主构建函数
+
+    执行完整的构建流程：
+    1. 创建虚拟环境
+    2. 安装项目依赖
+    3. 运行测试
+    4. 使用 PyInstaller 构建可执行文件
+    """
+    # 该脚本位于 <project_root>/build_tools/
     build_tools_dir = os.path.abspath(os.path.dirname(__file__))
     project_root = os.path.abspath(os.path.join(build_tools_dir, os.pardir))
 
@@ -52,21 +87,35 @@ def main():
         delim = ";" if os.name == "nt" else ":"
         add_data_arg = f"{ico_path}{delim}assets"
 
-        run(
-            [
-                python,
-                "-m",
-                "PyInstaller",
-                "--onefile",
-                "--noconsole",
-                f"--icon={ico_path}",
-                f"--add-data={add_data_arg}",
-                "--workpath=build",
-                "--distpath=build",
-                "--specpath=build",
-                "main.py",
-            ]
-        )
+        # PyInstaller 参数
+        pyinstaller_args = [
+            python,
+            "-m",
+            "PyInstaller",
+            "--onefile",
+            "--noconsole",
+            f"--icon={ico_path}",
+            f"--add-data={add_data_arg}",
+            # PySide6 相关的隐藏导入
+            "--hidden-import=PySide6",
+            "--hidden-import=PySide6.QtCore",
+            "--hidden-import=PySide6.QtGui",
+            "--hidden-import=PySide6.QtWidgets",
+            # qfluentwidgets 相关的隐藏导入
+            "--hidden-import=qfluentwidgets",
+            "--hidden-import=qfluentwidgets.components",
+            # 收集 qfluentwidgets 的数据文件（图标、样式等）
+            "--collect-data=qfluentwidgets",
+            # 收集 PySide6 的插件
+            "--collect-plugins=PySide6",
+            # 工作目录设置
+            "--workpath=build",
+            "--distpath=build",
+            "--specpath=build",
+            "main.py",
+        ]
+
+        run(pyinstaller_args)
 
         print(
             "\n✅ Build complete!  Check the `build/` directory under your project root."
