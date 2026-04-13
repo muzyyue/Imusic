@@ -14,11 +14,9 @@ auto_tag.gui.pages.settings_page 模块
     page = SettingsPage()
 """
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QEvent, QObject, Signal, Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
-    QListWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -104,6 +102,7 @@ class SettingsPage(QWidget):
         self.language_combo = ComboBox()
         self.language_combo.addItems([tr("english"), tr("chinese")])
         self.language_combo.setFixedHeight(36)
+        self.language_combo.installEventFilter(self)
         layout.addWidget(self.language_combo)
 
         # 主题设置区域
@@ -117,6 +116,7 @@ class SettingsPage(QWidget):
             tr("theme_auto")
         ])
         self.theme_combo.setFixedHeight(36)
+        self.theme_combo.installEventFilter(self)
         layout.addWidget(self.theme_combo)
 
         # 弹性空间
@@ -256,3 +256,35 @@ class SettingsPage(QWidget):
 
         self.language_combo.blockSignals(False)
         self.theme_combo.blockSignals(False)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        """
+        事件过滤器
+
+        监听 ComboBox 的 Show 事件，在弹出下拉框时修复透明边框问题。
+        通过设置弹出窗口为无边框、无阴影来消除额外的边框效果。
+
+        Args:
+            obj (QObject): 事件源对象
+            event (QEvent): 事件对象
+
+        Returns:
+            bool: 是否拦截事件
+        """
+        if event.type() == QEvent.Type.Show and obj in (
+            self.language_combo,
+            self.theme_combo
+        ):
+            try:
+                popup = obj.view().window()
+                if popup and popup != obj:
+                    flags = Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
+                    popup.setWindowFlags(flags)
+                    popup.setAttribute(
+                        Qt.WidgetAttribute.WA_TranslucentBackground,
+                        True
+                    )
+            except Exception:
+                pass
+
+        return super().eventFilter(obj, event)
