@@ -1,5 +1,17 @@
 # 项目变更历史
 
+## v0.3.3 (2026-04-13)
+- feat(converter): 创建 ConverterWorker 音频转换工作线程
+  - 继承 QThread 实现异步转换，避免阻塞 UI
+  - 实现进度更新信号（progress_updated）
+  - 实现单文件转换完成信号（file_converted）
+  - 实现所有文件转换完成信号（finished_all）
+  - 实现错误发生信号（error_occurred）
+  - 支持取消操作（stop 方法）
+  - 使用 AudioConverter 进行实际转换
+  - 提供详细的错误日志记录
+  - 添加完整的单元测试（11 个测试用例全部通过）
+
 ## v0.3.2 (2026-04-13)
 - feat(converter): 创建 AudioConverter 音频转换器类
   - 支持输入格式：MP3/FLAC/AAC/OGG/WAV/M4A/MP4/MKV/AVI/MOV/WMV/WEBM
