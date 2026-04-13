@@ -6,3 +6,10 @@ build/
 mp3ShazamAutoTag.egg-info/
 dist/
 *.sublime-workspace
+
+.trae/
+history.md
+
+# 测试文件
+test/
+test_i18n.py

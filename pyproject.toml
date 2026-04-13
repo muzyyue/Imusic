@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mp3ShazamAutoTag"
-version = "0.2.0"
+version = "0.2.1"
 description = "Use shazam to rename and filled the tag of a list of mp3 files."
 readme = "README.md"
 requires-python = ">=3.6"
@@ -18,7 +18,9 @@ dependencies = [
     "unidecode",
     "eyed3",
     "tqdm",
-    "soundfile"
+    "soundfile",
+    "PySide6",
+    "PySide6-Fluent-Widgets"
 ]
 
 [project.optional-dependencies]
@@ -31,11 +33,8 @@ dev = [
 Homepage = "https://github.com/davidAlgis/mp3ShazamAutoTag"
 "Bug Tracker" = "https://github.com/davidAlgis/mp3ShazamAutoTag/issues"
 
-[tool.setuptools]
-py-modules = [
-    "auto_tag",
-    "tests"
-]
+[tool.setuptools.packages.find]
+include = ["auto_tag*"]
 
 [tool.setuptools.package-data]
-"auto_tag" = ["assets/*.ico"]
+"auto_tag" = ["assets/*.ico", "gui/i18n/locales/*.json"]
