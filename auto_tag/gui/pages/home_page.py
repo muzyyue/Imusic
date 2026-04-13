@@ -109,10 +109,10 @@ class HomePage(QWidget):
         self.dir_entry.setFixedHeight(36)
         input_layout.addWidget(self.dir_entry)
 
-        browse_btn = PushButton(tr("browse"))
-        browse_btn.setFixedHeight(36)
-        browse_btn.clicked.connect(self._on_browse)
-        input_layout.addWidget(browse_btn)
+        self.browse_btn = PushButton(tr("browse"))
+        self.browse_btn.setFixedHeight(36)
+        self.browse_btn.clicked.connect(self._on_browse)
+        input_layout.addWidget(self.browse_btn)
 
         # 复制到开关和目录
         self.copy_switch = SwitchButton()
@@ -129,11 +129,11 @@ class HomePage(QWidget):
         self.copy_dir_entry.setEnabled(False)
         input_layout.addWidget(self.copy_dir_entry)
 
-        copy_browse_btn = PushButton(tr("browse"))
-        copy_browse_btn.setFixedHeight(36)
-        copy_browse_btn.clicked.connect(self._on_browse_copy)
-        copy_browse_btn.setEnabled(False)
-        input_layout.addWidget(copy_browse_btn)
+        self.copy_browse_btn = PushButton(tr("browse"))
+        self.copy_browse_btn.setFixedHeight(36)
+        self.copy_browse_btn.clicked.connect(self._on_browse_copy)
+        self.copy_browse_btn.setEnabled(False)
+        input_layout.addWidget(self.copy_browse_btn)
 
         # 仅标签开关
         self.tag_switch = SwitchButton()
@@ -162,8 +162,8 @@ class HomePage(QWidget):
         layout.addLayout(progress_layout)
 
         # === 结果表格 ===
-        table_title = SubtitleLabel(tr("new_name"))
-        layout.addWidget(table_title)
+        self.table_title = SubtitleLabel(tr("new_name"))
+        layout.addWidget(self.table_title)
 
         self.result_table = QTableWidget()
         self.result_table.setColumnCount(3)
@@ -192,21 +192,21 @@ class HomePage(QWidget):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        check_all_btn = PushButton(tr("check_all"))
-        check_all_btn.clicked.connect(self._on_check_all)
-        btn_layout.addWidget(check_all_btn)
+        self.check_all_btn = PushButton(tr("check_all"))
+        self.check_all_btn.clicked.connect(self._on_check_all)
+        btn_layout.addWidget(self.check_all_btn)
 
-        uncheck_all_btn = PushButton(tr("uncheck_all"))
-        uncheck_all_btn.clicked.connect(self._on_uncheck_all)
-        btn_layout.addWidget(uncheck_all_btn)
+        self.uncheck_all_btn = PushButton(tr("uncheck_all"))
+        self.uncheck_all_btn.clicked.connect(self._on_uncheck_all)
+        btn_layout.addWidget(self.uncheck_all_btn)
 
-        apply_btn = PushButton(FIF.ACCEPT, tr("apply"))
-        apply_btn.clicked.connect(lambda: self._on_apply())
-        btn_layout.addWidget(apply_btn)
+        self.apply_btn = PushButton(FIF.ACCEPT, tr("apply"))
+        self.apply_btn.clicked.connect(lambda: self._on_apply())
+        btn_layout.addWidget(self.apply_btn)
 
-        apply_plex_btn = PushButton(FIF.FOLDER, tr("apply_plex"))
-        apply_plex_btn.clicked.connect(lambda: self._on_apply(plex=True))
-        btn_layout.addWidget(apply_plex_btn)
+        self.apply_plex_btn = PushButton(FIF.FOLDER, tr("apply_plex"))
+        self.apply_plex_btn.clicked.connect(lambda: self._on_apply(plex=True))
+        btn_layout.addWidget(self.apply_plex_btn)
 
         layout.addLayout(btn_layout)
 
@@ -231,16 +231,7 @@ class HomePage(QWidget):
         """
         self.copy_enabled = checked
         self.copy_dir_entry.setEnabled(checked)
-        # 查找并启用/禁用复制浏览按钮
-        for i in range(self.layout().count()):
-            item = self.layout().itemAt(i)
-            if isinstance(item.layout()):
-                for j in range(item.layout().count()):
-                    widget = item.layout().itemAt(j).widget()
-                    if isinstance(widget, PushButton) and widget.text() == tr("browse"):
-                        if widget != self.findChild(PushButton, "browse_btn"):
-                            widget.setEnabled(checked)
-                            break
+        self.copy_browse_btn.setEnabled(checked)
 
     def _on_tag_switch_changed(self, checked: bool) -> None:
         """
@@ -574,31 +565,12 @@ class HomePage(QWidget):
         ])
 
         # 更新标题
-        for i in range(self.layout().count()):
-            item = self.layout().itemAt(i)
-            if isinstance(item.layout()):
-                for j in range(item.layout().count()):
-                    sub_item = item.layout().itemAt(j)
-                    if sub_item and isinstance(sub_item.widget(), SubtitleLabel):
-                        sub_item.widget().setText(tr("new_name"))
-                        break
+        self.table_title.setText(tr("new_name"))
 
-        # 更新按钮文本（需要遍历查找）
-        for i in range(self.layout().count()):
-            item = self.layout().itemAt(i)
-            if isinstance(item.layout()):
-                for j in range(item.layout().count()):
-                    widget = item.layout().itemAt(j)
-                    if widget and isinstance(widget.widget(), PushButton):
-                        btn = widget.widget()
-                        text = btn.text()
-                        if text in ["Browse", "浏览"]:
-                            btn.setText(tr("browse"))
-                        elif text in ["Check All", "全选"]:
-                            btn.setText(tr("check_all"))
-                        elif text in ["Uncheck All", "全不选"]:
-                            btn.setText(tr("uncheck_all"))
-                        elif text in ["Apply", "应用"] and "(Plex)" not in text:
-                            btn.setText(tr("apply"))
-                        elif text in ["Apply (Plex)", "应用（Plex结构）"]:
-                            btn.setText(tr("apply_plex"))
+        # 更新按钮文本
+        self.browse_btn.setText(tr("browse"))
+        self.copy_browse_btn.setText(tr("browse"))
+        self.check_all_btn.setText(tr("check_all"))
+        self.uncheck_all_btn.setText(tr("uncheck_all"))
+        self.apply_btn.setText(tr("apply"))
+        self.apply_plex_btn.setText(tr("apply_plex"))
