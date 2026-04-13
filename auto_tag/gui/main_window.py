@@ -76,9 +76,12 @@ class MainWindow(FluentWindow):
         self.setWindowTitle(tr("app_title"))
         self.resize(1000, 700)
 
-        # 创建页面
+        # 创建页面并设置 objectName（QFluentWidgets 要求）
         self.home_page = HomePage(self)
+        self.home_page.setObjectName("home_page")
+        
         self.settings_page = SettingsPage(self)
+        self.settings_page.setObjectName("settings_page")
 
         # 添加导航项
         self._setup_navigation()
@@ -172,15 +175,8 @@ class MainWindow(FluentWindow):
         self.setWindowTitle(tr("app_title"))
 
         # 更新导航项文本
-        # FluentWindow 的导航项需要通过 navigationInterface 更新
-        self.navigationInterface.setItemText(
-            self.home_page.objectName() or "home",
-            tr("home")
-        )
-        self.navigationInterface.setItemText(
-            self.settings_page.objectName() or "settings",
-            tr("settings")
-        )
+        self.navigationInterface.setItemText("home_page", tr("home"))
+        self.navigationInterface.setItemText("settings_page", tr("settings"))
 
     def _on_theme_changed(self, theme: str) -> None:
         """
