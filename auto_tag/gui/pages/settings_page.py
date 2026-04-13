@@ -7,221 +7,252 @@ auto_tag.gui.pages.settings_page 模块
 功能：
     - 语言切换（English/中文）
     - 主题切换（Light/Dark/Follow System）
-    - 配置持久化存储
-    - 实时语言切换
 
 使用示例：
-    from auto_tag.gui.pages import SettingsPage
+    from auto_tag.gui.pages.settings_page import SettingsPage
 
-    settings_page = SettingsPage()
-    settings_page.language_changed.connect(on_language_changed)
-    settings_page.theme_changed.connect(on_theme_changed)
+    page = SettingsPage()
 """
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout
 from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QListWidget,
+    QVBoxLayout,
+    QWidget,
+)
 from qfluentwidgets import (
     BodyLabel,
-    SubtitleLabel,
     ComboBox,
     FluentIcon as FIF,
+    SubtitleLabel,
     setTheme,
     Theme,
 )
-from auto_tag.gui.i18n import tr, translator
+
 from auto_tag.gui.config import config
+from auto_tag.gui.i18n import tr
 
 
 class SettingsPage(QWidget):
     """
-    设置页面组件
+    设置页面
 
-    提供语言和主题切换功能，支持配置持久化。
-
-    Signals:
-        language_changed (str): 语言切换信号，参数为语言代码（"en" 或 "zh"）
-        theme_changed (str): 主题切换信号，参数为主题名称（"light"、"dark" 或 "auto"）
+    提供应用程序设置界面，包括语言和主题选项。
+    当用户更改设置时，通过信号通知主窗口。
 
     Attributes:
+        language_changed (Signal(str)): 语言切换信号
+        theme_changed (Signal(str)): 主题切换信号
         language_combo (ComboBox): 语言选择下拉框
         theme_combo (ComboBox): 主题选择下拉框
 
     Example:
-        >>> page = SettingsPage()
-        >>> page.language_changed.connect(lambda lang: print(f"语言切换为: {lang}"))
-        >>> page.theme_changed.connect(lambda theme: print(f"主题切换为: {theme}"))
+        >>> settings = SettingsPage(parent=window)
+        >>> settings.language_changed.connect(on_language_change)
+        >>> settings.theme_changed.connect(on_theme_change)
     """
 
-    # 定义信号
-    language_changed = Signal(str)  # 语言切换信号
-    theme_changed = Signal(str)  # 主题切换信号
+    # 定义信号：语言切换、主题切换
+    language_changed = Signal(str)
+    theme_changed = Signal(str)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent=None) -> None:
         """
         初始化设置页面
 
-        Args:
-            parent: 父组件，默认为 None
+        创建设置界面 UI 组件，从配置文件加载当前设置，
+        并连接信号槽以响应用户操作。
 
-        初始化流程：
-            1. 调用父类构造函数
-            2. 构建 UI 布局
-            3. 从 config 加载当前设置
-            4. 连接信号槽
+        Args:
+            parent (QWidget | None): 父窗口组件
         """
         super().__init__(parent)
 
-        # 初始化组件引用
-        self.language_combo: ComboBox | None = None
-        self.theme_combo: ComboBox | None = None
-
-        # 构建 UI
+        # 初始化 UI
         self._setup_ui()
 
         # 连接信号槽
         self._connect_signals()
 
+        # 从配置加载初始设置
+        self._load_initial_settings()
+
     def _setup_ui(self) -> None:
         """
-        构建 UI 布局
+        构建设置页面 UI 布局
 
-        创建页面标题、语言设置区域和主题设置区域。
-        使用 QVBoxLayout 进行垂直布局，设置合理的边距和间距。
+        使用垂直布局组织所有设置项，包括：
+        - 页面标题
+        - 语言选择区域
+        - 主题选择区域
         """
-        # 创建主布局
+        # 主布局
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 40, 40, 40)  # 设置边距
-        layout.setSpacing(24)  # 设置组件间距
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(24)
 
-        # 添加页面标题
-        title_label = SubtitleLabel(tr("settings"))
-        title_label.setStyleSheet("font-size: 20px; font-weight: bold;")
-        layout.addWidget(title_label)
+        # 页面标题
+        title = SubtitleLabel(tr("settings"))
+        layout.addWidget(title)
 
-        # 添加语言设置区域
-        language_label = BodyLabel(tr("language"))
-        layout.addWidget(language_label)
+        # 语言设置区域
+        self.language_label = BodyLabel(tr("language"))
+        layout.addWidget(self.language_label)
 
-        # 创建语言选择下拉框
         self.language_combo = ComboBox()
-        self.language_combo.addItems(["English", "中文"])
-        self.language_combo.setFixedHeight(40)
-
-        # 根据当前配置设置语言下拉框的当前索引
-        current_lang = config.language
-        lang_index = 0 if current_lang == "en" else 1
-        self.language_combo.setCurrentIndex(lang_index)
-
+        self.language_combo.addItems([tr("english"), tr("chinese")])
+        self.language_combo.setFixedHeight(36)
         layout.addWidget(self.language_combo)
 
-        # 添加主题设置区域
-        theme_label = BodyLabel(tr("theme"))
-        layout.addWidget(theme_label)
+        # 主题设置区域
+        self.theme_label = BodyLabel(tr("theme"))
+        layout.addWidget(self.theme_label)
 
-        # 创建主题选择下拉框
         self.theme_combo = ComboBox()
         self.theme_combo.addItems([
             tr("theme_light"),
             tr("theme_dark"),
             tr("theme_auto")
         ])
-        self.theme_combo.setFixedHeight(40)
-
-        # 根据当前配置设置主题下拉框的当前索引
-        current_theme = config.theme
-        theme_map = {"light": 0, "dark": 1, "auto": 2}
-        theme_index = theme_map.get(current_theme, 2)  # 默认为 auto
-        self.theme_combo.setCurrentIndex(theme_index)
-
+        self.theme_combo.setFixedHeight(36)
         layout.addWidget(self.theme_combo)
 
-        # 添加弹性空间，使内容顶部对齐
-        layout.addStretch(1)
+        # 弹性空间
+        layout.addStretch()
 
     def _connect_signals(self) -> None:
         """
         连接信号槽
 
-        将语言和主题下拉框的 currentIndexChanged 信号
-        连接到对应的回调函数。
+        将语言和主题下拉框的索引变化信号连接到对应的处理方法。
         """
-        if self.language_combo:
-            self.language_combo.currentIndexChanged.connect(
-                self._on_language_changed
-            )
+        self.language_combo.currentIndexChanged.connect(
+            self._on_language_changed
+        )
+        self.theme_combo.currentIndexChanged.connect(
+            self._on_theme_changed
+        )
 
-        if self.theme_combo:
-            self.theme_combo.currentIndexChanged.connect(
-                self._on_theme_changed
-            )
+    def _load_initial_settings(self) -> None:
+        """
+        从配置文件加载初始设置
+
+        根据配置文件中保存的语言和主题偏好，
+        设置下拉框的当前选中项。
+        """
+        # 加载语言设置
+        lang_index_map = {"en": 0, "zh": 1}
+        current_lang_index = lang_index_map.get(config.language, 0)
+        self.language_combo.setCurrentIndex(current_lang_index)
+
+        # 加载主题设置
+        theme_index_map = {"light": 0, "dark": 1, "auto": 2}
+        current_theme_index = theme_index_map.get(config.theme, 2)
+        self.theme_combo.setCurrentIndex(current_theme_index)
 
     def _on_language_changed(self, index: int) -> None:
         """
-        语言切换回调函数
+        语言切换回调处理方法
 
-        根据下拉框索引确定语言代码，更新翻译器和配置，
-        并发射语言切换信号。
+        根据用户选择的下拉框索引确定目标语言代码，
+        更新翻译器并保存到配置文件，最后发射语言切换信号。
 
         Args:
-            index: 下拉框当前索引
-                   - 0: English ("en")
-                   - 1: 中文 ("zh")
-
-        处理流程：
-            1. 根据索引确定语言代码
-            2. 调用 translator.load_language() 加载新语言
-            3. 调用 config.set_language() 保存配置
-            4. 发射 language_changed 信号通知主窗口
+            index (int): 下拉框选中项的索引
+                - 0: English (en)
+                - 1: 中文 (zh)
         """
-        # 索引到语言代码的映射
-        lang_map = {0: "en", 1: "zh"}
-        lang_code = lang_map.get(index, "en")
+        # 根据索引映射语言代码
+        lang_code_map = {0: "en", 1: "zh"}
+        lang_code = lang_code_map.get(index, "en")
 
-        # 加载新语言
+        # 更新翻译器语言
+        from auto_tag.gui.i18n import translator
         translator.load_language(lang_code)
 
-        # 保存配置
+        # 保存到配置文件
         config.set_language(lang_code)
 
-        # 发射信号
+        # 发射信号通知主窗口
         self.language_changed.emit(lang_code)
+
+        # 刷新当前页面文本
+        self.refresh_texts()
 
     def _on_theme_changed(self, index: int) -> None:
         """
-        主题切换回调函数
+        主题切换回调处理方法
 
-        根据下拉框索引确定主题，更新应用程序主题和配置，
-        并发射主题切换信号。
+        根据用户选择的下拉框索引确定目标主题名称，
+        应用新主题并保存到配置文件，最后发射主题切换信号。
 
         Args:
-            index: 下拉框当前索引
-                   - 0: Light ("light")
-                   - 1: Dark ("dark")
-                   - 2: Follow System ("auto")
-
-        处理流程：
-            1. 根据索引确定主题名称
-            2. 调用 setTheme() 更新应用程序主题
-            3. 调用 config.set_theme() 保存配置
-            4. 发射 theme_changed 信号通知主窗口
+            index (int): 下拉框选中项的索引
+                - 0: Light (浅色)
+                - 1: Dark (深色)
+                - 2: Follow System (跟随系统)
         """
-        # 索引到主题的映射
-        theme_map = {0: "light", 1: "dark", 2: "auto"}
-        theme_name = theme_map.get(index, "auto")
+        # 根据索引映射主题名称
+        theme_name_map = {0: "light", 1: "dark", 2: "auto"}
+        theme_name = theme_name_map.get(index, "auto")
 
-        # 主题名称到 Theme 枚举的映射
+        # 映射到 QFluentWidgets 的 Theme 枚举
         theme_enum_map = {
             "light": Theme.LIGHT,
             "dark": Theme.DARK,
             "auto": Theme.AUTO
         }
-
-        # 设置应用程序主题
         theme_enum = theme_enum_map.get(theme_name, Theme.AUTO)
+
+        # 应用主题
         setTheme(theme_enum)
 
-        # 保存配置
+        # 保存到配置文件
         config.set_theme(theme_name)
 
         # 发射信号
         self.theme_changed.emit(theme_name)
+
+    def refresh_texts(self) -> None:
+        """
+        刷新页面文本
+
+        当语言切换时调用此方法，更新所有 UI 文本为当前语言的翻译。
+        需要重新设置标签和下拉框选项的文本内容。
+        """
+        # 保存当前选中状态
+        lang_idx = self.language_combo.currentIndex()
+        theme_idx = self.theme_combo.currentIndex()
+
+        # 更新标签文本
+        self.language_label.setText(tr("language"))
+        self.theme_label.setText(tr("theme"))
+
+        # 更新标题
+        for i in range(self.layout().count()):
+            item = self.layout().itemAt(i)
+            widget = item.widget()
+            if isinstance(widget, SubtitleLabel):
+                widget.setText(tr("settings"))
+                break
+
+        # 清空并重新填充下拉框选项
+        self.language_combo.blockSignals(True)
+        self.theme_combo.blockSignals(True)
+
+        self.language_combo.clear()
+        self.language_combo.addItems([tr("english"), tr("chinese")])
+        self.language_combo.setCurrentIndex(lang_idx)
+
+        self.theme_combo.clear()
+        self.theme_combo.addItems([
+            tr("theme_light"),
+            tr("theme_dark"),
+            tr("theme_auto")
+        ])
+        self.theme_combo.setCurrentIndex(theme_idx)
+
+        self.language_combo.blockSignals(False)
+        self.theme_combo.blockSignals(False)

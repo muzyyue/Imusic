@@ -4,16 +4,13 @@
 
 该模块提供音频识别功能的主页面界面，包括目录选择、文件识别、
 进度显示、结果展示和批量操作等功能。
-
-@module home_page
-@author Frontend Architect
-@version 1.0.0
 """
 
 from __future__ import annotations
 
 import os
 import shutil
+import time
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QTimer
@@ -28,15 +25,17 @@ from PySide6.QtWidgets import (
 )
 from qfluentwidgets import (
     BodyLabel,
-    FluentIcon as FIF,
+    LineEdit,
     MessageBox,
     ProgressBar,
     PushButton,
     SubtitleLabel,
     SwitchButton,
-    TableWidget,
-    LineEdit,
 )
+from qfluentwidgets import FluentIcon as FIF
+
+if TYPE_CHECKING:
+    from auto_tag.gui.workers.recognize_worker import RecognizeWorker
 
 from auto_tag.audio_recognize import (
     update_mp3_cover_art,
@@ -46,48 +45,40 @@ from auto_tag.audio_recognize import (
 from auto_tag.gui.i18n import tr
 from auto_tag.gui.workers import RecognizeWorker
 
-if TYPE_CHECKING:
-    from qfluentwidgets import FluentIconBase
-
 
 class HomePage(QWidget):
     """
-    音频识别主页面类
+    音频识别主页面
 
-    该类提供音频识别功能的主界面，包括目录选择、文件识别、
-    进度显示、结果展示和批量操作等功能。
+    提供音频文件识别和标签更新的用户界面。
 
     Attributes:
-        data (list[dict]): 存储识别结果的列表
-        worker (RecognizeWorker | None): 当前工作线程
         dir_var (str): 输入目录路径
-        copy_enabled (bool): 是否启用复制到功能
-        copy_dir (str): 复制目标目录
+        copy_enabled (bool): 是否启用复制到目录
+        copy_dir (str): 复制目标目录路径
         tag_only (bool): 是否仅更新标签
-
-    Example:
-        >>> home = HomePage()
-        >>> home.show()
+        data (list[dict]): 识别结果数据列表
+        worker (RecognizeWorker | None): 当前工作线程实例
     """
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent=None) -> None:
         """
         初始化主页面
 
         Args:
-            parent: 父窗口部件，用于 Qt 对象树管理
+            parent (QWidget | None): 父窗口组件
         """
         super().__init__(parent)
 
-        # 成员变量初始化
+        # 状态变量
+        self.dir_var = ""
+        self.copy_enabled = False
+        self.copy_dir = ""
+        self.tag_only = False
         self.data: list[dict] = []
         self.worker: RecognizeWorker | None = None
-        self.dir_var: str = ""
-        self.copy_enabled: bool = False
-        self.copy_dir: str = ""
-        self.tag_only: bool = False
 
-        # 设置 UI
+        # 构建 UI
         self._setup_ui()
 
         # 连接信号槽
@@ -95,275 +86,228 @@ class HomePage(QWidget):
 
     def _setup_ui(self) -> None:
         """
-        构建 UI 布局
+        构建主页面 UI 布局
 
-        创建并布局所有 UI 组件，包括：
-        - 顶部区域：目录选择、复制到目录、仅标签开关
-        - 进度条区域：进度条和进度文本
-        - 结果表格：显示识别结果
-        - 底部按钮：全选、取消全选、应用、应用(Plex)
+        创建所有界面组件并使用布局管理器组织它们，
+        包括输入区域、进度区域、结果表格和操作按钮。
         """
         # 主布局
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(40, 40, 40, 40)
-        main_layout.setSpacing(24)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(40, 30, 40, 30)
+        layout.setSpacing(16)
 
-        # 顶部区域
-        self._setup_top_area(main_layout)
+        # === 输入区域 ===
+        input_layout = QHBoxLayout()
+        input_layout.setSpacing(12)
 
-        # 进度条区域
-        self._setup_progress_area(main_layout)
-
-        # 结果表格
-        self._setup_table(main_layout)
-
-        # 底部按钮区域
-        self._setup_bottom_area(main_layout)
-
-    def _setup_top_area(self, parent_layout: QVBoxLayout) -> None:
-        """
-        设置顶部区域布局
-
-        Args:
-            parent_layout: 父布局，用于添加顶部区域
-        """
-        # 顶部容器
-        top_layout = QHBoxLayout()
-        top_layout.setSpacing(16)
-
-        # 输入目录区域
+        # 目录选择
         dir_label = BodyLabel(tr("input_directory"))
-        top_layout.addWidget(dir_label)
+        input_layout.addWidget(dir_label)
 
-        self.dir_input = LineEdit()
-        self.dir_input.setPlaceholderText(tr("select_directory"))
-        self.dir_input.setFixedHeight(40)
-        self.dir_input.setMinimumWidth(300)
-        top_layout.addWidget(self.dir_input, 1)
+        self.dir_entry = LineEdit()
+        self.dir_entry.setPlaceholderText(tr("select_directory"))
+        self.dir_entry.setFixedHeight(36)
+        input_layout.addWidget(self.dir_entry)
 
-        self.browse_btn = PushButton(tr("browse"))
-        self.browse_btn.setFixedHeight(40)
-        self.browse_btn.setFixedWidth(100)
-        top_layout.addWidget(self.browse_btn)
+        browse_btn = PushButton(tr("browse"))
+        browse_btn.setFixedHeight(36)
+        browse_btn.clicked.connect(self._on_browse)
+        input_layout.addWidget(browse_btn)
 
-        # 复制到目录区域
-        self.copy_switch = SwitchButton(tr("copy_to"))
-        top_layout.addWidget(self.copy_switch)
+        # 复制到开关和目录
+        self.copy_switch = SwitchButton()
+        self.copy_switch.setFixedSize(50, 28)
+        self.copy_switch.setChecked(False)
+        input_layout.addWidget(self.copy_switch)
 
-        self.copy_input = LineEdit()
-        self.copy_input.setPlaceholderText(tr("select_directory"))
-        self.copy_input.setFixedHeight(40)
-        self.copy_input.setMinimumWidth(200)
-        self.copy_input.setEnabled(False)
-        top_layout.addWidget(self.copy_input, 1)
+        copy_to_label = BodyLabel(tr("copy_to"))
+        input_layout.addWidget(copy_to_label)
 
-        self.copy_browse_btn = PushButton(tr("browse"))
-        self.copy_browse_btn.setFixedHeight(40)
-        self.copy_browse_btn.setFixedWidth(100)
-        self.copy_browse_btn.setEnabled(False)
-        top_layout.addWidget(self.copy_browse_btn)
+        self.copy_dir_entry = LineEdit()
+        self.copy_dir_entry.setPlaceholderText(tr("select_directory"))
+        self.copy_dir_entry.setFixedHeight(36)
+        self.copy_dir_entry.setEnabled(False)
+        input_layout.addWidget(self.copy_dir_entry)
+
+        copy_browse_btn = PushButton(tr("browse"))
+        copy_browse_btn.setFixedHeight(36)
+        copy_browse_btn.clicked.connect(self._on_browse_copy)
+        copy_browse_btn.setEnabled(False)
+        input_layout.addWidget(copy_browse_btn)
 
         # 仅标签开关
-        self.tag_only_switch = SwitchButton(tr("tags_only"))
-        top_layout.addWidget(self.tag_only_switch)
+        self.tag_switch = SwitchButton()
+        self.tag_switch.setFixedSize(50, 28)
+        self.tag_switch.setChecked(False)
+        input_layout.addWidget(self.tag_switch)
 
-        parent_layout.addLayout(top_layout)
+        tags_only_label = BodyLabel(tr("tags_only"))
+        input_layout.addWidget(tags_only_label)
 
-    def _setup_progress_area(self, parent_layout: QVBoxLayout) -> None:
-        """
-        设置进度条区域布局
+        layout.addLayout(input_layout)
 
-        Args:
-            parent_layout: 父布局，用于添加进度条区域
-        """
-        # 进度条容器
+        # === 进度区域 ===
         progress_layout = QHBoxLayout()
-        progress_layout.setSpacing(16)
+        progress_layout.setSpacing(12)
 
-        # 进度条
         self.progress_bar = ProgressBar()
-        self.progress_bar.setMinimumHeight(8)
-        progress_layout.addWidget(self.progress_bar, 1)
+        self.progress_bar.setFixedHeight(8)
+        progress_layout.addWidget(self.progress_bar)
 
-        # 进度文本
-        self.progress_label = BodyLabel(tr("progress_format").format(done=0, total=0, remaining=0))
-        self.progress_label.setFixedWidth(200)
-        progress_layout.addWidget(self.progress_label)
+        self.status_label = BodyLabel(
+            tr("progress_format", done=0, total=0, remaining=0)
+        )
+        progress_layout.addWidget(self.status_label)
 
-        parent_layout.addLayout(progress_layout)
+        layout.addLayout(progress_layout)
 
-    def _setup_table(self, parent_layout: QVBoxLayout) -> None:
-        """
-        设置结果表格
-
-        Args:
-            parent_layout: 父布局，用于添加表格
-        """
-        # 表格标题
+        # === 结果表格 ===
         table_title = SubtitleLabel(tr("new_name"))
-        parent_layout.addWidget(table_title)
+        layout.addWidget(table_title)
 
-        # 创建表格
-        self.table = TableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels([
-            tr("apply"),
-            tr("old_name"),
-            tr("new_name")
+        self.result_table = QTableWidget()
+        self.result_table.setColumnCount(3)
+        self.result_table.setHorizontalHeaderLabels([
+            tr("apply"), tr("old_name"), tr("new_name")
         ])
+        self.result_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Fixed
+        )
+        self.result_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self.result_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch
+        )
+        self.result_table.setColumnWidth(0, 60)
+        self.result_table.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked | 
+            QTableWidget.EditTrigger.EditKeyPressed
+        )
+        self.result_table.cellChanged.connect(self._on_cell_changed)
+        self.result_table.setMinimumHeight(300)
+        layout.addWidget(self.result_table)
 
-        # 设置列宽
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.table.setColumnWidth(0, 80)
+        # === 操作按钮区域 ===
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
 
-        # 设置表格属性
-        self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed)
+        check_all_btn = PushButton(tr("check_all"))
+        check_all_btn.clicked.connect(self._on_check_all)
+        btn_layout.addWidget(check_all_btn)
 
-        parent_layout.addWidget(self.table, 1)
+        uncheck_all_btn = PushButton(tr("uncheck_all"))
+        uncheck_all_btn.clicked.connect(self._on_uncheck_all)
+        btn_layout.addWidget(uncheck_all_btn)
 
-    def _setup_bottom_area(self, parent_layout: QVBoxLayout) -> None:
-        """
-        设置底部按钮区域布局
+        apply_btn = PushButton(FIF.ACCEPT, tr("apply"))
+        apply_btn.clicked.connect(lambda: self._on_apply())
+        btn_layout.addWidget(apply_btn)
 
-        Args:
-            parent_layout: 父布局，用于添加底部按钮区域
-        """
-        # 底部按钮容器
-        bottom_layout = QHBoxLayout()
-        bottom_layout.setSpacing(16)
-        bottom_layout.addStretch()
+        apply_plex_btn = PushButton(FIF.FOLDER, tr("apply_plex"))
+        apply_plex_btn.clicked.connect(lambda: self._on_apply(plex=True))
+        btn_layout.addWidget(apply_plex_btn)
 
-        # 全选按钮
-        self.check_all_btn = PushButton(tr("check_all"))
-        self.check_all_btn.setFixedHeight(40)
-        self.check_all_btn.setFixedWidth(120)
-        bottom_layout.addWidget(self.check_all_btn)
-
-        # 取消全选按钮
-        self.uncheck_all_btn = PushButton(tr("uncheck_all"))
-        self.uncheck_all_btn.setFixedHeight(40)
-        self.uncheck_all_btn.setFixedWidth(120)
-        bottom_layout.addWidget(self.uncheck_all_btn)
-
-        # 应用按钮
-        self.apply_btn = PushButton(tr("apply"))
-        self.apply_btn.setFixedHeight(40)
-        self.apply_btn.setFixedWidth(120)
-        bottom_layout.addWidget(self.apply_btn)
-
-        # 应用(Plex)按钮
-        self.apply_plex_btn = PushButton(tr("apply_plex"))
-        self.apply_plex_btn.setFixedHeight(40)
-        self.apply_plex_btn.setFixedWidth(120)
-        bottom_layout.addWidget(self.apply_plex_btn)
-
-        parent_layout.addLayout(bottom_layout)
+        layout.addLayout(btn_layout)
 
     def _connect_signals(self) -> None:
         """
         连接信号槽
 
-        连接所有 UI 组件的信号到对应的槽函数。
+        将 UI 组件的信号连接到对应的处理方法。
         """
-        # 按钮点击信号
-        self.browse_btn.clicked.connect(self._on_browse)
-        self.copy_browse_btn.clicked.connect(self._on_browse_copy)
-        self.check_all_btn.clicked.connect(self._on_check_all)
-        self.uncheck_all_btn.clicked.connect(self._on_uncheck_all)
-        self.apply_btn.clicked.connect(lambda: self._on_apply(plex=False))
-        self.apply_plex_btn.clicked.connect(lambda: self._on_apply(plex=True))
-
-        # 开关状态变化信号
+        # 复制到开关状态变化
         self.copy_switch.checkedChanged.connect(self._on_copy_switch_changed)
-        self.tag_only_switch.checkedChanged.connect(self._on_tag_only_switch_changed)
 
-        # 表格双击信号
-        self.table.cellDoubleClicked.connect(self._on_table_double_click)
+        # 仅标签开关状态变化
+        self.tag_switch.checkedChanged.connect(self._on_tag_switch_changed)
+
+    def _on_copy_switch_changed(self, checked: bool) -> None:
+        """
+        复制到开关切换回调
+
+        Args:
+            checked (bool): 开关是否选中
+        """
+        self.copy_enabled = checked
+        self.copy_dir_entry.setEnabled(checked)
+        # 查找并启用/禁用复制浏览按钮
+        for i in range(self.layout().count()):
+            item = self.layout().itemAt(i)
+            if isinstance(item.layout()):
+                for j in range(item.layout().count()):
+                    widget = item.layout().itemAt(j).widget()
+                    if isinstance(widget, PushButton) and widget.text() == tr("browse"):
+                        if widget != self.findChild(PushButton, "browse_btn"):
+                            widget.setEnabled(checked)
+                            break
+
+    def _on_tag_switch_changed(self, checked: bool) -> None:
+        """
+        仅标签开关切换回调
+
+        Args:
+            checked (bool): 开关是否选中
+        """
+        self.tag_only = checked
 
     def _on_browse(self) -> None:
         """
-        选择输入目录
+        浏览按钮点击处理
 
-        打开目录选择对话框，选择后启动识别任务。
+        打开文件夹选择对话框，选择后启动识别任务。
         """
         directory = QFileDialog.getExistingDirectory(
             self,
             tr("select_directory"),
-            self.dir_var or "",
+            "",
+            QFileDialog.Option.ShowDirsOnly
         )
 
         if directory:
             self.dir_var = directory
-            self.dir_input.setText(directory)
+            self.dir_entry.setText(directory)
             self._start_recognition(directory)
 
     def _on_browse_copy(self) -> None:
         """
-        选择复制目标目录
+        复制目标目录浏览按钮处理
 
-        打开目录选择对话框，选择复制目标目录。
+        打开文件夹选择对话框，选择复制目标目录。
         """
         directory = QFileDialog.getExistingDirectory(
             self,
             tr("select_directory"),
-            self.copy_dir or "",
+            "",
+            QFileDialog.Option.ShowDirsOnly
         )
 
         if directory:
             self.copy_dir = directory
-            self.copy_input.setText(directory)
-
-    def _on_copy_switch_changed(self, checked: bool) -> None:
-        """
-        复制到开关状态变化处理
-
-        Args:
-            checked: 开关状态，True 表示启用
-        """
-        self.copy_enabled = checked
-        self.copy_input.setEnabled(checked)
-        self.copy_browse_btn.setEnabled(checked)
-
-    def _on_tag_only_switch_changed(self, checked: bool) -> None:
-        """
-        仅标签开关状态变化处理
-
-        Args:
-            checked: 开关状态，True 表示启用
-        """
-        self.tag_only = checked
+            self.copy_dir_entry.setText(directory)
 
     def _start_recognition(self, directory: str) -> None:
         """
         启动识别任务
 
-        清空之前的数据，创建并启动新的工作线程。
+        在后台线程中执行音频文件识别。
 
         Args:
-            directory: 要扫描的音频文件目录路径
+            directory (str): 要识别的目录路径
         """
-        # 清空之前的数据
+        # 清空之前的结果
         self.data.clear()
-        self.table.setRowCount(0)
+        self.result_table.setRowCount(0)
         self.progress_bar.setValue(0)
-        self.progress_label.setText(tr("progress_format").format(done=0, total=0, remaining=0))
+        self.status_label.setText(
+            tr("progress_format", done=0, total=0, remaining=0)
+        )
 
-        # 停止之前的工作线程
-        if self.worker and self.worker.isRunning():
-            self.worker.terminate()
-            self.worker.wait()
-
-        # 创建新的工作线程
+        # 创建工作线程
         self.worker = RecognizeWorker(
             directory=directory,
             copy_dir=self.copy_dir if self.copy_enabled else None,
-            tag_only=self.tag_only,
-            parent=self,
+            tag_only=self.tag_only
         )
 
         # 连接信号
@@ -377,269 +321,207 @@ class HomePage(QWidget):
 
     def _on_progress_updated(self, done: int, total: int, remaining: int) -> None:
         """
-        进度更新处理
+        进度更新回调
+
+        更新进度条和状态文本显示当前识别进度。
 
         Args:
-            done: 已完成的文件数
-            total: 总文件数
-            remaining: 预计剩余时间（秒）
+            done (int): 已完成文件数
+            total (int): 总文件数
+            remaining (int): 预计剩余时间（秒）
         """
-        self.progress_bar.setMaximum(total)
-        self.progress_bar.setValue(done)
-        self.progress_label.setText(
-            tr("progress_format").format(done=done, total=total, remaining=remaining)
+        if total > 0:
+            value = int(done / total * 100)
+            self.progress_bar.setValue(value)
+        self.status_label.setText(
+            tr("progress_format", done=done, total=total, remaining=remaining)
         )
 
     def _on_file_processed(self, result: dict) -> None:
         """
-        单个文件处理完成处理
+        单个文件处理完成回调
 
-        将结果添加到数据列表并更新表格。
+        将识别结果添加到表格中显示。
 
         Args:
-            result: 文件识别结果字典
+            result (dict): 单个文件的识别结果字典
         """
         self.data.append(result)
-        self._add_table_row(result)
+        row = self.result_table.rowCount()
+        self.result_table.insertRow(row)
 
-    def _on_finished_all(self, results: list[dict]) -> None:
+        # 勾选框列
+        checkbox_item = QTableWidgetItem()
+        checkbox_item.setFlags(
+            Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
+        )
+        if result.get("success"):
+            checkbox_item.setCheckState(Qt.CheckState.Checked)
+            checkbox_item.setForeground(Qt.GlobalColor.green)
+        else:
+            checkbox_item.setCheckState(Qt.CheckState.Unchecked)
+            checkbox_item.setForeground(Qt.GlobalColor.red)
+        self.result_table.setItem(row, 0, checkbox_item)
+
+        # 原文件名列
+        old_name_item = QTableWidgetItem(result.get("old_name", ""))
+        old_name_item.setFlags(old_name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.result_table.setItem(row, 1, old_name_item)
+
+        # 新文件名编辑列
+        new_name_item = QTableWidgetItem(result.get("new_name", ""))
+        new_name_item.setFlags(
+            new_name_item.flags() | Qt.ItemFlag.ItemIsEditable
+        )
+        self.result_table.setItem(row, 2, new_name_item)
+
+    def _on_finished_all(self, results: list) -> None:
         """
-        所有文件处理完成处理
+        所有文件处理完成回调
+
+        更新最终状态，如果没有找到音频文件则显示提示消息。
 
         Args:
-            results: 所有文件的识别结果列表
+            results (list): 所有文件的识别结果列表
         """
-        if not self.data:
+        self.progress_bar.setValue(100)
+        if not results:
             MessageBox(
-                tr("no_files_processed"),
-                tr("no_files_processed"),
-                self,
+                "Info",
+                tr("no_audio_files"),
+                self
             ).exec()
 
     def _on_error_occurred(self, error_msg: str) -> None:
         """
-        错误发生处理
+        错误发生回调
+
+        显示错误消息对话框。
 
         Args:
-            error_msg: 错误消息
+            error_msg (str): 错误信息文本
         """
-        MessageBox(
-            tr("errors_occurred"),
-            error_msg,
-            self,
-        ).exec()
+        MessageBox("Error", error_msg, self).exec()
 
-    def _add_table_row(self, result: dict) -> None:
+    def _on_cell_changed(self, row: int, column: int) -> None:
         """
-        添加表格行
+        表格单元格内容变更回调
+
+        当用户新文件名编辑完成后更新内部数据。
 
         Args:
-            result: 文件识别结果字典
+            row (int): 变更的行索引
+            column (int): 变更的列索引
         """
-        row = self.table.rowCount()
-        self.table.insertRow(row)
-
-        # 应用列（勾选框）
-        apply_item = QTableWidgetItem()
-        apply_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
-        apply_item.setCheckState(
-            Qt.CheckState.Checked if result.get("apply", False)
-            else Qt.CheckState.Unchecked
-        )
-        self.table.setItem(row, 0, apply_item)
-
-        # 原文件名列
-        old_name = os.path.basename(result.get("file_path", ""))
-        old_item = QTableWidgetItem(old_name)
-        old_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-        self.table.setItem(row, 1, old_item)
-
-        # 新文件名列
-        new_name = os.path.basename(result.get("new_file_path", ""))
-        new_item = QTableWidgetItem(new_name)
-        new_item.setFlags(
-            Qt.ItemFlag.ItemIsEnabled |
-            Qt.ItemFlag.ItemIsSelectable |
-            Qt.ItemFlag.ItemIsEditable
-        )
-        self.table.setItem(row, 2, new_item)
-
-        # 设置行颜色
-        if result.get("apply", False):
-            # 成功项：绿色背景
-            apply_item.setBackground(Qt.GlobalColor.green)
-        else:
-            # 失败项：红色背景
-            apply_item.setBackground(Qt.GlobalColor.red)
-
-    def _on_table_double_click(self, row: int, column: int) -> None:
-        """
-        表格双击处理
-
-        双击应用列切换勾选状态，双击新文件名列编辑文件名。
-
-        Args:
-            row: 行索引
-            column: 列索引
-        """
-        if column == 0:
-            # 双击应用列：切换勾选状态
-            self._toggle_row_check(row)
-        elif column == 2:
-            # 双击新文件名列：编辑文件名（由表格自动处理）
-            pass
-
-    def _toggle_row_check(self, row: int) -> None:
-        """
-        切换行的勾选状态
-
-        Args:
-            row: 行索引
-        """
-        if row < 0 or row >= len(self.data):
-            return
-
-        # 切换数据中的 apply 状态
-        self.data[row]["apply"] = not self.data[row].get("apply", False)
-
-        # 更新表格中的勾选状态
-        apply_item = self.table.item(row, 0)
-        if apply_item:
-            apply_item.setCheckState(
-                Qt.CheckState.Checked if self.data[row]["apply"]
-                else Qt.CheckState.Unchecked
-            )
-            # 更新背景颜色
-            if self.data[row]["apply"]:
-                apply_item.setBackground(Qt.GlobalColor.green)
-            else:
-                apply_item.setBackground(Qt.GlobalColor.red)
+        if column == 2 and row < len(self.data):
+            item = self.result_table.item(row, column)
+            if item:
+                self.data[row]["new_name"] = item.text()
 
     def _on_check_all(self) -> None:
-        """
-        全选处理
-
-        将所有行设置为勾选状态。
-        """
-        for idx, result in enumerate(self.data):
-            result["apply"] = True
-            apply_item = self.table.item(idx, 0)
-            if apply_item:
-                apply_item.setCheckState(Qt.CheckState.Checked)
-                apply_item.setBackground(Qt.GlobalColor.green)
+        """全选：将所有结果的勾选状态设为选中"""
+        for row in range(self.result_table.rowCount()):
+            item = self.result_table.item(row, 0)
+            if item:
+                item.setCheckState(Qt.CheckState.Checked)
 
     def _on_uncheck_all(self) -> None:
-        """
-        取消全选处理
-
-        将所有行设置为未勾选状态。
-        """
-        for idx, result in enumerate(self.data):
-            result["apply"] = False
-            apply_item = self.table.item(idx, 0)
-            if apply_item:
-                apply_item.setCheckState(Qt.CheckState.Unchecked)
-                apply_item.setBackground(Qt.GlobalColor.red)
+        """全不选：将所有结果的勾选状态设为未选中"""
+        for row in range(self.result_table.rowCount()):
+            item = self.result_table.item(row, 0)
+            if item:
+                item.setCheckState(Qt.CheckState.Unchecked)
 
     def _on_apply(self, plex: bool = False) -> None:
         """
-        应用更改处理
+        应用更改
 
-        遍历所有勾选项，执行文件重命名、复制或标签更新操作。
+        对所有勾选的识别结果执行重命名或标签更新操作。
 
         Args:
-            plex: 是否使用 Plex 目录结构
+            plex (bool): 是否按 Plex 结构组织文件
         """
         errors: list[str] = []
-        copy_to = self.copy_dir if self.copy_enabled else None
-        tag_only = self.tag_only
 
-        for result in self.data:
-            if not result.get("apply"):
+        for entry in self.data:
+            if not entry.get("success"):
                 continue
 
-            src = result.get("file_path")
-            if not src or not os.path.exists(src):
+            src = entry.get("old_name")
+            unique = entry.get("unique_name")
+
+            if not src or not unique:
                 continue
-
-            title = result.get("title", "Unknown Title")
-            artist = result.get("author", "Unknown Artist")
-            album = result.get("album", "Unknown Album")
-            ext = os.path.splitext(src)[1].lower()
-
-            # 仅更新标签模式
-            if tag_only:
-                try:
-                    if ext == ".mp3":
-                        update_mp3_tags(src, title, artist, album)
-                        update_mp3_cover_art(
-                            src, result.get("cover_link", ""), trace=False
-                        )
-                    else:
-                        update_ogg_tags(
-                            src,
-                            title,
-                            artist,
-                            album,
-                            result.get("cover_link", ""),
-                            trace=False,
-                        )
-                except Exception as exc:
-                    errors.append(f"{src}: {exc}")
-                continue
-
-            # 重命名或复制模式
-            if plex:
-                base_dir = os.path.join(os.path.dirname(src), artist, album)
-            else:
-                base_dir = os.path.dirname(src)
-
-            if copy_to:
-                base_dir = copy_to
-                if plex:
-                    base_dir = os.path.join(base_dir, artist, album)
-
-            os.makedirs(base_dir, exist_ok=True)
-
-            if plex:
-                dest = os.path.join(base_dir, f"{title}{ext}")
-            else:
-                dest = result.get("new_file_path") or os.path.join(
-                    base_dir, f"{title}{ext}"
-                )
-
-            # 处理文件名冲突
-            counter, unique = 1, dest
-            while os.path.exists(unique):
-                root, ext2 = os.path.splitext(dest)
-                unique = f"{root} ({counter}){ext2}"
-                counter += 1
 
             try:
-                if copy_to:
-                    shutil.copy2(src, unique)
-                else:
-                    os.rename(src, unique)
+                if self.tag_only:
+                    result_data = entry.get("result_data", {})
+                    title = result_data.get("title", "")
+                    artist = result_data.get("subtitle", "")
+                    album = result_data.get("album", "")
 
-                # 更新标签
-                if ext == ".mp3":
-                    update_mp3_tags(unique, title, artist, album)
-                    update_mp3_cover_art(
-                        unique, result.get("cover_link", ""), trace=False
-                    )
+                    if src.lower().endswith(".mp3"):
+                        update_mp3_tags(unique, title, artist, album)
+                        update_mp3_cover_art(
+                            unique, result_data.get("cover_link", ""), trace=False
+                        )
+                    elif src.lower().endswith(".ogg"):
+                        update_ogg_tags(
+                            unique, title, artist, album,
+                            result_data.get("cover_link", ""),
+                            trace=False
+                        )
                 else:
-                    update_ogg_tags(
-                        unique,
-                        title,
-                        artist,
-                        album,
-                        result.get("cover_link", ""),
-                        trace=False,
-                    )
+                    target_dir = ""
+                    if plex:
+                        result_data = entry.get("result_data", {})
+                        artist = result_data.get("subtitle", "Unknown Artist")
+                        album = result_data.get("album", "Unknown Album")
+                        artist = "".join(c for c in artist if c.isalnum() or c in (" ", "_")).strip()
+                        album = "".join(c for c in album if c.isalnum() or c in (" ", "_")).strip()
+                        target_dir = os.path.join(os.path.dirname(src), artist, album)
+                        os.makedirs(target_dir, exist_ok=True)
+
+                    if self.copy_enabled and self.copy_dir:
+                        dest_path = os.path.join(self.copy_dir, os.path.basename(unique))
+                        shutil.copy2(src, dest_path)
+                        if not self.tag_only:
+                            os.rename(dest_path, os.path.join(self.copy_dir, unique))
+                    elif plex and target_dir:
+                        dest_path = os.path.join(target_dir, unique)
+                        shutil.move(src, dest_path)
+                    else:
+                        dirname = os.path.dirname(src)
+                        os.rename(src, os.path.join(dirname, unique))
+
+                    if not self.tag_only:
+                        result_data = entry.get("result_data", {})
+                        title = result_data.get("title", "")
+                        artist = result_data.get("subtitle", "")
+                        album = result_data.get("album", "")
+
+                        final_path = ""
+                        if self.copy_enabled and self.copy_dir:
+                            final_path = os.path.join(self.copy_dir, unique)
+                        elif plex and target_dir:
+                            final_path = os.path.join(target_dir, unique)
+                        else:
+                            final_path = os.path.join(os.path.dirname(src), unique)
+
+                        if final_path.lower().endswith(".mp3"):
+                            update_mp3_tags(final_path, title, artist, album)
+                            update_mp3_cover_art(
+                                final_path, result_data.get("cover_link", ""), trace=False
+                            )
+                        elif final_path.lower().endswith(".ogg"):
+                            update_ogg_tags(
+                                final_path, title, artist, album,
+                                result_data.get("cover_link", ""),
+                                trace=False
+                            )
             except Exception as exc:
                 errors.append(f"{src}: {exc}")
 
-        # 显示结果
         if errors:
             MessageBox(
                 tr("errors_occurred"),
@@ -647,8 +529,76 @@ class HomePage(QWidget):
                 self,
             ).exec()
         else:
-            MessageBox(
-                tr("success"),
-                tr("changes_applied"),
-                self,
-            ).exec()
+            checked_count = sum(
+                1 for d in self.data
+                if d.get("success") and any(
+                    self.result_table.item(i, 0).checkState() == Qt.CheckState.Checked
+                    for i in range(min(self.result_table.rowCount(), len(self.data)))
+                    if i < self.result_table.rowCount() and
+                       self.result_table.item(i, 0) is not None
+                )
+            ) if self.result_table.rowCount() > 0 else 0
+
+            if checked_count == 0 or not any(d.get("success") for d in self.data):
+                MessageBox(
+                    "Info",
+                    tr("no_files_processed"),
+                    self,
+                ).exec()
+            else:
+                MessageBox(
+                    tr("success"),
+                    tr("changes_applied"),
+                    self,
+                ).exec()
+
+    def refresh_texts(self) -> None:
+        """
+        刷新页面文本
+
+        当语言切换时调用此方法，更新所有 UI 文本为当前语言的翻译。
+        """
+        # 更新占位符文本
+        self.dir_entry.setPlaceholderText(tr("select_directory"))
+        self.copy_dir_entry.setPlaceholderText(tr("select_directory"))
+
+        # 更新状态文本
+        if self.result_table.rowCount() == 0:
+            self.status_label.setText(
+                tr("progress_format", done=0, total=0, remaining=0)
+            )
+
+        # 更新表头
+        self.result_table.setHorizontalHeaderLabels([
+            tr("apply"), tr("old_name"), tr("new_name")
+        ])
+
+        # 更新标题
+        for i in range(self.layout().count()):
+            item = self.layout().itemAt(i)
+            if isinstance(item.layout()):
+                for j in range(item.layout().count()):
+                    sub_item = item.layout().itemAt(j)
+                    if sub_item and isinstance(sub_item.widget(), SubtitleLabel):
+                        sub_item.widget().setText(tr("new_name"))
+                        break
+
+        # 更新按钮文本（需要遍历查找）
+        for i in range(self.layout().count()):
+            item = self.layout().itemAt(i)
+            if isinstance(item.layout()):
+                for j in range(item.layout().count()):
+                    widget = item.layout().itemAt(j)
+                    if widget and isinstance(widget.widget(), PushButton):
+                        btn = widget.widget()
+                        text = btn.text()
+                        if text in ["Browse", "浏览"]:
+                            btn.setText(tr("browse"))
+                        elif text in ["Check All", "全选"]:
+                            btn.setText(tr("check_all"))
+                        elif text in ["Uncheck All", "全不选"]:
+                            btn.setText(tr("uncheck_all"))
+                        elif text in ["Apply", "应用"] and "(Plex)" not in text:
+                            btn.setText(tr("apply"))
+                        elif text in ["Apply (Plex)", "应用（Plex结构）"]:
+                            btn.setText(tr("apply_plex"))

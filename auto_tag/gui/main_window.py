@@ -166,7 +166,8 @@ class MainWindow(FluentWindow):
         """
         语言切换回调
 
-        当用户在设置页面切换语言时，更新窗口标题和导航项文本。
+        当用户在设置页面切换语言时，更新窗口标题，
+        并通知所有页面刷新文本。
 
         Args:
             lang (str): 新的语言代码，如 "en" 或 "zh"
@@ -174,9 +175,11 @@ class MainWindow(FluentWindow):
         # 更新窗口标题
         self.setWindowTitle(tr("app_title"))
 
-        # 更新导航项文本
-        self.navigationInterface.setItemText("home_page", tr("home"))
-        self.navigationInterface.setItemText("settings_page", tr("settings"))
+        # 通知各页面刷新文本
+        if hasattr(self.home_page, 'refresh_texts'):
+            self.home_page.refresh_texts()
+        if hasattr(self.settings_page, 'refresh_texts'):
+            self.settings_page.refresh_texts()
 
     def _on_theme_changed(self, theme: str) -> None:
         """
