@@ -118,6 +118,8 @@ class HomePage(QWidget):
         self.copy_switch = SwitchButton()
         self.copy_switch.setFixedSize(50, 28)
         self.copy_switch.setChecked(False)
+        self.copy_switch.setOffText("")
+        self.copy_switch.setOnText("")
         input_layout.addWidget(self.copy_switch)
 
         copy_to_label = BodyLabel(tr("copy_to"))
@@ -139,6 +141,8 @@ class HomePage(QWidget):
         self.tag_switch = SwitchButton()
         self.tag_switch.setFixedSize(50, 28)
         self.tag_switch.setChecked(False)
+        self.tag_switch.setOffText("")
+        self.tag_switch.setOnText("")
         input_layout.addWidget(self.tag_switch)
 
         tags_only_label = BodyLabel(tr("tags_only"))

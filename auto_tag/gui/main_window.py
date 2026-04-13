@@ -72,8 +72,8 @@ class MainWindow(FluentWindow):
         """
         super().__init__()
 
-        # 设置窗口属性
-        self.setWindowTitle(tr("app_title"))
+        # 设置窗口属性（应用名称固定，不随语言切换）
+        self.setWindowTitle("MP3 Shazam Auto Tag")
         self.resize(1000, 700)
 
         # 创建页面并设置 objectName（QFluentWidgets 要求）
@@ -166,15 +166,12 @@ class MainWindow(FluentWindow):
         """
         语言切换回调
 
-        当用户在设置页面切换语言时，更新窗口标题，
-        并通知所有页面刷新文本。
+        当用户在设置页面切换语言时，
+        通知所有页面刷新文本（应用名称保持不变）。
 
         Args:
             lang (str): 新的语言代码，如 "en" 或 "zh"
         """
-        # 更新窗口标题
-        self.setWindowTitle(tr("app_title"))
-
         # 通知各页面刷新文本
         if hasattr(self.home_page, 'refresh_texts'):
             self.home_page.refresh_texts()
