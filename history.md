@@ -1,5 +1,14 @@
 # 项目变更历史
 
+## v0.2.5 (2026-04-13)
+- feat(gui): 创建设置页面 SettingsPage
+  - 实现语言切换功能（English/中文）
+  - 实现主题切换功能（Light/Dark/Follow System）
+  - 集成 config 模块实现配置持久化
+  - 集成 i18n 模块实现实时语言切换
+  - 使用 QFluentWidgets 组件构建 UI
+  - 添加完整的单元测试
+
 ## v0.2.4 (2026-04-13)
 - feat(gui): 创建主页（音频识别页面）HomePage
   - 使用 QFluentWidgets 重写原始 tkinter GUI
