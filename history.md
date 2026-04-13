@@ -1,5 +1,28 @@
 # 项目变更历史
 
+## v0.3.2 (2026-04-13)
+- feat(converter): 创建 AudioConverter 音频转换器类
+  - 支持输入格式：MP3/FLAC/AAC/OGG/WAV/M4A/MP4/MKV/AVI/MOV/WMV/WEBM
+  - 支持输出格式：MP3/FLAC/AAC/OGG/WAV/M4A
+  - 实现 detect_format() 方法检测文件格式
+  - 实现 convert_file() 方法转换单个文件
+  - 实现 convert_batch() 方法批量转换文件
+  - 支持进度回调功能
+  - 提供详细的错误日志记录
+  - 添加完整的单元测试（15 个测试用例全部通过）
+- chore: 更新 requirements.txt，添加 ffmpeg-python 依赖
+
+## v0.3.1 (2026-04-13)
+- feat(converter): 创建元数据管理器 MetadataManager
+  - 实现读取元数据功能（read_metadata）
+  - 实现写入元数据功能（write_metadata）
+  - 实现文件名解析功能（parse_filename）
+  - 实现批量编辑功能（batch_edit）
+  - 实现封面图片管理功能（get_cover/set_cover）
+  - 支持 MP3（ID3）和 OGG（Vorbis/Opus）格式
+  - 使用 mutagen 和 eyed3 库处理音频标签
+  - 提供完整的错误处理和日志记录
+
 ## v0.3.0 (2026-04-13)
 - **BREAKING**: GUI 框架从 tkinter 迁移到 PySide6 + QFluentWidgets
 - feat(gui): 完成 Fluent Design 风格 UI 重构
