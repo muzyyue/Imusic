@@ -1,5 +1,15 @@
 # 项目变更历史
 
+## v0.2.4 (2026-04-13)
+- feat(gui): 创建主页（音频识别页面）HomePage
+  - 使用 QFluentWidgets 重写原始 tkinter GUI
+  - 实现目录选择、文件识别、进度显示功能
+  - 实现结果表格显示，支持勾选和双击编辑
+  - 实现批量操作：全选、取消全选、应用更改
+  - 支持 copy_to、tag_only、plex_structure 功能
+  - 集成 RecognizeWorker 工作线程
+  - 使用 tr() 函数实现国际化
+
 ## v0.2.3 (2026-04-13)
 - feat(config): 创建配置管理模块 AppConfig
   - 实现语言和主题配置管理
