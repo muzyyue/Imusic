@@ -13,10 +13,10 @@
 
 from auto_tag.converter.config import ConverterConfig
 from auto_tag.converter.converter import AudioConverter
-# from auto_tag.converter.metadata_manager import MetadataManager  # TODO: 待实现
+from auto_tag.converter.metadata_manager import MetadataManager
 
 __all__ = [
     "AudioConverter",
-    # "MetadataManager",  # TODO: 待实现
+    "MetadataManager",
     "ConverterConfig",
 ]

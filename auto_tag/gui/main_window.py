@@ -29,7 +29,7 @@ from qfluentwidgets import (
     Theme,
 )
 
-from auto_tag.gui.pages import HomePage, SettingsPage
+from auto_tag.gui.pages import HomePage, SettingsPage, ConverterPage
 from auto_tag.gui.i18n import tr, translator
 from auto_tag.gui.config import config
 
@@ -80,6 +80,9 @@ class MainWindow(FluentWindow):
         self.home_page = HomePage(self)
         self.home_page.setObjectName("home_page")
         
+        self.converter_page = ConverterPage(self)
+        self.converter_page.setObjectName("converter_page")
+        
         self.settings_page = SettingsPage(self)
         self.settings_page.setObjectName("settings_page")
 
@@ -102,13 +105,20 @@ class MainWindow(FluentWindow):
         """
         设置导航项
 
-        在侧边导航栏中添加主页和设置页面的导航项。
+        在侧边导航栏中添加主页、转换和设置页面的导航项。
         """
         # 添加主页导航项
         self.addSubInterface(
             self.home_page,
             FIF.HOME,
             tr("home")
+        )
+
+        # 添加转换导航项
+        self.addSubInterface(
+            self.converter_page,
+            FIF.MUSIC,
+            tr("converter")
         )
 
         # 添加设置导航项
@@ -175,6 +185,8 @@ class MainWindow(FluentWindow):
         # 通知各页面刷新文本
         if hasattr(self.home_page, 'refresh_texts'):
             self.home_page.refresh_texts()
+        if hasattr(self.converter_page, 'refresh_texts'):
+            self.converter_page.refresh_texts()
         if hasattr(self.settings_page, 'refresh_texts'):
             self.settings_page.refresh_texts()
 

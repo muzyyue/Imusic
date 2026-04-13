@@ -1,5 +1,23 @@
 # 项目变更历史
 
+## v0.3.5 (2026-04-13)
+- fix(i18n): 修复转换页面语言切换问题
+  - 将所有硬编码中文替换为 tr() 翻译函数调用
+  - 更新 refresh_texts() 方法正确刷新所有 UI 组件
+  - 添加缺失的翻译键：converter_file_list、check
+  - 更新中英文翻译文件
+
+## v0.3.4 (2026-04-13)
+- test(converter): 完善 MetadataManager 单元测试
+  - 添加 test_read_metadata 测试元数据读取（MP3/OGG 格式）
+  - 添加 test_write_metadata 测试元数据写入
+  - 添加 test_parse_filename 测试文件名解析（三段式/两段式/单段）
+  - 添加 test_batch_edit 测试批量编辑功能
+  - 添加 test_get_cover/test_set_cover 测试封面图片管理
+  - 使用 unittest.mock 模拟 eyed3 和 mutagen 操作
+  - 测试覆盖正常流程和异常处理
+  - 所有 31 个测试用例全部通过
+
 ## v0.3.3 (2026-04-13)
 - feat(converter): 创建 ConverterWorker 音频转换工作线程
   - 继承 QThread 实现异步转换，避免阻塞 UI

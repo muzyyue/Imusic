@@ -8,7 +8,9 @@ dist/
 *.sublime-workspace
 
 .trae/
-history.md
 
 # 测试文件
 test/
+
+history.md
+

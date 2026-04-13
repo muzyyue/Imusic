@@ -144,7 +144,7 @@ class SettingsPage(QWidget):
         """
         # 加载语言设置
         lang_index_map = {"en": 0, "zh": 1}
-        current_lang_index = lang_index_map.get(config.language, 0)
+        current_lang_index = lang_index_map.get(config.language, 1)
         self.language_combo.setCurrentIndex(current_lang_index)
 
         # 加载主题设置
@@ -166,7 +166,7 @@ class SettingsPage(QWidget):
         """
         # 根据索引映射语言代码
         lang_code_map = {0: "en", 1: "zh"}
-        lang_code = lang_code_map.get(index, "en")
+        lang_code = lang_code_map.get(index, "zh")
 
         # 更新翻译器语言
         from auto_tag.gui.i18n import translator

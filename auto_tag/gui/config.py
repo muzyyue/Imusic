@@ -33,31 +33,45 @@ class AppConfig:
     """
     应用程序配置管理类
 
-    该类负责管理应用程序的配置信息，包括语言和主题设置。
+    该类负责管理应用程序的配置信息，包括语言、主题和转换设置。
     配置以 JSON 格式存储在用户主目录下。
 
     Attributes:
-        language (str): 语言代码，默认为 "en"
+        language (str): 语言代码，默认为 "zh"
         theme (str): 主题设置，可选值为 "light"、"dark"、"auto"，默认为 "auto"
+        output_format (str): 默认输出格式，默认为 "mp3"
+        quality_preset (str): 质量预设，默认为 "high"
 
     Example:
         >>> config = AppConfig()
         >>> config.language
-        'en'
-        >>> config.set_language('zh')
-        >>> config.language
         'zh'
+        >>> config.set_language('en')
+        >>> config.language
+        'en'
     """
 
     # 主题可选值类型
     ThemeType = Literal["light", "dark", "auto"]
 
     # 默认配置
-    DEFAULT_LANGUAGE: str = "en"
+    DEFAULT_LANGUAGE: str = "zh"
     DEFAULT_THEME: str = "auto"
+    DEFAULT_OUTPUT_FORMAT: str = "mp3"
+    DEFAULT_QUALITY_PRESET: str = "high"
 
     # 有效主题值
     VALID_THEMES: tuple[str, ...] = ("light", "dark", "auto")
+    
+    # 有效输出格式
+    VALID_OUTPUT_FORMATS: tuple[str, ...] = (
+        "mp3", "flac", "aac", "ogg", "wav", "m4a"
+    )
+    
+    # 有效质量预设
+    VALID_QUALITY_PRESETS: tuple[str, ...] = (
+        "low", "medium", "high", "lossless"
+    )
 
     def __init__(self) -> None:
         """
@@ -73,6 +87,8 @@ class AppConfig:
         # 初始化配置属性
         self._language: str = self.DEFAULT_LANGUAGE
         self._theme: str = self.DEFAULT_THEME
+        self._output_format: str = self.DEFAULT_OUTPUT_FORMAT
+        self._quality_preset: str = self.DEFAULT_QUALITY_PRESET
 
         # 加载配置文件
         self._load_config()
@@ -96,15 +112,31 @@ class AppConfig:
             # 更新配置属性（使用 get 方法提供默认值）
             self._language = config_data.get("language", self.DEFAULT_LANGUAGE)
             self._theme = config_data.get("theme", self.DEFAULT_THEME)
+            self._output_format = config_data.get(
+                "output_format", self.DEFAULT_OUTPUT_FORMAT
+            )
+            self._quality_preset = config_data.get(
+                "quality_preset", self.DEFAULT_QUALITY_PRESET
+            )
 
             # 验证主题值是否有效
             if self._theme not in self.VALID_THEMES:
                 self._theme = self.DEFAULT_THEME
 
+            # 验证输出格式是否有效
+            if self._output_format not in self.VALID_OUTPUT_FORMATS:
+                self._output_format = self.DEFAULT_OUTPUT_FORMAT
+
+            # 验证质量预设是否有效
+            if self._quality_preset not in self.VALID_QUALITY_PRESETS:
+                self._quality_preset = self.DEFAULT_QUALITY_PRESET
+
         except (json.JSONDecodeError, IOError, KeyError):
             # 配置文件损坏或读取失败，使用默认值
             self._language = self.DEFAULT_LANGUAGE
             self._theme = self.DEFAULT_THEME
+            self._output_format = self.DEFAULT_OUTPUT_FORMAT
+            self._quality_preset = self.DEFAULT_QUALITY_PRESET
 
     def save(self) -> None:
         """
@@ -120,7 +152,9 @@ class AppConfig:
             # 准备配置数据
             config_data: dict = {
                 "language": self._language,
-                "theme": self._theme
+                "theme": self._theme,
+                "output_format": self._output_format,
+                "quality_preset": self._quality_preset
             }
 
             # 写入配置文件
@@ -187,6 +221,74 @@ class AppConfig:
         self._theme = theme
         self.save()
 
+    @property
+    def output_format(self) -> str:
+        """
+        获取当前输出格式设置
+
+        Returns:
+            str: 当前输出格式名称
+        """
+        return self._output_format
+
+    @property
+    def quality_preset(self) -> str:
+        """
+        获取当前质量预设设置
+
+        Returns:
+            str: 当前质量预设名称
+        """
+        return self._quality_preset
+
+    def set_output_format(self, output_format: str) -> None:
+        """
+        设置输出格式并保存
+
+        Args:
+            output_format (str): 输出格式名称，必须是 "mp3"、"flac"、"aac"、
+                                "ogg"、"wav" 或 "m4a" 之一
+
+        Raises:
+            ValueError: 当输出格式值无效时抛出
+
+        Example:
+            >>> config.set_output_format("flac")
+        """
+        # 验证输出格式值
+        if output_format not in self.VALID_OUTPUT_FORMATS:
+            raise ValueError(
+                f"无效的输出格式: {output_format}。"
+                f"有效值为: {', '.join(self.VALID_OUTPUT_FORMATS)}"
+            )
+
+        self._output_format = output_format
+        self.save()
+
+    def set_quality_preset(self, quality_preset: str) -> None:
+        """
+        设置质量预设并保存
+
+        Args:
+            quality_preset (str): 质量预设名称，必须是 "low"、"medium"、
+                                 "high" 或 "lossless" 之一
+
+        Raises:
+            ValueError: 当质量预设值无效时抛出
+
+        Example:
+            >>> config.set_quality_preset("high")
+        """
+        # 验证质量预设值
+        if quality_preset not in self.VALID_QUALITY_PRESETS:
+            raise ValueError(
+                f"无效的质量预设: {quality_preset}。"
+                f"有效值为: {', '.join(self.VALID_QUALITY_PRESETS)}"
+            )
+
+        self._quality_preset = quality_preset
+        self.save()
+
     def __repr__(self) -> str:
         """
         返回配置对象的字符串表示
@@ -197,6 +299,8 @@ class AppConfig:
         return (
             f"AppConfig(language={self._language!r}, "
             f"theme={self._theme!r}, "
+            f"output_format={self._output_format!r}, "
+            f"quality_preset={self._quality_preset!r}, "
             f"config_file={str(self._config_file)!r})"
         )
 

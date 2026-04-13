@@ -42,12 +42,12 @@ class Translator:
 
     __slots__ = ('_current_language', '_translations')
 
-    def __init__(self, default_language: str = 'en') -> None:
+    def __init__(self, default_language: str = 'zh') -> None:
         """
         初始化翻译器，加载默认语言。
 
         Args:
-            default_language: 默认语言代码，默认为 'en'
+            default_language: 默认语言代码，默认为 'zh'
         """
         self._current_language: str = ''
         self._translations: Dict[str, str] = {}

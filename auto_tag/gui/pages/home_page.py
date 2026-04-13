@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -31,6 +30,7 @@ from qfluentwidgets import (
     PushButton,
     SubtitleLabel,
     SwitchButton,
+    TableWidget,
 )
 from qfluentwidgets import FluentIcon as FIF
 
@@ -169,7 +169,7 @@ class HomePage(QWidget):
         self.table_title = SubtitleLabel(tr("new_name"))
         layout.addWidget(self.table_title)
 
-        self.result_table = QTableWidget()
+        self.result_table = TableWidget()
         self.result_table.setColumnCount(3)
         self.result_table.setHorizontalHeaderLabels([
             tr("apply"), tr("old_name"), tr("new_name")
@@ -185,8 +185,8 @@ class HomePage(QWidget):
         )
         self.result_table.setColumnWidth(0, 60)
         self.result_table.setEditTriggers(
-            QTableWidget.EditTrigger.DoubleClicked | 
-            QTableWidget.EditTrigger.EditKeyPressed
+            TableWidget.EditTrigger.DoubleClicked |
+            TableWidget.EditTrigger.EditKeyPressed
         )
         self.result_table.cellChanged.connect(self._on_cell_changed)
         self.result_table.setMinimumHeight(300)
