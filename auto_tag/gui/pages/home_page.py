@@ -101,8 +101,8 @@ class HomePage(QWidget):
         input_layout.setSpacing(12)
 
         # 目录选择
-        dir_label = BodyLabel(tr("input_directory"))
-        input_layout.addWidget(dir_label)
+        self.dir_label = BodyLabel(tr("input_directory"))
+        input_layout.addWidget(self.dir_label)
 
         self.dir_entry = LineEdit()
         self.dir_entry.setPlaceholderText(tr("select_directory"))
@@ -122,8 +122,8 @@ class HomePage(QWidget):
         self.copy_switch.setOnText("")
         input_layout.addWidget(self.copy_switch)
 
-        copy_to_label = BodyLabel(tr("copy_to"))
-        input_layout.addWidget(copy_to_label)
+        self.copy_to_label = BodyLabel(tr("copy_to"))
+        input_layout.addWidget(self.copy_to_label)
 
         self.copy_dir_entry = LineEdit()
         self.copy_dir_entry.setPlaceholderText(tr("select_directory"))
@@ -145,8 +145,8 @@ class HomePage(QWidget):
         self.tag_switch.setOnText("")
         input_layout.addWidget(self.tag_switch)
 
-        tags_only_label = BodyLabel(tr("tags_only"))
-        input_layout.addWidget(tags_only_label)
+        self.tags_only_label = BodyLabel(tr("tags_only"))
+        input_layout.addWidget(self.tags_only_label)
 
         layout.addLayout(input_layout)
 
@@ -556,6 +556,11 @@ class HomePage(QWidget):
         # 更新占位符文本
         self.dir_entry.setPlaceholderText(tr("select_directory"))
         self.copy_dir_entry.setPlaceholderText(tr("select_directory"))
+
+        # 更新输入区域标签文本
+        self.dir_label.setText(tr("input_directory"))
+        self.copy_to_label.setText(tr("copy_to"))
+        self.tags_only_label.setText(tr("tags_only"))
 
         # 更新状态文本
         if self.result_table.rowCount() == 0:
