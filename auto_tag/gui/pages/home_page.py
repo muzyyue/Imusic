@@ -350,7 +350,7 @@ class HomePage(QWidget):
         checkbox_item.setFlags(
             Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
         )
-        if result.get("success"):
+        if result.get("apply"):
             checkbox_item.setCheckState(Qt.CheckState.Checked)
             checkbox_item.setForeground(Qt.GlobalColor.green)
         else:
@@ -358,16 +358,22 @@ class HomePage(QWidget):
             checkbox_item.setForeground(Qt.GlobalColor.red)
         self.result_table.setItem(row, 0, checkbox_item)
 
-        # 原文件名列
-        old_name_item = QTableWidgetItem(result.get("old_name", ""))
+        # 原文件名列（显示文件名，tooltip显示完整路径）
+        file_path = result.get("file_path", "")
+        display_name = os.path.basename(file_path) if file_path else ""
+        old_name_item = QTableWidgetItem(display_name)
         old_name_item.setFlags(old_name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        old_name_item.setToolTip(file_path)
         self.result_table.setItem(row, 1, old_name_item)
 
-        # 新文件名编辑列
-        new_name_item = QTableWidgetItem(result.get("new_name", ""))
+        # 新文件名编辑列（显示文件名，tooltip显示完整路径）
+        new_path = result.get("new_file_path", "")
+        new_display_name = os.path.basename(new_path) if new_path else ""
+        new_name_item = QTableWidgetItem(new_display_name)
         new_name_item.setFlags(
             new_name_item.flags() | Qt.ItemFlag.ItemIsEditable
         )
+        new_name_item.setToolTip(new_path)
         self.result_table.setItem(row, 2, new_name_item)
 
     def _on_finished_all(self, results: list) -> None:
@@ -439,39 +445,39 @@ class HomePage(QWidget):
         errors: list[str] = []
 
         for entry in self.data:
-            if not entry.get("success"):
+            if not entry.get("apply"):
                 continue
 
-            src = entry.get("old_name")
-            unique = entry.get("unique_name")
+            src = entry.get("file_path")
+            new_path = entry.get("new_file_path", "")
+            unique = os.path.basename(new_path) if new_path else ""
 
             if not src or not unique:
                 continue
 
             try:
                 if self.tag_only:
-                    result_data = entry.get("result_data", {})
-                    title = result_data.get("title", "")
-                    artist = result_data.get("subtitle", "")
-                    album = result_data.get("album", "")
+                    title = entry.get("title", "")
+                    artist = entry.get("author", "")
+                    album = entry.get("album", "")
+                    cover_link = entry.get("cover_link", "")
 
                     if src.lower().endswith(".mp3"):
-                        update_mp3_tags(unique, title, artist, album)
+                        update_mp3_tags(src, title, artist, album)
                         update_mp3_cover_art(
-                            unique, result_data.get("cover_link", ""), trace=False
+                            src, cover_link, trace=False
                         )
                     elif src.lower().endswith(".ogg"):
                         update_ogg_tags(
-                            unique, title, artist, album,
-                            result_data.get("cover_link", ""),
+                            src, title, artist, album,
+                            cover_link,
                             trace=False
                         )
                 else:
                     target_dir = ""
                     if plex:
-                        result_data = entry.get("result_data", {})
-                        artist = result_data.get("subtitle", "Unknown Artist")
-                        album = result_data.get("album", "Unknown Album")
+                        artist = entry.get("author", "Unknown Artist")
+                        album = entry.get("album", "Unknown Album")
                         artist = "".join(c for c in artist if c.isalnum() or c in (" ", "_")).strip()
                         album = "".join(c for c in album if c.isalnum() or c in (" ", "_")).strip()
                         target_dir = os.path.join(os.path.dirname(src), artist, album)
@@ -490,10 +496,10 @@ class HomePage(QWidget):
                         os.rename(src, os.path.join(dirname, unique))
 
                     if not self.tag_only:
-                        result_data = entry.get("result_data", {})
-                        title = result_data.get("title", "")
-                        artist = result_data.get("subtitle", "")
-                        album = result_data.get("album", "")
+                        title = entry.get("title", "")
+                        artist = entry.get("author", "")
+                        album = entry.get("album", "")
+                        cover_link = entry.get("cover_link", "")
 
                         final_path = ""
                         if self.copy_enabled and self.copy_dir:
@@ -506,12 +512,12 @@ class HomePage(QWidget):
                         if final_path.lower().endswith(".mp3"):
                             update_mp3_tags(final_path, title, artist, album)
                             update_mp3_cover_art(
-                                final_path, result_data.get("cover_link", ""), trace=False
+                                final_path, cover_link, trace=False
                             )
                         elif final_path.lower().endswith(".ogg"):
                             update_ogg_tags(
                                 final_path, title, artist, album,
-                                result_data.get("cover_link", ""),
+                                cover_link,
                                 trace=False
                             )
             except Exception as exc:
@@ -526,7 +532,7 @@ class HomePage(QWidget):
         else:
             checked_count = sum(
                 1 for d in self.data
-                if d.get("success") and any(
+                if d.get("apply") and any(
                     self.result_table.item(i, 0).checkState() == Qt.CheckState.Checked
                     for i in range(min(self.result_table.rowCount(), len(self.data)))
                     if i < self.result_table.rowCount() and
@@ -534,7 +540,7 @@ class HomePage(QWidget):
                 )
             ) if self.result_table.rowCount() > 0 else 0
 
-            if checked_count == 0 or not any(d.get("success") for d in self.data):
+            if checked_count == 0 or not any(d.get("apply") for d in self.data):
                 MessageBox(
                     "Info",
                     tr("no_files_processed"),

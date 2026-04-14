@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -22,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 from qfluentwidgets import (
     BodyLabel,
+    CheckBox,
     ComboBox,
     LineEdit,
     MessageBox,
@@ -32,10 +32,9 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 
-if TYPE_CHECKING:
-    from auto_tag.converter.workers.converter_worker import ConverterWorker
-
+from auto_tag.converter.workers.converter_worker import ConverterWorker
 from auto_tag.converter.config import ConverterConfig, OutputFormat, QualityPreset
+from auto_tag.gui.config import config
 from auto_tag.gui.i18n import tr
 
 
@@ -88,8 +87,24 @@ class ConverterPage(QWidget):
             "Lossless": QualityPreset.LOSSLESS,
         }
 
+        # 格式选择复选框字典
+        self.audio_format_checkboxes: dict[str, CheckBox] = {}
+        self.video_format_checkboxes: dict[str, CheckBox] = {}
+
+        # 格式过滤区域的UI组件引用
+        self.filter_title_label: SubtitleLabel | None = None
+        self.audio_format_label: BodyLabel | None = None
+        self.video_format_label: BodyLabel | None = None
+        self.select_all_audio_btn: PushButton | None = None
+        self.deselect_all_audio_btn: PushButton | None = None
+        self.select_all_video_btn: PushButton | None = None
+        self.deselect_all_video_btn: PushButton | None = None
+
         # 构建 UI
         self._setup_ui()
+
+        # 加载配置中的格式选择
+        self._load_format_config()
 
     def _setup_ui(self) -> None:
         """
@@ -167,6 +182,9 @@ class ConverterPage(QWidget):
 
         layout.addLayout(format_layout)
 
+        # === 文件格式过滤区域 ===
+        self._setup_format_filter_ui(layout)
+
         # === 进度区域 ===
         progress_layout = QHBoxLayout()
         progress_layout.setSpacing(12)
@@ -234,6 +252,392 @@ class ConverterPage(QWidget):
         btn_layout.addWidget(self.stop_btn)
 
         layout.addLayout(btn_layout)
+
+    def _setup_format_filter_ui(self, parent_layout: QVBoxLayout) -> None:
+        """
+        构建文件格式过滤UI组件
+
+        创建音频格式和视频格式的多选框组，提供全选/取消全选快捷操作。
+
+        Args:
+            parent_layout (QVBoxLayout): 父布局管理器
+        """
+        # 标题
+        self.filter_title_label = SubtitleLabel(tr("filter_formats"))
+        parent_layout.addWidget(self.filter_title_label)
+
+        # 音频格式组
+        audio_group_layout = QVBoxLayout()
+        audio_group_layout.setSpacing(8)
+
+        # 音频格式标题行
+        audio_header_layout = QHBoxLayout()
+        audio_header_layout.setSpacing(12)
+
+        self.audio_format_label = BodyLabel(tr("audio_formats"))
+        audio_header_layout.addWidget(self.audio_format_label)
+
+        audio_header_layout.addStretch()
+
+        self.select_all_audio_btn = PushButton(tr("select_all_audio"))
+        self.select_all_audio_btn.setFixedHeight(28)
+        self.select_all_audio_btn.clicked.connect(self._on_select_all_audio)
+        audio_header_layout.addWidget(self.select_all_audio_btn)
+
+        self.deselect_all_audio_btn = PushButton(tr("deselect_all_audio"))
+        self.deselect_all_audio_btn.setFixedHeight(28)
+        self.deselect_all_audio_btn.clicked.connect(self._on_deselect_all_audio)
+        audio_header_layout.addWidget(self.deselect_all_audio_btn)
+
+        audio_group_layout.addLayout(audio_header_layout)
+
+        # 音频格式复选框行
+        audio_formats_layout = QHBoxLayout()
+        audio_formats_layout.setSpacing(16)
+
+        audio_formats = ["mp3", "flac", "aac", "ogg", "wav", "m4a"]
+        for fmt in audio_formats:
+            checkbox = CheckBox(fmt.upper())
+            checkbox.setChecked(True)
+            checkbox.stateChanged.connect(self._update_supported_formats)
+            audio_formats_layout.addWidget(checkbox)
+            self.audio_format_checkboxes[fmt] = checkbox
+
+        audio_formats_layout.addStretch()
+        audio_group_layout.addLayout(audio_formats_layout)
+
+        parent_layout.addLayout(audio_group_layout)
+
+        # 视频格式组
+        video_group_layout = QVBoxLayout()
+        video_group_layout.setSpacing(8)
+
+        # 视频格式标题行
+        video_header_layout = QHBoxLayout()
+        video_header_layout.setSpacing(12)
+
+        self.video_format_label = BodyLabel(tr("video_formats"))
+        video_header_layout.addWidget(self.video_format_label)
+
+        video_header_layout.addStretch()
+
+        self.select_all_video_btn = PushButton(tr("select_all_video"))
+        self.select_all_video_btn.setFixedHeight(28)
+        self.select_all_video_btn.clicked.connect(self._on_select_all_video)
+        video_header_layout.addWidget(self.select_all_video_btn)
+
+        self.deselect_all_video_btn = PushButton(tr("deselect_all_video"))
+        self.deselect_all_video_btn.setFixedHeight(28)
+        self.deselect_all_video_btn.clicked.connect(self._on_deselect_all_video)
+        video_header_layout.addWidget(self.deselect_all_video_btn)
+
+        video_group_layout.addLayout(video_header_layout)
+
+        # 视频格式复选框行
+        video_formats_layout = QHBoxLayout()
+        video_formats_layout.setSpacing(16)
+
+        video_formats = ["mp4", "mkv", "avi", "mov", "wmv", "webm"]
+        for fmt in video_formats:
+            checkbox = CheckBox(fmt.upper())
+            checkbox.setChecked(True)
+            checkbox.stateChanged.connect(self._update_supported_formats)
+            video_formats_layout.addWidget(checkbox)
+            self.video_format_checkboxes[fmt] = checkbox
+
+        video_formats_layout.addStretch()
+        video_group_layout.addLayout(video_formats_layout)
+
+        parent_layout.addLayout(video_group_layout)
+
+        # === 自定义格式管理区域 ===
+        self._setup_custom_format_ui(parent_layout)
+
+    def _setup_custom_format_ui(self, parent_layout: QVBoxLayout) -> None:
+        """
+        构建自定义格式管理UI组件
+
+        创建自定义格式的添加、编辑、删除界面。
+
+        Args:
+            parent_layout (QVBoxLayout): 父布局管理器
+        """
+        from PySide6.QtWidgets import QGroupBox, QListWidget, QListWidgetItem
+
+        # 自定义格式组
+        custom_group = QGroupBox(tr("custom_formats"))
+        custom_group_layout = QVBoxLayout()
+        custom_group_layout.setSpacing(8)
+
+        # 输入区域
+        input_layout = QHBoxLayout()
+        input_layout.setSpacing(12)
+
+        self.custom_ext_label = BodyLabel(tr("extension") + ":")
+        input_layout.addWidget(self.custom_ext_label)
+
+        self.custom_ext_entry = LineEdit()
+        self.custom_ext_entry.setPlaceholderText(tr("enter_extension"))
+        self.custom_ext_entry.setFixedHeight(32)
+        self.custom_ext_entry.setFixedWidth(150)
+        input_layout.addWidget(self.custom_ext_entry)
+
+        self.custom_desc_label = BodyLabel(tr("description") + ":")
+        input_layout.addWidget(self.custom_desc_label)
+
+        self.custom_desc_entry = LineEdit()
+        self.custom_desc_entry.setPlaceholderText(tr("enter_description"))
+        self.custom_desc_entry.setFixedHeight(32)
+        input_layout.addWidget(self.custom_desc_entry)
+
+        self.add_custom_format_btn = PushButton(FIF.ADD, tr("add_format"))
+        self.add_custom_format_btn.setFixedHeight(32)
+        self.add_custom_format_btn.clicked.connect(self._on_add_custom_format)
+        input_layout.addWidget(self.add_custom_format_btn)
+
+        input_layout.addStretch()
+        custom_group_layout.addLayout(input_layout)
+
+        # 自定义格式列表
+        self.custom_format_list = QListWidget()
+        self.custom_format_list.setMaximumHeight(120)
+        custom_group_layout.addWidget(self.custom_format_list)
+
+        # 操作按钮
+        btn_layout = QHBoxLayout()
+
+        self.edit_custom_format_btn = PushButton(FIF.EDIT, tr("edit_format"))
+        self.edit_custom_format_btn.setFixedHeight(28)
+        self.edit_custom_format_btn.clicked.connect(self._on_edit_custom_format)
+        btn_layout.addWidget(self.edit_custom_format_btn)
+
+        self.delete_custom_format_btn = PushButton(FIF.DELETE, tr("delete_format"))
+        self.delete_custom_format_btn.setFixedHeight(28)
+        self.delete_custom_format_btn.clicked.connect(self._on_delete_custom_format)
+        btn_layout.addWidget(self.delete_custom_format_btn)
+
+        btn_layout.addStretch()
+        custom_group_layout.addLayout(btn_layout)
+
+        custom_group.setLayout(custom_group_layout)
+        parent_layout.addWidget(custom_group)
+
+        # 加载已有的自定义格式
+        self._refresh_custom_format_list()
+
+    def _refresh_custom_format_list(self) -> None:
+        """
+        刷新自定义格式列表
+
+        从格式管理器获取所有自定义格式并显示在列表中。
+        """
+        self.custom_format_list.clear()
+
+        custom_formats = config.custom_formats_manager.get_custom_formats()
+        for fmt in custom_formats:
+            item_text = f"{fmt.extension.upper()} - {fmt.description}"
+            from PySide6.QtWidgets import QListWidgetItem
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.ItemDataRole.UserRole, fmt.extension)
+            self.custom_format_list.addItem(item)
+
+    def _on_add_custom_format(self) -> None:
+        """
+        添加自定义格式按钮点击处理
+
+        验证输入并添加新的自定义格式。
+        """
+        from auto_tag.converter.custom_format import CustomFormatManager
+
+        extension = self.custom_ext_entry.text().strip()
+        description = self.custom_desc_entry.text().strip()
+
+        # 使用格式管理器验证和添加
+        success, error_msg = config.custom_formats_manager.add_format(
+            extension, description
+        )
+
+        if not success:
+            MessageBox("错误", error_msg, self).exec()
+            return
+
+        # 清空输入框
+        self.custom_ext_entry.clear()
+        self.custom_desc_entry.clear()
+
+        # 刷新列表
+        self._refresh_custom_format_list()
+
+        # 更新支持的格式列表（包含新添加的自定义格式）
+        self._update_supported_formats()
+
+        # 保存配置
+        config.save()
+
+        MessageBox("成功", f"已添加自定义格式: {extension.lower()}", self).exec()
+
+    def _on_edit_custom_format(self) -> None:
+        """
+        编辑自定义格式按钮点击处理
+
+        更新选中格式的描述信息。
+        """
+        current_item = self.custom_format_list.currentItem()
+        if not current_item:
+            MessageBox("提示", "请先选择要编辑的格式", self).exec()
+            return
+
+        extension = current_item.data(Qt.ItemDataRole.UserRole)
+        new_description = self.custom_desc_entry.text().strip()
+
+        if not new_description:
+            MessageBox("错误", "请输入描述信息", self).exec()
+            return
+
+        success, error_msg = config.custom_formats_manager.update_format(
+            extension, new_description
+        )
+
+        if not success:
+            MessageBox("错误", error_msg, self).exec()
+            return
+
+        # 刷新列表
+        self._refresh_custom_format_list()
+
+        # 保存配置
+        config.save()
+
+        MessageBox("成功", f"已更新格式: {extension}", self).exec()
+
+    def _on_delete_custom_format(self) -> None:
+        """
+        删除自定义格式按钮点击处理
+
+        删除选中的自定义格式。
+        """
+        current_item = self.custom_format_list.currentItem()
+        if not current_item:
+            MessageBox("提示", "请先选择要删除的格式", self).exec()
+            return
+
+        extension = current_item.data(Qt.ItemDataRole.UserRole)
+
+        # 确认删除（使用标准对话框）
+        from PySide6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(
+            self,
+            tr("confirm_delete"),
+            f"{tr('confirm_delete_format')} '{extension}' ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        success, error_msg = config.custom_formats_manager.remove_format(extension)
+
+        if not success:
+            MessageBox("错误", error_msg, self).exec()
+            return
+
+        # 刷新列表
+        self._refresh_custom_format_list()
+
+        # 更新支持的格式列表（移除已删除的自定义格式）
+        self._update_supported_formats()
+
+        # 保存配置
+        config.save()
+
+        MessageBox("成功", f"已删除自定义格式: {extension}", self).exec()
+
+    def _update_supported_formats(self) -> None:
+        """
+        根据用户选择更新支持的格式列表
+
+        遍历所有格式复选框，将选中的格式添加到配置中。
+        同时包含用户自定义的格式。
+        """
+        selected_formats = []
+
+        # 收集音频格式
+        for fmt, checkbox in self.audio_format_checkboxes.items():
+            if checkbox.isChecked():
+                selected_formats.append(fmt)
+
+        # 收集视频格式
+        for fmt, checkbox in self.video_format_checkboxes.items():
+            if checkbox.isChecked():
+                selected_formats.append(fmt)
+
+        # 收集自定义格式（始终包含）
+        custom_formats = config.custom_formats_manager.get_custom_formats()
+        for fmt in custom_formats:
+            selected_formats.append(fmt.extension)
+
+        # 更新配置
+        self.config.supported_input_formats = selected_formats
+
+        # 保存到配置文件
+        self._save_format_config()
+
+    def _on_select_all_audio(self) -> None:
+        """全选音频格式"""
+        for checkbox in self.audio_format_checkboxes.values():
+            checkbox.setChecked(True)
+
+    def _on_deselect_all_audio(self) -> None:
+        """取消选择所有音频格式"""
+        for checkbox in self.audio_format_checkboxes.values():
+            checkbox.setChecked(False)
+
+    def _on_select_all_video(self) -> None:
+        """全选视频格式"""
+        for checkbox in self.video_format_checkboxes.values():
+            checkbox.setChecked(True)
+
+    def _on_deselect_all_video(self) -> None:
+        """取消选择所有视频格式"""
+        for checkbox in self.video_format_checkboxes.values():
+            checkbox.setChecked(False)
+
+    def _load_format_config(self) -> None:
+        """
+        从配置文件加载格式选择
+
+        根据配置文件中的格式列表更新复选框状态。
+        如果配置为空或不存在，使用默认值（全选）。
+        """
+        saved_formats = config.converter_input_formats
+
+        # 如果保存的格式列表为空，使用默认的全选状态
+        if not saved_formats:
+            # 默认全选所有预设格式
+            for checkbox in self.audio_format_checkboxes.values():
+                checkbox.setChecked(True)
+            for checkbox in self.video_format_checkboxes.values():
+                checkbox.setChecked(True)
+        else:
+            # 更新音频格式复选框
+            for fmt, checkbox in self.audio_format_checkboxes.items():
+                checkbox.setChecked(fmt in saved_formats)
+
+            # 更新视频格式复选框
+            for fmt, checkbox in self.video_format_checkboxes.items():
+                checkbox.setChecked(fmt in saved_formats)
+
+        # 更新配置
+        self._update_supported_formats()
+
+    def _save_format_config(self) -> None:
+        """
+        保存格式选择到配置文件
+
+        将当前选择的格式列表保存到配置文件中。
+        """
+        config.set_converter_input_formats(self.config.supported_input_formats)
 
     def _scan_files(self, directory: str) -> list[str]:
         """
@@ -582,3 +986,39 @@ class ConverterPage(QWidget):
         self.uncheck_all_btn.setText(tr("uncheck_all"))
         self.start_btn.setText(tr("start_conversion"))
         self.stop_btn.setText(tr("stop_conversion"))
+
+        # 更新格式过滤区域的文本
+        if self.filter_title_label:
+            self.filter_title_label.setText(tr("filter_formats"))
+        if self.audio_format_label:
+            self.audio_format_label.setText(tr("audio_formats"))
+        if self.video_format_label:
+            self.video_format_label.setText(tr("video_formats"))
+        if self.select_all_audio_btn:
+            self.select_all_audio_btn.setText(tr("select_all_audio"))
+        if self.deselect_all_audio_btn:
+            self.deselect_all_audio_btn.setText(tr("deselect_all_audio"))
+        if self.select_all_video_btn:
+            self.select_all_video_btn.setText(tr("select_all_video"))
+        if self.deselect_all_video_btn:
+            self.deselect_all_video_btn.setText(tr("deselect_all_video"))
+
+        # 更新自定义格式区域的文本
+        if hasattr(self, 'custom_ext_label') and self.custom_ext_label:
+            self.custom_ext_label.setText(tr("extension") + ":")
+        if hasattr(self, 'custom_desc_label') and self.custom_desc_label:
+            self.custom_desc_label.setText(tr("description") + ":")
+        if hasattr(self, 'custom_ext_entry') and self.custom_ext_entry:
+            self.custom_ext_entry.setPlaceholderText(tr("enter_extension"))
+        if hasattr(self, 'custom_desc_entry') and self.custom_desc_entry:
+            self.custom_desc_entry.setPlaceholderText(tr("enter_description"))
+        if hasattr(self, 'add_custom_format_btn') and self.add_custom_format_btn:
+            self.add_custom_format_btn.setText(tr("add_format"))
+        if hasattr(self, 'edit_custom_format_btn') and self.edit_custom_format_btn:
+            self.edit_custom_format_btn.setText(tr("edit_format"))
+        if hasattr(self, 'delete_custom_format_btn') and self.delete_custom_format_btn:
+            self.delete_custom_format_btn.setText(tr("delete_format"))
+
+        # 刷新自定义格式列表（显示当前语言的格式信息）
+        if hasattr(self, '_refresh_custom_format_list'):
+            self._refresh_custom_format_list()

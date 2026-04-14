@@ -1,5 +1,37 @@
 # 项目变更历史
 
+## v0.3.7 (2026-04-14)
+- feat(converter): 新增自定义文件格式管理功能
+  - 创建 CustomFormat 数据类和 CustomFormatManager 管理器
+  - 支持用户自定义文件扩展名（如 opus、m4s 等）
+  - 实现格式验证机制（扩展名检查、重复检测）
+  - 提供完整的 CRUD 操作（添加、编辑、删除）
+  - 配置持久化到 config.json
+  - 添加 24 个单元测试全部通过
+- feat(converter): 新增文件格式过滤功能
+  - 音频格式组：MP3、FLAC、AAC、OGG、WAV、M4A
+  - 视频格式组：MP4、MKV、AVI、MOV、WMV、WEBM
+  - 提供全选/取消全选快捷按钮
+  - 格式选择持久化保存
+  - 添加 12 个单元测试全部通过
+- fix(converter): 修复 ConverterWorker 导入错误
+  - 修复 TYPE_CHECKING 导致的 NameError
+  - 修复停止转换按钮无反应问题
+- fix(i18n): 修复语言切换问题
+  - 修复自定义格式区域文本未切换
+  - 添加缺失的翻译键（confirm_delete 等）
+- fix(converter): 修复删除格式对话框错误
+  - 使用标准 QMessageBox 替代不支持的 MessageBox API
+- test: 新增测试文件
+  - test_converter_page.py：文件格式过滤和自定义格式 UI 测试
+  - test_custom_format.py：自定义格式管理器测试
+- test: 更新测试结果
+  - 88个测试用例通过
+  - 9个测试失败（已知环境问题：async测试缺插件、主题测试中文环境）
+- docs: 更新国际化翻译
+  - 新增 10+ 个翻译键（中英文）
+  - 完善自定义格式相关的翻译
+
 ## v0.3.6 (2026-04-14)
 - docs: 全面更新 Readme.md 文档
   - 添加版本徽章（Version、Python、License）

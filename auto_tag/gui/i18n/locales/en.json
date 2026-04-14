@@ -50,5 +50,22 @@
   "conversion_failed": "Conversion Failed",
   "no_files_selected": "No files selected",
   "select_input_directory": "Please select input directory first",
-  "conversion_in_progress": "Waiting to start..."
+  "conversion_in_progress": "Waiting to start...",
+  "filter_formats": "File Format Filter",
+  "audio_formats": "Audio Formats",
+  "video_formats": "Video Formats",
+  "select_all_audio": "Select All Audio",
+  "deselect_all_audio": "Deselect All Audio",
+  "select_all_video": "Select All Video",
+  "deselect_all_video": "Deselect All Video",
+  "custom_formats": "Custom Formats",
+  "extension": "Extension",
+  "description": "Description",
+  "enter_extension": "Enter extension (e.g., opus)",
+  "enter_description": "Enter description (optional)",
+  "add_format": "Add Format",
+  "edit_format": "Edit",
+  "delete_format": "Delete",
+  "confirm_delete": "Confirm Delete",
+  "confirm_delete_format": "Are you sure you want to delete custom format"
 }

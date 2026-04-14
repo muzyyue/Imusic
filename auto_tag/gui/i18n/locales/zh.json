@@ -50,5 +50,22 @@
   "conversion_failed": "转换失败",
   "no_files_selected": "未选择任何文件",
   "select_input_directory": "请先选择输入目录",
-  "conversion_in_progress": "等待开始转换..."
+  "conversion_in_progress": "等待开始转换...",
+  "filter_formats": "文件格式过滤",
+  "audio_formats": "音频格式",
+  "video_formats": "视频格式",
+  "select_all_audio": "全选音频",
+  "deselect_all_audio": "取消音频",
+  "select_all_video": "全选视频",
+  "deselect_all_video": "取消视频",
+  "custom_formats": "自定义格式",
+  "extension": "扩展名",
+  "description": "描述",
+  "enter_extension": "输入扩展名（如 opus）",
+  "enter_description": "输入描述（可选）",
+  "add_format": "添加格式",
+  "edit_format": "编辑",
+  "delete_format": "删除",
+  "confirm_delete": "确认删除",
+  "confirm_delete_format": "确定要删除自定义格式"
 }

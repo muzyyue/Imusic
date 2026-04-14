@@ -9,9 +9,7 @@ dist/
 *.log
 
 .trae/
-
 # 测试文件
-test/
-
+# tests/
 history.md
 

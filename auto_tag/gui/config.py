@@ -26,7 +26,9 @@
 import json
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
+
+from auto_tag.converter.custom_format import CustomFormatManager
 
 
 class AppConfig:
@@ -59,6 +61,10 @@ class AppConfig:
     DEFAULT_THEME: str = "auto"
     DEFAULT_OUTPUT_FORMAT: str = "mp3"
     DEFAULT_QUALITY_PRESET: str = "high"
+    DEFAULT_CONVERTER_INPUT_FORMATS: list[str] = [
+        "mp3", "flac", "aac", "ogg", "wav", "m4a",
+        "mp4", "mkv", "avi", "mov", "wmv", "webm"
+    ]
 
     # 有效主题值
     VALID_THEMES: tuple[str, ...] = ("light", "dark", "auto")
@@ -89,6 +95,9 @@ class AppConfig:
         self._theme: str = self.DEFAULT_THEME
         self._output_format: str = self.DEFAULT_OUTPUT_FORMAT
         self._quality_preset: str = self.DEFAULT_QUALITY_PRESET
+        self._converter_input_formats: list[str] = self.DEFAULT_CONVERTER_INPUT_FORMATS.copy()
+        self._custom_formats_data: list[dict[str, Any]] = []
+        self.custom_formats_manager: CustomFormatManager = CustomFormatManager()
 
         # 加载配置文件
         self._load_config()
@@ -118,6 +127,18 @@ class AppConfig:
             self._quality_preset = config_data.get(
                 "quality_preset", self.DEFAULT_QUALITY_PRESET
             )
+            self._converter_input_formats = config_data.get(
+                "converter_input_formats", self.DEFAULT_CONVERTER_INPUT_FORMATS.copy()
+            )
+            self._custom_formats_data = config_data.get(
+                "custom_formats", []
+            )
+
+            # 从配置数据重建自定义格式管理器
+            if self._custom_formats_data:
+                self.custom_formats_manager = CustomFormatManager.from_dict_list(
+                    self._custom_formats_data
+                )
 
             # 验证主题值是否有效
             if self._theme not in self.VALID_THEMES:
@@ -137,6 +158,7 @@ class AppConfig:
             self._theme = self.DEFAULT_THEME
             self._output_format = self.DEFAULT_OUTPUT_FORMAT
             self._quality_preset = self.DEFAULT_QUALITY_PRESET
+            self._converter_input_formats = self.DEFAULT_CONVERTER_INPUT_FORMATS.copy()
 
     def save(self) -> None:
         """
@@ -154,7 +176,9 @@ class AppConfig:
                 "language": self._language,
                 "theme": self._theme,
                 "output_format": self._output_format,
-                "quality_preset": self._quality_preset
+                "quality_preset": self._quality_preset,
+                "converter_input_formats": self._converter_input_formats,
+                "custom_formats": self.custom_formats_manager.to_dict_list()
             }
 
             # 写入配置文件
@@ -289,6 +313,29 @@ class AppConfig:
         self._quality_preset = quality_preset
         self.save()
 
+    @property
+    def converter_input_formats(self) -> list[str]:
+        """
+        获取当前转换器输入格式列表
+
+        Returns:
+            list[str]: 当前支持的输入格式列表
+        """
+        return self._converter_input_formats
+
+    def set_converter_input_formats(self, formats: list[str]) -> None:
+        """
+        设置转换器输入格式列表并保存
+
+        Args:
+            formats (list[str]): 输入格式列表，如 ["mp3", "flac", "mp4"]
+
+        Example:
+            >>> config.set_converter_input_formats(["mp3", "flac", "mp4"])
+        """
+        self._converter_input_formats = formats
+        self.save()
+
     def __repr__(self) -> str:
         """
         返回配置对象的字符串表示
@@ -301,6 +348,7 @@ class AppConfig:
             f"theme={self._theme!r}, "
             f"output_format={self._output_format!r}, "
             f"quality_preset={self._quality_preset!r}, "
+            f"converter_input_formats={self._converter_input_formats!r}, "
             f"config_file={str(self._config_file)!r})"
         )
 
