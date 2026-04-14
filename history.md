@@ -1,5 +1,18 @@
 # 项目变更历史
 
+## v0.3.6 (2026-04-14)
+- docs: 全面更新 Readme.md 文档
+  - 添加版本徽章（Version、Python、License）
+  - 更新功能特性列表，新增音频转换、国际化、Fluent Design UI
+  - 重写 GUI 说明，描述 PySide6 + QFluentWidgets 界面
+  - 新增 Converter Page（音频转换）功能说明
+  - 新增 Settings Page（语言/主题切换）说明
+  - 更新项目结构，反映最新的目录树
+  - 更新依赖列表，新增 PySide6、PySide6-Fluent-Widgets、ffmpeg-python
+  - 更新构建命令，支持 PySide6 打包
+  - 新增 FFmpeg 依赖说明
+  - 添加致谢部分
+
 ## v0.3.5 (2026-04-13)
 - fix(i18n): 修复转换页面语言切换问题
   - 将所有硬编码中文替换为 tr() 翻译函数调用

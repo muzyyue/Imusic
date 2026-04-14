@@ -6,6 +6,7 @@ build/
 mp3ShazamAutoTag.egg-info/
 dist/
 *.sublime-workspace
+*.log
 
 .trae/
 

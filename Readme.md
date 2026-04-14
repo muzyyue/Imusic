@@ -1,31 +1,37 @@
 # MP3 File Recognizer and Renamer
 
-This Python project automatically recognizes mp3 or ogg files using Shazam, renames them according to the recognized song title and artist, and updates their tags and cover art. In addition to the command‑line interface, a user‑friendly GUI is now available. You can download the executable file at the following address: [https://github.com/davidAlgis/mp3ShazamAutoTag/releases](https://github.com/davidAlgis/mp3ShazamAutoTag/releases).
+[![Version](https://img.shields.io/badge/version-0.3.5-blue.svg)](https://github.com/davidAlgis/mp3ShazamAutoTag)
+[![Python](https://img.shields.io/badge/python-3.6%2B-brightgreen.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+This Python project automatically recognizes mp3 or ogg files using Shazam, renames them according to the recognized song title and artist, and updates their tags and cover art. The project now features a modern **Fluent Design** GUI built with PySide6 and QFluentWidgets, along with audio conversion capabilities.
 
 > [!WARNING]  
 > Your antivirus can quarantine the software, but as the source code of this repository it is completely harmless. Moreover, the first launch of the executable might be a bit long. 
 
 ![](example-ui.jpg)
 
-## Usage
+## ✨ Features
 
-### Graphical User Interface (GUI)
+- 🎵 **Audio Recognition** - Automatically identify songs using Shazam API
+- 📝 **Auto Rename** - Rename files with `Title - Artist - Album.ext` format
+- 🏷️ **Tag Management** - Update ID3/Vorbis metadata tags automatically
+- 🖼️ **Cover Art** - Download and embed album artwork
+- 📁 **Plex Support** - Organize files into `Artist/Album/Title.ext` structure
+- 🎛️ **Audio Conversion** - Convert between multiple audio formats (MP3/FLAC/AAC/OGG/WAV/M4A)
+- 🌍 **Internationalization** - Support for English and Chinese (中文)
+- 🎨 **Fluent Design UI** - Modern interface with light/dark theme support
+- ⚙️ **Configuration** - Persistent user preferences
 
-A user-friendly executable is now available as a zip file (download link above). This GUI allows you to:
-- Select the input directory via a browse button.
-- Optionally check **Copy to:** and choose a destination folder to **copy** (rather than move) the files.
-- See a progress bar with file count and estimated remaining time.
-- View a table of audio files with options to check/uncheck rows and directly edit the new file names.
-- There are two ways to apply changes:
-  1. The **Apply** button renames/moves (or copies, if **Copy to:** is set) in-place.
-  2. **Apply with Plex Convention** also organizes into `Artist/Album/title.ext`.
+## 📦 Installation
 
-Simply unzip the file and run the executable.
+### Download Executable
 
+Download the latest release from [GitHub Releases](https://github.com/davidAlgis/mp3ShazamAutoTag/releases).
 
-## Manual Installation
+### Manual Installation
 
-Before running the script, create a clean environment and install the required Python libraries. For example:
+Create a clean environment and install the required Python libraries:
 
 ```bash
 pip install .
@@ -36,16 +42,43 @@ pip install .
 - There might be some issues with Python 3.11 and 3.12 (see [Issue #1](https://github.com/davidAlgis/mp3ShazamAutoTag/issues/1)).  
 - macOS users may need to install *shazamio* manually (see [Issue #5](https://github.com/davidAlgis/mp3ShazamAutoTag/issues/5)).
 
+## 🚀 Usage
 
-## Command‑Line Interface
+### Graphical User Interface (GUI)
 
-Alternatively, you can run the script from the command line. First, clone this repository (or download the files), install the required libraries as mentioned above, and then run:
+The application features a modern Fluent Design interface with:
+
+**Home Page (Audio Recognition)**:
+- Select the input directory via a browse button
+- Optionally check **Copy to:** and choose a destination folder to **copy** files
+- See a progress bar with file count and estimated remaining time
+- View a table of audio files with options to check/uncheck rows and edit file names
+- Two apply modes:
+  1. **Apply** - Renames/moves (or copies) files in-place
+  2. **Apply with Plex Convention** - Organizes into `Artist/Album/title.ext`
+
+**Converter Page (Audio Conversion)**:
+- Convert audio files between multiple formats
+- Supported input: MP3, FLAC, AAC, OGG, WAV, M4A, MP4, MKV, AVI, MOV, WMV, WEBM
+- Supported output: MP3, FLAC, AAC, OGG, WAV, M4A
+- Batch conversion with progress tracking
+- Metadata preservation and editing
+
+**Settings Page**:
+- Language selection (English/中文)
+- Theme selection (Light/Dark/Follow System)
+
+Simply run the executable or launch via `python main.py --gui`.
+
+### Command‑Line Interface (CLI)
+
+Run the script from the command line:
 
 ```bash
 python main.py [options]
 ```
 
-### Options
+#### CLI Options
 
 | Short | Long           | Description                                                                                                   | Default       |
 | ----- | -------------- | ------------------------------------------------------------------------------------------------------------- | ------------- |
@@ -57,34 +90,140 @@ python main.py [options]
 | `-g`  | `--gui`        | Launch the GUI instead of running headless.                                                                   | `True`        |
 | `-e`  | `--extensions` | Comma-separated list of extensions to process (e.g. `mp3,ogg`).                                               | `mp3,ogg`     |
 | `-o`  | `--output`     | Base output directory for moved files (keeps original folder if omitted).                                     | *same folder* |
-| `-p`  | `--plex`       | Organise output into Plex structure `Artist/Album/Title.ext` (CLI equivalent of the GUI’s Plex button).       | *off*         |
-| `-c`  | `--copy-to`    | Instead of moving, **copy** processed files into this directory (can still use `--plex` structure). | *None*        |
-| `-to`  | `--tag-only`  | Apply the modification only to the tags of the file and not the filenames. | `False`        |
+| `-p`  | `--plex`       | Organise output into Plex structure `Artist/Album/Title.ext` (CLI equivalent of the GUI's Plex button).       | *off*         |
+| `-c`  | `--copy-to`    | Instead of moving, **copy** processed files into this directory (can still use `--plex` structure).           | *None*        |
+| `-to` | `--tag-only`   | Apply the modification only to the tags of the file and not the filenames.                                    | `False`       |
 | `-h`  | `--help`       | Show the help message and exit.                                                                               | —             |
 
+## 📁 Project Structure
 
-## Building the Executable
+```
+mp3ShazamAutoTag/
+├── main.py                    # Main entry point
+├── pyproject.toml             # Project configuration (PEP 517/518)
+├── requirements.txt           # Dependencies
+├── Readme.md                  # This file
+├── LICENSE                    # MIT License
+│
+├── auto_tag/                  # Core module package
+│   ├── __init__.py
+│   ├── audio_recognize.py     # Audio recognition core logic
+│   ├── utils.py               # Utility functions
+│   │
+│   ├── gui/                   # GUI module (PySide6 + QFluentWidgets)
+│   │   ├── __init__.py
+│   │   ├── config.py          # GUI configuration
+│   │   ├── main_window.py     # Main window
+│   │   ├── i18n/              # Internationalization
+│   │   │   ├── translator.py
+│   │   │   └── locales/       # Translation files (en.json, zh.json)
+│   │   ├── pages/             # UI pages
+│   │   │   ├── home_page.py       # Audio recognition page
+│   │   │   ├── converter_page.py  # Audio conversion page
+│   │   │   └── settings_page.py   # Settings page
+│   │   └── workers/           # Background workers
+│   │       └── recognize_worker.py
+│   │
+│   └── converter/             # Audio conversion module
+│       ├── __init__.py
+│       ├── config.py          # Converter configuration
+│       ├── converter.py       # Audio conversion logic
+│       ├── metadata_manager.py # Metadata management
+│       └── workers/
+│           └── converter_worker.py
+│
+├── assets/                    # Static resources
+│   └── auto_tag.ico           # Application icon
+│
+├── build_tools/               # Build tools
+│   └── build_exe.py           # PyInstaller build script
+│
+└── tests/                     # Test directory
+    ├── __init__.py
+    ├── test_recognize.py
+    ├── test_converter.py
+    ├── test_converter_worker.py
+    └── test_settings_page.py
+```
 
-This project can be built as a standalone executable using `pyinstaller`. To build the executable:
+## 🔧 Building the Executable
 
+This project can be built as a standalone executable using `pyinstaller`. 
 
-1. Move to a dedicated environment, the command (on windows) is:
+### Prerequisites
+
+1. Create and activate a virtual environment:
    ```bash
    python -m venv venv
-   venv\Scripts\activate
+   venv\Scripts\activate  # Windows
+   # source venv/bin/activate  # Linux/macOS
    ```
 
-1. Install the required packages:
-
+2. Install the required packages:
    ```bash
    pip install .
    pip install pyinstaller
    ```
 
-2. Run the build command:
+### Build Command
 
-   ```bash
-   pyinstaller --onefile --noconsole --icon="[full_path_to]\assets\auto_tag.ico" --add-data="[full_path_to]\assets\auto_tag.ico;assets" --workpath=build --distpath=build --specpath=build main.py
-   ```
+```bash
+python build_tools/build_exe.py
+```
 
-This will create a **build** folder with the executable and some temporary files.
+Or manually:
+
+```bash
+pyinstaller --onefile --noconsole \
+    --icon="assets/auto_tag.ico" \
+    --add-data="assets/auto_tag.ico;assets" \
+    --add-data="auto_tag/gui/i18n/locales;auto_tag/gui/i18n/locales" \
+    --workpath=build --distpath=build --specpath=build \
+    main.py
+```
+
+This will create a **build** folder with the executable.
+
+## 📋 Dependencies
+
+### Core Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `shazamio` >= 0.5.0 | Shazam audio recognition API |
+| `mutagen` | Audio metadata handling |
+| `eyed3` | MP3 ID3 tag processing |
+| `soundfile` | OGG to WAV audio conversion |
+| `unidecode` | Unicode to ASCII conversion |
+| `tqdm` | Progress bar display |
+| `PySide6` | Qt6 GUI framework |
+| `PySide6-Fluent-Widgets` | Fluent Design UI components |
+| `ffmpeg-python` >= 0.2.0 | Audio conversion backend |
+
+### Development Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `pytest` >= 6.0 | Unit testing framework |
+| `pytest-asyncio` | Async test support |
+
+## 🐛 Known Issues
+
+1. **Python 3.11/3.12 Compatibility** - See [Issue #1](https://github.com/davidAlgis/mp3ShazamAutoTag/issues/1)
+2. **macOS shazamio Installation** - See [Issue #5](https://github.com/davidAlgis/mp3ShazamAutoTag/issues/5)
+3. **Antivirus False Positives** - The executable may be quarantined (source code is harmless)
+4. **FFmpeg Required** - Audio conversion requires FFmpeg to be installed on your system
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [shazamio](https://github.com/dotX12/shazamio) - Shazam API wrapper
+- [QFluentWidgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets) - Fluent Design UI library
+- [PySide6](https://www.pyside.org/) - Qt6 Python bindings
+
+---
+
+*Last updated: 2026-04-14*
