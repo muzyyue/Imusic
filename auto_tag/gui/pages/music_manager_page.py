@@ -1,0 +1,989 @@
+# -*- coding: utf-8 -*-
+"""
+音乐管理页面模块
+
+该模块提供音乐文件管理功能的页面界面，包括元信息编辑、
+封面管理和歌词管理等功能。
+
+@module music_manager_page
+@author Frontend Architect
+@version 1.0.0
+"""
+
+from __future__ import annotations
+
+import os
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QPixmap, QImage
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QGridLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+from qfluentwidgets import (
+    BodyLabel,
+    ComboBox,
+    ImageLabel,
+    LineEdit,
+    MessageBox,
+    ProgressBar,
+    PushButton,
+    SegmentedWidget,
+    SubtitleLabel,
+    TableWidget,
+    TextEdit,
+)
+from qfluentwidgets import FluentIcon as FIF
+
+if TYPE_CHECKING:
+    from auto_tag.gui.workers.lyric_worker import LyricWorker, LyricEmbedWorker
+
+from auto_tag.converter.metadata_manager import MetadataManager
+from auto_tag.gui.i18n import tr
+from auto_tag.gui.workers import LyricWorker, LyricEmbedWorker
+from auto_tag.lyric import LyricManager
+
+
+class MusicManagerPage(QWidget):
+    """
+    音乐管理页面
+
+    提供音频文件元信息编辑、封面管理和歌词管理的用户界面。
+
+    Attributes:
+        files (list[str]): 当前加载的文件路径列表
+        selected_files (list[str]): 当前选中的文件路径列表
+        current_file (str | None): 当前正在编辑的文件路径
+        metadata_manager (MetadataManager): 元数据管理器实例
+        lyric_manager (LyricManager): 歌词管理器实例
+        lyric_worker (LyricWorker | None): 歌词获取工作线程
+        embed_worker (LyricEmbedWorker | None): 歌词嵌入工作线程
+        current_lyrics (dict | None): 当前文件的歌词数据
+    """
+
+    def __init__(self, parent=None) -> None:
+        """
+        初始化音乐管理页面
+
+        Args:
+            parent (QWidget | None): 父窗口组件
+        """
+        super().__init__(parent)
+
+        # 状态变量
+        self.files: list[str] = []
+        self.selected_files: list[str] = []
+        self.current_file: str | None = None
+
+        # 管理器实例
+        self.metadata_manager = MetadataManager()
+        self.lyric_manager = LyricManager()
+
+        # 工作线程
+        self.lyric_worker: LyricWorker | None = None
+        self.embed_worker: LyricEmbedWorker | None = None
+
+        # 歌词数据缓存
+        self.current_lyrics: dict | None = None
+        self.lyrics_cache: dict[str, dict] = {}
+
+        # 构建 UI
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        """
+        构建音乐管理页面 UI 布局
+
+        创建所有界面组件并使用布局管理器组织它们，
+        包括文件列表、元信息编辑表单、封面管理和歌词管理区域。
+        """
+        # 主布局
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(40, 30, 40, 30)
+        main_layout.setSpacing(20)
+
+        # === 左侧：文件列表 ===
+        left_panel = self._setup_file_list_panel()
+        main_layout.addWidget(left_panel, stretch=1)
+
+        # === 右侧：标签页区域 ===
+        right_panel = self._setup_right_panel()
+        main_layout.addWidget(right_panel, stretch=2)
+
+    def _setup_file_list_panel(self) -> QWidget:
+        """
+        构建文件列表面板
+
+        创建包含目录选择、文件表格和操作按钮的左侧面板。
+
+        Returns:
+            QWidget: 文件列表面板组件
+        """
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        # 标题
+        self.file_list_title = SubtitleLabel(tr("file_list"))
+        layout.addWidget(self.file_list_title)
+
+        # 目录选择区域
+        dir_layout = QHBoxLayout()
+        dir_layout.setSpacing(8)
+
+        self.browse_btn = PushButton(FIF.FOLDER, tr("browse"))
+        self.browse_btn.setFixedHeight(36)
+        self.browse_btn.clicked.connect(self._on_browse_directory)
+        dir_layout.addWidget(self.browse_btn)
+
+        dir_layout.addStretch()
+        layout.addLayout(dir_layout)
+
+        # 文件表格
+        self.file_table = TableWidget()
+        self.file_table.setColumnCount(4)
+        self.file_table.setHorizontalHeaderLabels([
+            tr("check"), tr("file_name"), tr("format"), tr("size")
+        ])
+        # 设置列宽
+        self.file_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Fixed
+        )
+        self.file_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self.file_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Fixed
+        )
+        self.file_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeMode.Fixed
+        )
+        self.file_table.setColumnWidth(0, 50)
+        self.file_table.setColumnWidth(2, 70)
+        self.file_table.setColumnWidth(3, 80)
+        self.file_table.setSelectionBehavior(TableWidget.SelectionBehavior.SelectRows)
+        self.file_table.itemClicked.connect(self._on_file_clicked)
+        self.file_table.itemChanged.connect(self._on_file_check_changed)
+        layout.addWidget(self.file_table)
+
+        # 操作按钮区域
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        self.check_all_btn = PushButton(tr("check_all"))
+        self.check_all_btn.setFixedHeight(32)
+        self.check_all_btn.clicked.connect(self._on_check_all)
+        btn_layout.addWidget(self.check_all_btn)
+
+        self.uncheck_all_btn = PushButton(tr("uncheck_all"))
+        self.uncheck_all_btn.setFixedHeight(32)
+        self.uncheck_all_btn.clicked.connect(self._on_uncheck_all)
+        btn_layout.addWidget(self.uncheck_all_btn)
+
+        layout.addLayout(btn_layout)
+
+        return panel
+
+    def _setup_right_panel(self) -> QWidget:
+        """
+        构建右侧面板
+
+        创建包含标签页切换和内容区域的右侧面板。
+
+        Returns:
+            QWidget: 右侧面板组件
+        """
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
+
+        # 标签页切换器
+        self.segmented_widget = SegmentedWidget()
+        self.metadata_tab = QWidget()
+        self.lyrics_tab = QWidget()
+
+        # 添加标签页
+        self.segmented_widget.addItem(
+            routeKey="metadata",
+            text=tr("metadata_tab"),
+            onClick=lambda: self._switch_tab("metadata")
+        )
+        self.segmented_widget.addItem(
+            routeKey="lyrics",
+            text=tr("lyrics_tab"),
+            onClick=lambda: self._switch_tab("lyrics")
+        )
+        layout.addWidget(self.segmented_widget)
+
+        # 内容区域（使用堆叠布局）
+        self.content_stack = QWidget()
+        self.stack_layout = QVBoxLayout(self.content_stack)
+        self.stack_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 元信息标签页内容
+        self._setup_metadata_tab()
+        self.stack_layout.addWidget(self.metadata_tab)
+
+        # 歌词标签页内容
+        self._setup_lyrics_tab()
+        self.stack_layout.addWidget(self.lyrics_tab)
+
+        # 默认显示元信息标签页
+        self.lyrics_tab.hide()
+
+        layout.addWidget(self.content_stack)
+
+        return panel
+
+    def _setup_metadata_tab(self) -> None:
+        """
+        构建元信息标签页
+
+        创建元信息编辑表单和封面管理区域。
+        """
+        layout = QVBoxLayout(self.metadata_tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
+
+        # === 元信息编辑表单 ===
+        form_group = QWidget()
+        form_layout = QGridLayout(form_group)
+        form_layout.setSpacing(12)
+
+        # 标题
+        self.title_label = BodyLabel(tr("title"))
+        form_layout.addWidget(self.title_label, 0, 0)
+        self.title_edit = LineEdit()
+        self.title_edit.setPlaceholderText(tr("title"))
+        self.title_edit.setFixedHeight(36)
+        form_layout.addWidget(self.title_edit, 0, 1)
+
+        # 艺术家
+        self.artist_label = BodyLabel(tr("artist"))
+        form_layout.addWidget(self.artist_label, 1, 0)
+        self.artist_edit = LineEdit()
+        self.artist_edit.setPlaceholderText(tr("artist"))
+        self.artist_edit.setFixedHeight(36)
+        form_layout.addWidget(self.artist_edit, 1, 1)
+
+        # 专辑
+        self.album_label = BodyLabel(tr("album"))
+        form_layout.addWidget(self.album_label, 2, 0)
+        self.album_edit = LineEdit()
+        self.album_edit.setPlaceholderText(tr("album"))
+        self.album_edit.setFixedHeight(36)
+        form_layout.addWidget(self.album_edit, 2, 1)
+
+        # 年份
+        self.year_label = BodyLabel(tr("year"))
+        form_layout.addWidget(self.year_label, 3, 0)
+        self.year_edit = LineEdit()
+        self.year_edit.setPlaceholderText(tr("year"))
+        self.year_edit.setFixedHeight(36)
+        form_layout.addWidget(self.year_edit, 3, 1)
+
+        # 流派
+        self.genre_label = BodyLabel(tr("genre"))
+        form_layout.addWidget(self.genre_label, 4, 0)
+        self.genre_edit = LineEdit()
+        self.genre_edit.setPlaceholderText(tr("genre"))
+        self.genre_edit.setFixedHeight(36)
+        form_layout.addWidget(self.genre_edit, 4, 1)
+
+        layout.addWidget(form_group)
+
+        # === 保存按钮 ===
+        save_layout = QHBoxLayout()
+        save_layout.addStretch()
+
+        self.save_metadata_btn = PushButton(FIF.SAVE, tr("save"))
+        self.save_metadata_btn.setFixedHeight(36)
+        self.save_metadata_btn.clicked.connect(self._on_save_metadata)
+        save_layout.addWidget(self.save_metadata_btn)
+
+        layout.addLayout(save_layout)
+
+        # === 封面管理区域 ===
+        cover_group = QWidget()
+        cover_layout = QVBoxLayout(cover_group)
+        cover_layout.setSpacing(12)
+
+        # 封面标题
+        self.cover_title = SubtitleLabel(tr("cover"))
+        cover_layout.addWidget(self.cover_title)
+
+        # 封面显示区域
+        self.cover_label = ImageLabel()
+        self.cover_label.setFixedSize(200, 200)
+        self.cover_label.scaledToWidth(200)
+        self._set_default_cover()
+        cover_layout.addWidget(self.cover_label)
+
+        # 封面更换按钮
+        cover_btn_layout = QHBoxLayout()
+        cover_btn_layout.setSpacing(8)
+
+        self.from_file_btn = PushButton(FIF.PHOTO, tr("from_file"))
+        self.from_file_btn.setFixedHeight(32)
+        self.from_file_btn.clicked.connect(self._on_change_cover_from_file)
+        cover_btn_layout.addWidget(self.from_file_btn)
+
+        self.from_url_btn = PushButton(FIF.LINK, tr("from_url"))
+        self.from_url_btn.setFixedHeight(32)
+        self.from_url_btn.clicked.connect(self._on_change_cover_from_url)
+        cover_btn_layout.addWidget(self.from_url_btn)
+
+        cover_btn_layout.addStretch()
+        cover_layout.addLayout(cover_btn_layout)
+
+        layout.addWidget(cover_group)
+        layout.addStretch()
+
+    def _setup_lyrics_tab(self) -> None:
+        """
+        构建歌词标签页
+
+        创建歌词提供商选择、歌词预览和操作按钮区域。
+        """
+        layout = QVBoxLayout(self.lyrics_tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
+
+        # === 歌词提供商选择 ===
+        provider_layout = QHBoxLayout()
+        provider_layout.setSpacing(12)
+
+        self.provider_label = BodyLabel(tr("lyric_provider"))
+        provider_layout.addWidget(self.provider_label)
+
+        self.provider_combo = ComboBox()
+        self.provider_combo.addItem(tr("lrclib"), "lrclib")
+        self.provider_combo.addItem(tr("applemusic"), "applemusic")
+        self.provider_combo.addItem(tr("musixmatch"), "musixmatch")
+        self.provider_combo.setFixedHeight(36)
+        self.provider_combo.setFixedWidth(150)
+        provider_layout.addWidget(self.provider_combo)
+
+        provider_layout.addStretch()
+        layout.addLayout(provider_layout)
+
+        # === 进度条 ===
+        self.lyric_progress = ProgressBar()
+        self.lyric_progress.setFixedHeight(4)
+        self.lyric_progress.setValue(0)
+        layout.addWidget(self.lyric_progress)
+
+        # === 歌词预览区域 ===
+        self.lyric_title = SubtitleLabel(tr("lyrics"))
+        layout.addWidget(self.lyric_title)
+
+        self.lyric_text = TextEdit()
+        self.lyric_text.setPlaceholderText(tr("no_lyrics_found"))
+        self.lyric_text.setMinimumHeight(300)
+        layout.addWidget(self.lyric_text)
+
+        # === 操作按钮区域 ===
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        self.get_lyric_btn = PushButton(FIF.DOWNLOAD, tr("get_lyrics"))
+        self.get_lyric_btn.setFixedHeight(36)
+        self.get_lyric_btn.clicked.connect(self._on_get_lyrics)
+        btn_layout.addWidget(self.get_lyric_btn)
+
+        self.embed_lyric_btn = PushButton(FIF.TAG, tr("embed_lyrics"))
+        self.embed_lyric_btn.setFixedHeight(36)
+        self.embed_lyric_btn.clicked.connect(self._on_embed_lyrics)
+        btn_layout.addWidget(self.embed_lyric_btn)
+
+        self.batch_get_lyric_btn = PushButton(FIF.SYNC, tr("batch_get_lyrics"))
+        self.batch_get_lyric_btn.setFixedHeight(36)
+        self.batch_get_lyric_btn.clicked.connect(self._on_batch_get_lyrics)
+        btn_layout.addWidget(self.batch_get_lyric_btn)
+
+        layout.addLayout(btn_layout)
+
+    def _set_default_cover(self) -> None:
+        """
+        设置默认封面图片
+
+        当没有封面时显示占位图。
+        """
+        # 创建一个灰色的默认封面
+        default_pixmap = QPixmap(200, 200)
+        default_pixmap.fill(Qt.GlobalColor.lightGray)
+        self.cover_label.setPixmap(default_pixmap)
+
+    def _switch_tab(self, tab_key: str) -> None:
+        """
+        切换标签页
+
+        Args:
+            tab_key (str): 标签页标识（'metadata' 或 'lyrics'）
+        """
+        if tab_key == "metadata":
+            self.metadata_tab.show()
+            self.lyrics_tab.hide()
+        else:
+            self.metadata_tab.hide()
+            self.lyrics_tab.show()
+
+    def _on_browse_directory(self) -> None:
+        """
+        浏览目录按钮点击处理
+
+        打开文件夹选择对话框，选择后扫描音频文件并填充表格。
+        """
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            tr("select_directory"),
+            "",
+            QFileDialog.Option.ShowDirsOnly
+        )
+
+        if directory:
+            self._scan_audio_files(directory)
+
+    def _scan_audio_files(self, directory: str) -> None:
+        """
+        扫描目录中的音频文件
+
+        遍历目录查找所有支持的音频文件，并填充到文件表格中。
+
+        Args:
+            directory (str): 要扫描的目录路径
+        """
+        # 支持的音频格式
+        supported_formats = ['.mp3', '.ogg', '.flac', '.m4a', '.wav']
+
+        # 清空文件列表
+        self.files.clear()
+        self.file_table.setRowCount(0)
+
+        # 遍历目录
+        for root, dirs, filenames in os.walk(directory):
+            # 跳过 test 目录
+            if 'test' in dirs:
+                dirs.remove('test')
+
+            for filename in filenames:
+                ext = os.path.splitext(filename)[1].lower()
+                if ext in supported_formats:
+                    file_path = os.path.join(root, filename)
+                    self.files.append(file_path)
+
+                    # 添加到表格
+                    row = self.file_table.rowCount()
+                    self.file_table.insertRow(row)
+
+                    # 勾选框列
+                    checkbox_item = QTableWidgetItem()
+                    checkbox_item.setFlags(
+                        Qt.ItemFlag.ItemIsEnabled |
+                        Qt.ItemFlag.ItemIsUserCheckable
+                    )
+                    checkbox_item.setCheckState(Qt.CheckState.Unchecked)
+                    self.file_table.setItem(row, 0, checkbox_item)
+
+                    # 文件名列
+                    filename_item = QTableWidgetItem(filename)
+                    filename_item.setFlags(
+                        filename_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+                    )
+                    filename_item.setData(Qt.ItemDataRole.UserRole, file_path)
+                    filename_item.setToolTip(file_path)
+                    self.file_table.setItem(row, 1, filename_item)
+
+                    # 格式列
+                    format_item = QTableWidgetItem(ext.upper().lstrip('.'))
+                    format_item.setFlags(
+                        format_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+                    )
+                    self.file_table.setItem(row, 2, format_item)
+
+                    # 大小列
+                    try:
+                        size = os.path.getsize(file_path)
+                        size_str = self._format_file_size(size)
+                    except OSError:
+                        size_str = "N/A"
+                    size_item = QTableWidgetItem(size_str)
+                    size_item.setFlags(
+                        size_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+                    )
+                    self.file_table.setItem(row, 3, size_item)
+
+    def _format_file_size(self, size_bytes: int) -> str:
+        """
+        格式化文件大小显示
+
+        Args:
+            size_bytes (int): 文件大小（字节）
+
+        Returns:
+            str: 格式化后的文件大小字符串
+        """
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
+
+    def _on_file_clicked(self, item: QTableWidgetItem) -> None:
+        """
+        文件表格行点击处理
+
+        加载选中文件的元信息和歌词。
+
+        Args:
+            item (QTableWidgetItem): 被点击的表格项
+        """
+        row = item.row()
+        filename_item = self.file_table.item(row, 1)
+        if filename_item:
+            file_path = filename_item.data(Qt.ItemDataRole.UserRole)
+            self._load_file_info(file_path)
+
+    def _on_file_check_changed(self, item: QTableWidgetItem) -> None:
+        """
+        文件勾选状态变更处理
+
+        更新选中文件列表。
+
+        Args:
+            item (QTableWidgetItem): 状态变更的表格项
+        """
+        if item.column() == 0:
+            self._update_selected_files()
+
+    def _update_selected_files(self) -> None:
+        """
+        更新选中文件列表
+
+        遍历表格收集所有勾选的文件路径。
+        """
+        self.selected_files.clear()
+
+        for row in range(self.file_table.rowCount()):
+            checkbox_item = self.file_table.item(row, 0)
+            if checkbox_item and checkbox_item.checkState() == Qt.CheckState.Checked:
+                filename_item = self.file_table.item(row, 1)
+                if filename_item:
+                    file_path = filename_item.data(Qt.ItemDataRole.UserRole)
+                    self.selected_files.append(file_path)
+
+    def _load_file_info(self, file_path: str) -> None:
+        """
+        加载文件信息
+
+        读取文件的元数据和封面，并显示在界面上。
+
+        Args:
+            file_path (str): 要加载的文件路径
+        """
+        self.current_file = file_path
+
+        try:
+            # 读取元数据
+            metadata = self.metadata_manager.read_metadata(file_path)
+
+            # 填充表单
+            self.title_edit.setText(metadata.get('title', ''))
+            self.artist_edit.setText(metadata.get('artist', ''))
+            self.album_edit.setText(metadata.get('album', ''))
+            self.year_edit.setText(metadata.get('year', ''))
+            self.genre_edit.setText(metadata.get('genre', ''))
+
+            # 显示封面
+            cover_data = metadata.get('cover')
+            if cover_data:
+                self._display_cover(cover_data)
+            else:
+                self._set_default_cover()
+
+            # 尝试提取已有歌词
+            lyrics = self.lyric_manager.extract_lyrics(file_path)
+            if lyrics:
+                self.current_lyrics = lyrics
+                synced = lyrics.get('synced_lyrics', '')
+                plain = lyrics.get('plain_lyrics', '')
+                self.lyric_text.setText(synced or plain)
+            else:
+                self.current_lyrics = None
+                self.lyric_text.clear()
+
+        except Exception as e:
+            MessageBox(tr("errors_occurred"), str(e), self).exec()
+
+    def _display_cover(self, cover_data: bytes) -> None:
+        """
+        显示封面图片
+
+        将二进制封面数据显示在 ImageLabel 中。
+
+        Args:
+            cover_data (bytes): 封面图片的二进制数据
+        """
+        try:
+            image = QImage()
+            image.loadFromData(cover_data)
+            if not image.isNull():
+                pixmap = QPixmap.fromImage(image)
+                self.cover_label.setPixmap(pixmap.scaled(
+                    200, 200,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                ))
+            else:
+                self._set_default_cover()
+        except Exception:
+            self._set_default_cover()
+
+    def _on_check_all(self) -> None:
+        """全选：将所有文件的勾选状态设为选中"""
+        for row in range(self.file_table.rowCount()):
+            item = self.file_table.item(row, 0)
+            if item:
+                item.setCheckState(Qt.CheckState.Checked)
+        self._update_selected_files()
+
+    def _on_uncheck_all(self) -> None:
+        """取消全选：将所有文件的勾选状态设为未选中"""
+        for row in range(self.file_table.rowCount()):
+            item = self.file_table.item(row, 0)
+            if item:
+                item.setCheckState(Qt.CheckState.Unchecked)
+        self._update_selected_files()
+
+    def _on_save_metadata(self) -> None:
+        """
+        保存元数据按钮点击处理
+
+        将当前编辑的元数据保存到文件中。
+        如果选中了多个文件，则进行批量编辑。
+        """
+        if not self.current_file and not self.selected_files:
+            MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
+            return
+
+        # 收集元数据
+        metadata = {
+            'title': self.title_edit.text(),
+            'artist': self.artist_edit.text(),
+            'album': self.album_edit.text(),
+            'year': self.year_edit.text(),
+            'genre': self.genre_edit.text(),
+        }
+
+        try:
+            if self.selected_files:
+                # 批量编辑
+                results = self.metadata_manager.batch_edit(
+                    self.selected_files, metadata
+                )
+                success_count = sum(1 for v in results.values() if v)
+                MessageBox(
+                    tr("success"),
+                    f"{tr('metadata_save_success')}\n{tr('success_count').format(count=success_count)}",
+                    self
+                ).exec()
+            elif self.current_file:
+                # 单文件编辑
+                success = self.metadata_manager.write_metadata(
+                    self.current_file, metadata
+                )
+                if success:
+                    MessageBox(tr("success"), tr("metadata_save_success"), self).exec()
+                else:
+                    MessageBox(tr("errors_occurred"), tr("metadata_save_success"), self).exec()
+        except Exception as e:
+            MessageBox(tr("errors_occurred"), str(e), self).exec()
+
+    def _on_change_cover_from_file(self) -> None:
+        """
+        从文件更换封面按钮点击处理
+
+        打开文件选择对话框，选择图片文件作为封面。
+        """
+        if not self.current_file:
+            MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
+            return
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("select_image_file"),
+            "",
+            "Images (*.png *.jpg *.jpeg *.bmp);;All Files (*)"
+        )
+
+        if file_path:
+            try:
+                with open(file_path, 'rb') as f:
+                    cover_data = f.read()
+
+                success = self.metadata_manager.set_cover(
+                    self.current_file, cover_data
+                )
+
+                if success:
+                    self._display_cover(cover_data)
+                    MessageBox(tr("success"), tr("cover_updated"), self).exec()
+                else:
+                    MessageBox(tr("errors_occurred"), tr("cover_update_failed"), self).exec()
+            except Exception as e:
+                MessageBox(tr("errors_occurred"), str(e), self).exec()
+
+    def _on_change_cover_from_url(self) -> None:
+        """
+        从 URL 更换封面按钮点击处理
+
+        弹出输入对话框，输入图片 URL 下载作为封面。
+        """
+        if not self.current_file:
+            MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
+            return
+
+        url, ok = QInputDialog.getText(
+            self,
+            tr("from_url"),
+            tr("enter_image_url")
+        )
+
+        if ok and url:
+            try:
+                import requests
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+
+                cover_data = response.content
+                success = self.metadata_manager.set_cover(
+                    self.current_file, cover_data
+                )
+
+                if success:
+                    self._display_cover(cover_data)
+                    MessageBox(tr("success"), tr("cover_updated"), self).exec()
+                else:
+                    MessageBox(tr("errors_occurred"), tr("cover_update_failed"), self).exec()
+            except Exception as e:
+                MessageBox(tr("errors_occurred"), str(e), self).exec()
+
+    def _on_get_lyrics(self) -> None:
+        """
+        获取歌词按钮点击处理
+
+        从选中的提供商获取当前文件的歌词。
+        """
+        if not self.current_file:
+            MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
+            return
+
+        provider = self.provider_combo.currentData()
+        self._start_lyric_fetch([self.current_file], provider)
+
+    def _on_batch_get_lyrics(self) -> None:
+        """
+        批量获取歌词按钮点击处理
+
+        从选中的提供商批量获取所有选中文件的歌词。
+        """
+        if not self.selected_files:
+            MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
+            return
+
+        provider = self.provider_combo.currentData()
+        self._start_lyric_fetch(self.selected_files, provider)
+
+    def _start_lyric_fetch(self, file_paths: list[str], provider: str) -> None:
+        """
+        启动歌词获取任务
+
+        创建工作线程并在后台获取歌词。
+
+        Args:
+            file_paths (list[str]): 要获取歌词的文件路径列表
+            provider (str): 歌词提供商名称
+        """
+        # 重置进度
+        self.lyric_progress.setValue(0)
+        self.get_lyric_btn.setEnabled(False)
+        self.batch_get_lyric_btn.setEnabled(False)
+
+        # 创建工作线程
+        self.lyric_worker = LyricWorker(
+            file_paths=file_paths,
+            provider=provider
+        )
+
+        # 连接信号
+        self.lyric_worker.progress_updated.connect(self._on_lyric_progress)
+        self.lyric_worker.lyric_fetched.connect(self._on_lyric_fetched)
+        self.lyric_worker.finished_all.connect(self._on_lyric_finished)
+        self.lyric_worker.error_occurred.connect(self._on_lyric_error)
+
+        # 启动线程
+        self.lyric_worker.start()
+
+    def _on_lyric_progress(self, done: int, total: int, remaining: int) -> None:
+        """
+        歌词获取进度更新回调
+
+        Args:
+            done (int): 已完成数量
+            total (int): 总数量
+            remaining (int): 剩余时间（秒）
+        """
+        if total > 0:
+            value = int(done / total * 100)
+            self.lyric_progress.setValue(value)
+
+    def _on_lyric_fetched(self, file_path: str, lyrics: dict | None) -> None:
+        """
+        单个文件歌词获取完成回调
+
+        Args:
+            file_path (str): 文件路径
+            lyrics (dict | None): 歌词数据，失败则为 None
+        """
+        # 缓存歌词
+        if lyrics:
+            self.lyrics_cache[file_path] = lyrics
+
+        # 如果是当前文件，显示歌词
+        if file_path == self.current_file and lyrics:
+            self.current_lyrics = lyrics
+            synced = lyrics.get('synced_lyrics', '')
+            plain = lyrics.get('plain_lyrics', '')
+            self.lyric_text.setText(synced or plain)
+
+    def _on_lyric_finished(self, results: dict) -> None:
+        """
+        所有歌词获取完成回调
+
+        Args:
+            results (dict): 所有文件的获取结果
+        """
+        self.lyric_progress.setValue(100)
+        self.get_lyric_btn.setEnabled(True)
+        self.batch_get_lyric_btn.setEnabled(True)
+
+        # 统计结果
+        success_count = sum(1 for v in results.values() if v is not None)
+        fail_count = len(results) - success_count
+
+        MessageBox(
+            tr("success"),
+            f"{tr('batch_lyric_fetch_complete')}\n"
+            f"{tr('success_count').format(count=success_count)}\n"
+            f"{tr('fail_count').format(count=fail_count)}",
+            self
+        ).exec()
+
+    def _on_lyric_error(self, error_msg: str) -> None:
+        """
+        歌词获取错误回调
+
+        Args:
+            error_msg (str): 错误信息
+        """
+        self.get_lyric_btn.setEnabled(True)
+        self.batch_get_lyric_btn.setEnabled(True)
+        MessageBox(tr("errors_occurred"), error_msg, self).exec()
+
+    def _on_embed_lyrics(self) -> None:
+        """
+        嵌入歌词按钮点击处理
+
+        将当前歌词编辑器中的歌词嵌入到当前文件。
+        """
+        if not self.current_file:
+            MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
+            return
+
+        lyrics_text = self.lyric_text.toPlainText()
+        if not lyrics_text:
+            MessageBox(tr("no_lyrics_found"), tr("get_lyrics"), self).exec()
+            return
+
+        try:
+            success = self.lyric_manager.embed_lyrics(
+                self.current_file,
+                lyrics_text,
+                'lrc'
+            )
+
+            if success:
+                MessageBox(tr("success"), tr("lyric_embed_success"), self).exec()
+            else:
+                MessageBox(tr("errors_occurred"), tr("lyric_embed_success"), self).exec()
+        except Exception as e:
+            MessageBox(tr("errors_occurred"), str(e), self).exec()
+
+    def refresh_texts(self) -> None:
+        """
+        刷新页面文本
+
+        当语言切换时调用此方法，更新所有 UI 文本为当前语言的翻译。
+        """
+        # 更新文件列表区域
+        self.file_list_title.setText(tr("file_list"))
+        self.browse_btn.setText(tr("browse"))
+        self.check_all_btn.setText(tr("check_all"))
+        self.uncheck_all_btn.setText(tr("uncheck_all"))
+
+        # 更新表头
+        self.file_table.setHorizontalHeaderLabels([
+            tr("check"), tr("file_name"), tr("format"), tr("size")
+        ])
+
+        # 更新标签页
+        self.segmented_widget.setItemText(
+            routeKey="metadata",
+            text=tr("metadata_tab")
+        )
+        self.segmented_widget.setItemText(
+            routeKey="lyrics",
+            text=tr("lyrics_tab")
+        )
+
+        # 更新元信息表单
+        self.title_label.setText(tr("title"))
+        self.artist_label.setText(tr("artist"))
+        self.album_label.setText(tr("album"))
+        self.year_label.setText(tr("year"))
+        self.genre_label.setText(tr("genre"))
+
+        self.title_edit.setPlaceholderText(tr("title"))
+        self.artist_edit.setPlaceholderText(tr("artist"))
+        self.album_edit.setPlaceholderText(tr("album"))
+        self.year_edit.setPlaceholderText(tr("year"))
+        self.genre_edit.setPlaceholderText(tr("genre"))
+
+        self.save_metadata_btn.setText(tr("save"))
+
+        # 更新封面区域
+        self.cover_title.setText(tr("cover"))
+        self.from_file_btn.setText(tr("from_file"))
+        self.from_url_btn.setText(tr("from_url"))
+
+        # 更新歌词区域
+        self.provider_label.setText(tr("lyric_provider"))
+        self.lyric_title.setText(tr("lyrics"))
+        self.lyric_text.setPlaceholderText(tr("no_lyrics_found"))
+        self.get_lyric_btn.setText(tr("get_lyrics"))
+        self.embed_lyric_btn.setText(tr("embed_lyrics"))
+        self.batch_get_lyric_btn.setText(tr("batch_get_lyrics"))
+
+        # 更新提供商下拉框
+        self.provider_combo.setItemText(0, tr("lrclib"))
+        self.provider_combo.setItemText(1, tr("applemusic"))
+        self.provider_combo.setItemText(2, tr("musixmatch"))

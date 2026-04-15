@@ -1,5 +1,16 @@
 # 项目变更历史
 
+## v0.3.8 (2026-04-15)
+- feat(gui): 创建音乐管理页面 MusicManagerPage
+  - 实现文件列表组件，支持多选和批量操作
+  - 实现元信息编辑表单（标题、艺术家、专辑、年份、流派）
+  - 实现封面显示和更换功能（从文件/从URL）
+  - 实现歌词获取和嵌入功能
+  - 使用 SegmentedWidget 实现标签页切换
+  - 集成 MetadataManager 和 LyricManager
+  - 支持批量获取歌词和批量编辑元信息
+  - 实现完整的国际化支持（refresh_texts方法）
+
 ## v0.3.7 (2026-04-14)
 - feat(converter): 新增自定义文件格式管理功能
   - 创建 CustomFormat 数据类和 CustomFormatManager 管理器
