@@ -1,5 +1,18 @@
 # 项目变更历史
 
+## v0.4.0 (2026-04-16)
+- feat(lyric): 添加歌词获取功能的全面测试用例和修复API调用逻辑
+  - 设计并实现了65个歌词获取功能测试用例，覆盖正常场景、边界条件、异常处理、性能和兼容性测试
+  - 创建了完整的测试框架，包含fixtures、mock数据和预期歌词文件
+  - 修复了LyricManager中的API调用逻辑，使歌词获取功能能够正确工作
+  - 添加了对多种歌词格式（LRC/TTML/SRT/JSON）的支持
+  - 实现了多提供商（LRCLib/Apple Music/MusixMatch）支持
+- feat(lyric): 新增歌词管理模块
+  - 创建 LyricManager 类封装 lrxy 库功能
+  - 实现歌词获取、嵌入、提取和格式转换功能
+  - 创建 LyricProvider 数据类管理提供商配置
+  - 支持 LRCLib、Apple Music、MusixMatch 三个提供商
+
 ## v0.3.9 (2026-04-16)
 - fix(gui): 优化主窗口初始尺寸
   - 调整窗口高度从700px降至600px，减少约14%垂直空间
