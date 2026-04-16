@@ -62,7 +62,6 @@ class SettingsPage(QWidget):
 
         创建设置界面 UI 组件，从配置文件加载当前设置，
         并连接信号槽以响应用户操作。
-
         Args:
             parent (QWidget | None): 父窗口组件
         """

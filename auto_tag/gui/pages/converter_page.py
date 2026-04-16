@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 from qfluentwidgets import (
     BodyLabel,
+    CardWidget,
     CheckBox,
     ComboBox,
     LineEdit,
@@ -29,8 +30,10 @@ from qfluentwidgets import (
     PushButton,
     SubtitleLabel,
     TableWidget,
+    isDarkTheme,
 )
 from qfluentwidgets import FluentIcon as FIF
+from qfluentwidgets import qconfig
 
 from auto_tag.converter.workers.converter_worker import ConverterWorker
 from auto_tag.converter.config import ConverterConfig, OutputFormat, QualityPreset
@@ -105,6 +108,9 @@ class ConverterPage(QWidget):
 
         # 加载配置中的格式选择
         self._load_format_config()
+
+        # 连接主题切换信号
+        qconfig.themeChanged.connect(self._on_theme_changed)
 
     def _setup_ui(self) -> None:
         """
@@ -362,12 +368,18 @@ class ConverterPage(QWidget):
         Args:
             parent_layout (QVBoxLayout): 父布局管理器
         """
-        from PySide6.QtWidgets import QGroupBox, QListWidget, QListWidgetItem
+        from PySide6.QtWidgets import QListWidget, QListWidgetItem
 
-        # 自定义格式组
-        custom_group = QGroupBox(tr("custom_formats"))
-        custom_group_layout = QVBoxLayout()
-        custom_group_layout.setSpacing(8)
+        # 自定义格式卡片（使用 CardWidget 适配深色模式）
+        custom_card = CardWidget(self)
+        custom_card.setFixedHeight(220)
+        card_layout = QVBoxLayout(custom_card)
+        card_layout.setContentsMargins(20, 15, 20, 15)
+        card_layout.setSpacing(10)
+
+        # 标题
+        custom_title = SubtitleLabel(tr("custom_formats"))
+        card_layout.addWidget(custom_title)
 
         # 输入区域
         input_layout = QHBoxLayout()
@@ -396,12 +408,15 @@ class ConverterPage(QWidget):
         input_layout.addWidget(self.add_custom_format_btn)
 
         input_layout.addStretch()
-        custom_group_layout.addLayout(input_layout)
+        card_layout.addLayout(input_layout)
 
-        # 自定义格式列表
+        # 自定义格式列表（设置透明背景以适配深色模式）
         self.custom_format_list = QListWidget()
-        self.custom_format_list.setMaximumHeight(120)
-        custom_group_layout.addWidget(self.custom_format_list)
+        self.custom_format_list.setFixedHeight(80)
+        card_layout.addWidget(self.custom_format_list)
+
+        # 适配深色主题样式
+        self._apply_list_theme()
 
         # 操作按钮
         btn_layout = QHBoxLayout()
@@ -417,10 +432,9 @@ class ConverterPage(QWidget):
         btn_layout.addWidget(self.delete_custom_format_btn)
 
         btn_layout.addStretch()
-        custom_group_layout.addLayout(btn_layout)
+        card_layout.addLayout(btn_layout)
 
-        custom_group.setLayout(custom_group_layout)
-        parent_layout.addWidget(custom_group)
+        parent_layout.addWidget(custom_card)
 
         # 加载已有的自定义格式
         self._refresh_custom_format_list()
@@ -1022,3 +1036,67 @@ class ConverterPage(QWidget):
         # 刷新自定义格式列表（显示当前语言的格式信息）
         if hasattr(self, '_refresh_custom_format_list'):
             self._refresh_custom_format_list()
+
+    def _apply_list_theme(self) -> None:
+        """
+        应用主题样式到 QListWidget
+
+        根据当前主题设置列表控件的背景色和文字颜色，
+        确保在深色模式下正确显示。
+        """
+        from PySide6.QtGui import QColor, QPalette
+
+        if not hasattr(self, 'custom_format_list'):
+            return
+
+        if isDarkTheme():
+            bg_color = QColor(45, 45, 51)
+            text_color = QColor(255, 255, 255)
+            item_bg = QColor(55, 55, 62)
+            item_selected = QColor(82, 143, 224)
+            hover_color = QColor(82, 143, 224)
+            hover_color.setAlpha(80)
+        else:
+            bg_color = QColor(252, 252, 252)
+            text_color = QColor(0, 0, 0)
+            item_bg = QColor(255, 255, 255)
+            item_selected = QColor(82, 143, 224)
+            hover_color = QColor(82, 143, 224)
+            hover_color.setAlpha(80)
+
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Base, bg_color)
+        palette.setColor(QPalette.ColorRole.Text, text_color)
+        palette.setColor(QPalette.ColorRole.AlternateBase, item_bg)
+        palette.setColor(QPalette.ColorRole.Highlight, item_selected)
+        self.custom_format_list.setPalette(palette)
+
+        hover_rgba = f"rgba({hover_color.red()}, {hover_color.green()}, {hover_color.blue()}, {hover_color.alpha() / 255:.2f})"
+
+        self.custom_format_list.setStyleSheet(
+            f"QListWidget {{"
+            f"  background-color: {bg_color.name()};"
+            f"  color: {text_color.name()};"
+            f"  border: 1px solid {item_bg.name()};"
+            f"  border-radius: 5px;"
+            f"}}"
+            f"QListWidget::item {{"
+            f"  padding: 4px 8px;"
+            f"  border-radius: 3px;"
+            f"}}"
+            f"QListWidget::item:selected {{"
+            f"  background-color: {item_selected.name()};"
+            f"  color: white;"
+            f"}}"
+            f"QListWidget::item:hover {{"
+            f"  background-color: {hover_rgba};"
+            f"}}"
+        )
+
+    def _on_theme_changed(self) -> None:
+        """
+        主题切换回调
+
+        当用户切换深色/浅色主题时，更新列表控件样式。
+        """
+        self._apply_list_theme()

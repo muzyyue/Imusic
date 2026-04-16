@@ -16,7 +16,7 @@ import os
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QPixmap, QImage
+from PySide6.QtGui import QPixmap, QImage, QCursor
 from PySide6.QtWidgets import (
     QFileDialog,
     QGridLayout,
@@ -27,6 +27,16 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+try:
+    from shiboken6 import isDeleted
+except ImportError:
+    def isDeleted(obj):
+        """Fallback function for checking if object is deleted"""
+        try:
+            repr(obj)
+            return False
+        except RuntimeError:
+            return True
 from qfluentwidgets import (
     BodyLabel,
     ComboBox,
@@ -48,6 +58,7 @@ if TYPE_CHECKING:
 from auto_tag.converter.metadata_manager import MetadataManager
 from auto_tag.gui.i18n import tr
 from auto_tag.gui.workers import LyricWorker, LyricEmbedWorker
+from auto_tag.gui.components import CoverPreviewDialog
 from auto_tag.lyric import LyricManager
 
 
@@ -93,6 +104,12 @@ class MusicManagerPage(QWidget):
         # 歌词数据缓存
         self.current_lyrics: dict | None = None
         self.lyrics_cache: dict[str, dict] = {}
+
+        # 封面数据缓存（用于预览）
+        self._current_cover_data: bytes | None = None
+
+        # 预览对话框实例（延迟创建）
+        self._preview_dialog: CoverPreviewDialog | None = None
 
         # 构建 UI
         self._setup_ui()
@@ -326,6 +343,10 @@ class MusicManagerPage(QWidget):
         self.cover_label.setFixedSize(200, 200)
         self.cover_label.scaledToWidth(200)
         self._set_default_cover()
+
+        # 设置封面交互效果
+        self._setup_cover_interaction()
+        
         cover_layout.addWidget(self.cover_label)
 
         # 封面更换按钮
@@ -416,12 +437,64 @@ class MusicManagerPage(QWidget):
         """
         设置默认封面图片
 
-        当没有封面时显示占位图。
+        当没有封面时显示占位图，并清除封面数据缓存。
         """
         # 创建一个灰色的默认封面
         default_pixmap = QPixmap(200, 200)
         default_pixmap.fill(Qt.GlobalColor.lightGray)
         self.cover_label.setPixmap(default_pixmap)
+
+        # 清除封面数据缓存（禁用预览功能）
+        self._current_cover_data = None
+
+    def _setup_cover_interaction(self) -> None:
+        """
+        设置封面交互效果
+
+        为封面标签添加点击事件和悬停效果，
+        支持打开放大预览窗口。
+        """
+        # 设置鼠标悬停为手型
+        self.cover_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+        # 启用鼠标追踪（用于 hover 效果）
+        self.cover_label.setMouseTracking(True)
+
+        # 连接点击事件
+        self.cover_label.mousePressEvent = self._on_cover_clicked
+
+    def _on_cover_clicked(self, event) -> None:
+        """
+        封面点击事件处理
+
+        当用户点击封面且存在封面数据时，打开放大预览窗口。
+
+        Args:
+            event (QMouseEvent): 鼠标事件对象
+        """
+        # 只响应左键点击
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+
+        # 检查是否有封面数据
+        if not self._current_cover_data:
+            return
+
+        # 检查预览对话框是否有效（可能已被关闭并删除）
+        if self._preview_dialog is not None:
+            try:
+                # 检查 C++ 对象是否已被删除
+                if isDeleted(self._preview_dialog):
+                    self._preview_dialog = CoverPreviewDialog(self)
+            except (RuntimeError, AttributeError, TypeError):
+                # 对象已无效，重新创建
+                self._preview_dialog = CoverPreviewDialog(self)
+        else:
+            # 首次使用，创建新对话框
+            self._preview_dialog = CoverPreviewDialog(self)
+
+        # 显示预览
+        self._preview_dialog.show_preview(self._current_cover_data)
 
     def _switch_tab(self, tab_key: str) -> None:
         """
@@ -609,6 +682,7 @@ class MusicManagerPage(QWidget):
                 self._display_cover(cover_data)
             else:
                 self._set_default_cover()
+                self._current_cover_data = None
 
             # 尝试提取已有歌词
             lyrics = self.lyric_manager.extract_lyrics(file_path)
@@ -628,12 +702,15 @@ class MusicManagerPage(QWidget):
         """
         显示封面图片
 
-        将二进制封面数据显示在 ImageLabel 中。
+        将二进制封面数据显示在 ImageLabel 中，并缓存原始数据用于预览。
 
         Args:
             cover_data (bytes): 封面图片的二进制数据
         """
         try:
+            # 缓存原始数据（用于高分辨率预览）
+            self._current_cover_data = cover_data
+
             image = QImage()
             image.loadFromData(cover_data)
             if not image.isNull():
@@ -645,8 +722,10 @@ class MusicManagerPage(QWidget):
                 ))
             else:
                 self._set_default_cover()
+                self._current_cover_data = None
         except Exception:
             self._set_default_cover()
+            self._current_cover_data = None
 
     def _on_check_all(self) -> None:
         """全选：将所有文件的勾选状态设为选中"""
