@@ -29,7 +29,7 @@ from qfluentwidgets import (
     Theme,
 )
 
-from auto_tag.gui.pages import HomePage, SettingsPage, ConverterPage
+from auto_tag.gui.pages import HomePage, SettingsPage, ConverterPage, MusicManagerPage
 from auto_tag.gui.i18n import tr, translator
 from auto_tag.gui.config import config
 
@@ -56,6 +56,8 @@ class MainWindow(FluentWindow):
 
     Attributes:
         home_page (HomePage): 主页面实例
+        converter_page (ConverterPage): 转换页面实例
+        music_manager_page (MusicManagerPage): 音乐管理页面实例
         settings_page (SettingsPage): 设置页面实例
 
     Example:
@@ -74,7 +76,7 @@ class MainWindow(FluentWindow):
 
         # 设置窗口属性（应用名称固定，不随语言切换）
         self.setWindowTitle("MP3 Shazam Auto Tag")
-        self.resize(1000, 700)
+        self.resize(1000, 600)
 
         # 创建页面并设置 objectName（QFluentWidgets 要求）
         self.home_page = HomePage(self)
@@ -82,6 +84,9 @@ class MainWindow(FluentWindow):
         
         self.converter_page = ConverterPage(self)
         self.converter_page.setObjectName("converter_page")
+        
+        self.music_manager_page = MusicManagerPage(self)
+        self.music_manager_page.setObjectName("music_manager_page")
         
         self.settings_page = SettingsPage(self)
         self.settings_page.setObjectName("settings_page")
@@ -105,7 +110,7 @@ class MainWindow(FluentWindow):
         """
         设置导航项
 
-        在侧边导航栏中添加主页、转换和设置页面的导航项。
+        在侧边导航栏中添加主页、转换、音乐管理和设置页面的导航项。
         """
         # 添加主页导航项
         self.addSubInterface(
@@ -119,6 +124,13 @@ class MainWindow(FluentWindow):
             self.converter_page,
             FIF.MUSIC,
             tr("converter")
+        )
+
+        # 添加音乐管理导航项
+        self.addSubInterface(
+            self.music_manager_page,
+            FIF.EDIT,
+            tr("music_manager")
         )
 
         # 添加设置导航项
@@ -187,6 +199,8 @@ class MainWindow(FluentWindow):
             self.home_page.refresh_texts()
         if hasattr(self.converter_page, 'refresh_texts'):
             self.converter_page.refresh_texts()
+        if hasattr(self.music_manager_page, 'refresh_texts'):
+            self.music_manager_page.refresh_texts()
         if hasattr(self.settings_page, 'refresh_texts'):
             self.settings_page.refresh_texts()
 
