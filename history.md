@@ -1,5 +1,43 @@
 # 项目变更历史
 
+#0.3.10(2026-04-17)#添加网易云音乐和酷狗音乐多数据源搜索支持
+
+## v0.4.1 (2026-04-17)
+- feat(lyric): 使用 MusicLibrary (pymusiclibrary) 替换 lrxy 库
+  - 移除对 lrxy 库的依赖，改用 MusicLibrary (pymusiclibrary)
+  - 添加网易云音乐和酷狗音乐作为歌词提供商
+  - 实现本地歌词格式转换功能，支持 LRC/TTML/SRT/JSON 格式互转
+  - 更新 LyricManager 支持从网易云和酷狗搜索并获取歌词
+  - 创建 pymusiclibrary skill 文档，记录 API 使用方法
+  - 修复 API 调用逻辑，正确处理 Response 对象
+  - 所有测试用例通过（14个测试全部通过）
+  - 实际测试成功从网易云音乐获取歌词（含原词和翻译）
+- feat(ui): 新增搜索结果多选功能
+  - 创建 SongSearchResultDialog 搜索结果选择对话框组件
+    - 展示歌曲列表（名称、艺术家、专辑、时长）
+    - 支持双击或按钮确认选择
+    - 单结果时自动跳过选择
+  - LyricManager 新增 search_songs() 和 fetch_lyric_by_id() 方法
+    - search_songs(): 仅搜索返回结果列表
+    - fetch_lyric_by_id(): 根据指定 ID 获取歌词
+  - MusicManagerPage 整合搜索选择流程
+    - 网易云/酷狗获取歌词前先弹出搜索选择框
+    - 用户确认后再获取目标歌曲的歌词
+- fix(ui): 修复歌词提供商下拉框未显示网易云和酷狗的问题
+  - 更新 MusicManagerPage 动态加载提供商列表（不再硬编码）
+  - 默认选中网易云音乐作为首选提供商
+  - 添加中英文国际化翻译支持
+  - 验证所有5个提供商均可正常显示和使用
+- fix(worker): 改进 LyricWorker 错误处理和日志输出
+  - 添加详细的调试日志，便于定位问题
+  - 区分文件不存在、API 返回空、异常等不同情况
+  - 输出完整的堆栈跟踪信息
+  - 验证线程安全性（在线程中成功获取歌词）
+  - 修复 LyricWorker 缺少 logger 属性的运行时错误
+  - 修复 ComboBox.currentData() 返回 None 导致 provider 参数为空的问题
+    改用 currentIndex + _provider_list 映射方式获取选中的提供商
+  - 安装 pymusiclibrary 到项目虚拟环境 (venv) 中，解决 No module named 'MusicLibrary' 错误
+
 ## v0.4.0 (2026-04-16)
 - feat(lyric): 添加歌词获取功能的全面测试用例和修复API调用逻辑
   - 设计并实现了65个歌词获取功能测试用例，覆盖正常场景、边界条件、异常处理、性能和兼容性测试

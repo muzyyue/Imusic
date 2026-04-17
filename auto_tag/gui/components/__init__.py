@@ -6,5 +6,6 @@ GUI 组件模块
 """
 
 from auto_tag.gui.components.cover_preview_dialog import CoverPreviewDialog
+from auto_tag.gui.components.song_search_dialog import SongSearchResultDialog
 
-__all__ = ['CoverPreviewDialog']
+__all__ = ['CoverPreviewDialog', 'SongSearchResultDialog']

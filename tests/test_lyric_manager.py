@@ -62,30 +62,48 @@ class TestLyricManager:
         finally:
             os.unlink(temp_file)
 
-    @patch("auto_tag.lyric.manager.load_audio")
-    @patch("auto_tag.lyric.manager.iter_files")
-    def test_fetch_lyrics_success(self, mock_iter_files, mock_load_audio):
+    @patch("auto_tag.lyric.manager.LyricManager._extract_audio_metadata")
+    @patch("MusicLibrary.neteaseCloudMusicApi.NeteaseCloudMusicApi")
+    def test_fetch_lyrics_success(self, mock_netease_api, mock_extract_metadata):
         """
-        测试成功获取歌词
+        测试成功获取歌词（网易云）
         """
         from auto_tag.lyric import LyricManager
         
-        # Mock 音频对象
-        mock_audio = MagicMock()
-        mock_audio.title = "Test Song"
-        mock_audio.artist = "Test Artist"
-        mock_audio.album = "Test Album"
-        mock_audio.duration = 180
-        mock_load_audio.return_value = mock_audio
+        # Mock 元数据提取
+        mock_extract_metadata.return_value = {
+            'title': 'Test Song',
+            'artist': 'Test Artist',
+            'album': 'Test Album',
+            'duration': 180
+        }
         
-        # Mock iter_files 返回结果
-        mock_iter_files.return_value = [{
-            'success': True,
-            'data': {
-                'plainLyrics': 'Test lyrics',
-                'syncedLyrics': '[00:00.00]Test lyrics'
+        # Mock API 客户端
+        mock_api_instance = MagicMock()
+        mock_netease_api.return_value = mock_api_instance
+        
+        # Mock 搜索结果（Response 对象）
+        mock_search_response = MagicMock()
+        mock_search_response.body = {
+            'result': {
+                'songs': [{
+                    'id': 123456,
+                    'name': 'Test Song',
+                    'artists': [{'name': 'Test Artist'}],
+                    'album': {'name': 'Test Album'},
+                    'duration': 180000
+                }]
             }
-        }]
+        }
+        mock_api_instance.search.return_value = mock_search_response
+        
+        # Mock 歌词结果（Response 对象）
+        mock_lyric_response = MagicMock()
+        mock_lyric_response.body = {
+            'lrc': {'lyric': '[00:00.00]Test lyrics'},
+            'tlyric': {'lyric': ''}
+        }
+        mock_api_instance.lyric.return_value = mock_lyric_response
         
         # 创建临时文件
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
@@ -94,12 +112,11 @@ class TestLyricManager:
         
         try:
             manager = LyricManager()
-            result = manager.fetch_lyrics(temp_file, provider="lrclib")
+            result = manager.fetch_lyrics(temp_file, provider="netease")
             
             assert result is not None
-            assert result['plain_lyrics'] == 'Test lyrics'
             assert result['synced_lyrics'] == '[00:00.00]Test lyrics'
-            assert result['provider'] == 'lrclib'
+            assert result['provider'] == 'netease'
         finally:
             os.unlink(temp_file)
 

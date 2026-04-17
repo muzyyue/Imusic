@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import time
+import logging
 from typing import Any
 
 from PySide6.QtCore import QThread, Signal
@@ -53,6 +54,7 @@ class LyricWorker(QThread):
         self,
         file_paths: list[str],
         provider: str = "lrclib",
+        song_id: int | str | None = None,
         parent=None,
     ) -> None:
         """
@@ -60,14 +62,17 @@ class LyricWorker(QThread):
 
         Args:
             file_paths: 要获取歌词的音频文件路径列表
-            provider: 歌词提供商名称（'lrclib', 'applemusic', 'musixmatch'）
+            provider: 歌词提供商名称（'lrclib', 'applemusic', 'musixmatch', 'netease', 'kugou'）
+            song_id: 指定的歌曲 ID（用于网易云/酷狗音乐）
             parent: 父对象，用于 Qt 对象树管理
         """
         super().__init__(parent)
         self.file_paths = file_paths
         self.provider = provider
+        self.song_id = song_id  # 指定的歌曲 ID
         self.start_time: float | None = None
         self._manager: LyricManager | None = None
+        self.logger = logging.getLogger(__name__)
 
     def run(self) -> None:
         """
@@ -108,13 +113,36 @@ class LyricWorker(QThread):
         for idx, file_path in enumerate(self.file_paths, start=1):
             try:
                 if not os.path.exists(file_path):
+                    self.logger.warning(f"文件不存在: {file_path}")
                     results[file_path] = None
                     self.lyric_fetched.emit(file_path, None)
                 else:
-                    lyrics = self._manager.fetch_lyrics(file_path, self.provider)
-                    results[file_path] = lyrics
-                    self.lyric_fetched.emit(file_path, lyrics)
+                    self.logger.info(f"正在获取歌词: {file_path}, 提供商: {self.provider}")
+
+                    # 如果指定了歌曲 ID，使用 fetch_lyric_by_id
+                    if self.song_id and self.provider in ['netease', 'kugou']:
+                        lyrics = self._manager.fetch_lyric_by_id(self.song_id, self.provider)
+                        # 补充文件元数据信息
+                        if lyrics:
+                            metadata = self._manager._extract_audio_metadata(file_path)
+                            if metadata:
+                                lyrics['track_name'] = metadata.get('title', '')
+                                lyrics['artist_name'] = metadata.get('artist', '')
+                                lyrics['album_name'] = metadata.get('album', '')
+                                lyrics['duration'] = metadata.get('duration', 0)
+                    else:
+                        lyrics = self._manager.fetch_lyrics(file_path, self.provider)
+
+                    if lyrics:
+                        self.logger.info(f"获取歌词成功: {file_path}")
+                        results[file_path] = lyrics
+                        self.lyric_fetched.emit(file_path, lyrics)
+                    else:
+                        self.logger.warning(f"获取歌词返回空: {file_path}")
+                        results[file_path] = None
+                        self.lyric_fetched.emit(file_path, None)
             except Exception as exc:
+                self.logger.error(f"获取歌词异常: {file_path}, 错误: {type(exc).__name__}: {exc}", exc_info=True)
                 results[file_path] = None
                 self.lyric_fetched.emit(file_path, None)
 

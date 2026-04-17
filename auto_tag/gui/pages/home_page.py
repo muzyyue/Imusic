@@ -3,7 +3,7 @@
 音频识别主页面模块
 
 该模块提供音频识别功能的主页面界面，包括目录选择、文件识别、
-进度显示、结果展示和批量操作等功能。
+进度显示、多平台搜索结果展示和批量操作等功能。
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import shutil
 import time
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -46,6 +46,14 @@ from auto_tag.gui.i18n import tr
 from auto_tag.gui.workers import RecognizeWorker
 
 
+# 平台名称映射
+_PLATFORM_NAME_MAP = {
+    "shazam": "source_shazam",
+    "netease": "source_netease",
+    "kugou": "source_kugou",
+}
+
+
 class HomePage(QWidget):
     """
     音频识别主页面
@@ -59,6 +67,8 @@ class HomePage(QWidget):
         tag_only (bool): 是否仅更新标签
         data (list[dict]): 识别结果数据列表
         worker (RecognizeWorker | None): 当前工作线程实例
+        search_results_map (dict): 文件路径到搜索结果列表的映射
+        _selected_results (dict): 用户为每个文件选择的搜索结果索引
     """
 
     def __init__(self, parent=None) -> None:
@@ -77,6 +87,10 @@ class HomePage(QWidget):
         self.tag_only = False
         self.data: list[dict] = []
         self.worker: RecognizeWorker | None = None
+
+        # 多平台搜索结果存储
+        self.search_results_map: dict[str, list[dict]] = {}
+        self._selected_results: dict[str, int] = {}
 
         # 构建 UI
         self._setup_ui()
@@ -165,30 +179,45 @@ class HomePage(QWidget):
 
         layout.addLayout(progress_layout)
 
-        # === 结果表格 ===
-        self.table_title = SubtitleLabel(tr("new_name"))
+        # === 搜索结果表格 ===
+        self.table_title = SubtitleLabel(tr("search_results"))
         layout.addWidget(self.table_title)
 
         self.result_table = TableWidget()
-        self.result_table.setColumnCount(3)
+        self.result_table.setColumnCount(7)
         self.result_table.setHorizontalHeaderLabels([
-            tr("apply"), tr("old_name"), tr("new_name")
+            tr("apply"),
+            tr("source_platform"),
+            tr("old_name"),
+            tr("title"),
+            tr("artist"),
+            tr("album"),
+            tr("duration"),
         ])
         self.result_table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.Fixed
         )
         self.result_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.Stretch
+            1, QHeaderView.ResizeMode.Fixed
         )
         self.result_table.horizontalHeader().setSectionResizeMode(
             2, QHeaderView.ResizeMode.Stretch
         )
-        self.result_table.setColumnWidth(0, 60)
-        self.result_table.setEditTriggers(
-            TableWidget.EditTrigger.DoubleClicked |
-            TableWidget.EditTrigger.EditKeyPressed
+        self.result_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeMode.Stretch
         )
-        self.result_table.cellChanged.connect(self._on_cell_changed)
+        self.result_table.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeMode.Stretch
+        )
+        self.result_table.horizontalHeader().setSectionResizeMode(
+            5, QHeaderView.ResizeMode.Stretch
+        )
+        self.result_table.horizontalHeader().setSectionResizeMode(
+            6, QHeaderView.ResizeMode.Fixed
+        )
+        self.result_table.setColumnWidth(0, 60)
+        self.result_table.setColumnWidth(1, 100)
+        self.result_table.setColumnWidth(6, 70)
         self.result_table.setMinimumHeight(300)
         layout.addWidget(self.result_table)
 
@@ -292,6 +321,8 @@ class HomePage(QWidget):
         """
         # 清空之前的结果
         self.data.clear()
+        self.search_results_map.clear()
+        self._selected_results.clear()
         self.result_table.setRowCount(0)
         self.progress_bar.setValue(0)
         self.status_label.setText(
@@ -332,25 +363,101 @@ class HomePage(QWidget):
             tr("progress_format", done=done, total=total, remaining=remaining)
         )
 
+    def _format_duration(self, seconds: int) -> str:
+        """
+        格式化时长显示
+
+        Args:
+            seconds (int): 时长（秒）
+
+        Returns:
+            str: 格式化后的时长字符串
+        """
+        if not seconds:
+            return "--"
+        minutes = seconds // 60
+        secs = seconds % 60
+        if minutes > 0:
+            return tr("minutes_seconds_format", minutes=minutes, seconds=secs)
+        return tr("seconds_format", seconds=secs)
+
+    def _get_platform_display_name(self, source: str) -> str:
+        """
+        获取平台显示名称
+
+        Args:
+            source (str): 平台标识
+
+        Returns:
+            str: 翻译后的平台名称
+        """
+        key = _PLATFORM_NAME_MAP.get(source, source)
+        return tr(key)
+
     def _on_file_processed(self, result: dict) -> None:
         """
         单个文件处理完成回调
 
-        将识别结果添加到表格中显示。
+        将识别结果和多平台搜索结果添加到表格中显示。
 
         Args:
             result (dict): 单个文件的识别结果字典
         """
         self.data.append(result)
+        file_path = result.get("file_path", "")
+        search_results = result.get("search_results", [])
+
+        # 存储搜索结果
+        self.search_results_map[file_path] = search_results
+        # 默认选择第一个（置信度最高的）结果
+        self._selected_results[file_path] = 0
+
+        # 为每个平台结果添加一行
+        if search_results:
+            for sr in search_results:
+                self._add_result_row(result, sr)
+        else:
+            # 没有搜索结果，只显示基本识别信息
+            self._add_result_row(result, None)
+
+    def _add_result_row(self, entry: dict, search_result: dict | None) -> None:
+        """
+        添加一行结果到表格
+
+        Args:
+            entry (dict): 文件识别结果条目
+            search_result (dict | None): 平台搜索结果，None 表示使用默认 Shazam 结果
+        """
         row = self.result_table.rowCount()
         self.result_table.insertRow(row)
+
+        file_path = entry.get("file_path", "")
+        has_error = "error" in entry
+
+        # 获取显示数据
+        if search_result:
+            source = search_result.get("source", "shazam")
+            title = search_result.get("title", "")
+            artist = search_result.get("artist", "")
+            album = search_result.get("album", "")
+            duration = search_result.get("duration", 0)
+            source_display = self._get_platform_display_name(source)
+            row_data_key = file_path
+        else:
+            source = "shazam"
+            title = entry.get("title", "")
+            artist = entry.get("author", "")
+            album = entry.get("album", "")
+            duration = 0
+            source_display = self._get_platform_display_name("shazam")
+            row_data_key = file_path
 
         # 勾选框列
         checkbox_item = QTableWidgetItem()
         checkbox_item.setFlags(
             Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
         )
-        if result.get("apply"):
+        if not has_error:
             checkbox_item.setCheckState(Qt.CheckState.Checked)
             checkbox_item.setForeground(Qt.GlobalColor.green)
         else:
@@ -358,23 +465,38 @@ class HomePage(QWidget):
             checkbox_item.setForeground(Qt.GlobalColor.red)
         self.result_table.setItem(row, 0, checkbox_item)
 
-        # 原文件名列（显示文件名，tooltip显示完整路径）
-        file_path = result.get("file_path", "")
+        # 平台来源列
+        source_item = QTableWidgetItem(source_display)
+        source_item.setFlags(source_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.result_table.setItem(row, 1, source_item)
+
+        # 原文件名列
         display_name = os.path.basename(file_path) if file_path else ""
         old_name_item = QTableWidgetItem(display_name)
         old_name_item.setFlags(old_name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         old_name_item.setToolTip(file_path)
-        self.result_table.setItem(row, 1, old_name_item)
+        self.result_table.setItem(row, 2, old_name_item)
 
-        # 新文件名编辑列（显示文件名，tooltip显示完整路径）
-        new_path = result.get("new_file_path", "")
-        new_display_name = os.path.basename(new_path) if new_path else ""
-        new_name_item = QTableWidgetItem(new_display_name)
-        new_name_item.setFlags(
-            new_name_item.flags() | Qt.ItemFlag.ItemIsEditable
-        )
-        new_name_item.setToolTip(new_path)
-        self.result_table.setItem(row, 2, new_name_item)
+        # 标题列
+        title_item = QTableWidgetItem(title)
+        title_item.setFlags(title_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.result_table.setItem(row, 3, title_item)
+
+        # 艺术家列
+        artist_item = QTableWidgetItem(artist)
+        artist_item.setFlags(artist_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.result_table.setItem(row, 4, artist_item)
+
+        # 专辑列
+        album_item = QTableWidgetItem(album)
+        album_item.setFlags(album_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.result_table.setItem(row, 5, album_item)
+
+        # 时长列
+        duration_text = self._format_duration(duration)
+        duration_item = QTableWidgetItem(duration_text)
+        duration_item.setFlags(duration_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.result_table.setItem(row, 6, duration_item)
 
     def _on_finished_all(self, results: list) -> None:
         """
@@ -403,21 +525,6 @@ class HomePage(QWidget):
             error_msg (str): 错误信息文本
         """
         MessageBox("Error", error_msg, self).exec()
-
-    def _on_cell_changed(self, row: int, column: int) -> None:
-        """
-        表格单元格内容变更回调
-
-        当用户新文件名编辑完成后更新内部数据。
-
-        Args:
-            row (int): 变更的行索引
-            column (int): 变更的列索引
-        """
-        if column == 2 and row < len(self.data):
-            item = self.result_table.item(row, column)
-            if item:
-                self.data[row]["new_name"] = item.text()
 
     def _on_check_all(self) -> None:
         """全选：将所有结果的勾选状态设为选中"""
@@ -449,77 +556,82 @@ class HomePage(QWidget):
                 continue
 
             src = entry.get("file_path")
-            new_path = entry.get("new_file_path", "")
-            unique = os.path.basename(new_path) if new_path else ""
+            file_path = entry.get("file_path", "")
 
-            if not src or not unique:
+            if not src:
                 continue
+
+            # 获取用户选择的结果（如果有的话）
+            selected_idx = self._selected_results.get(file_path, 0)
+            search_results = self.search_results_map.get(file_path, [])
+
+            # 使用选中的搜索结果，如果没有则使用默认 Shazam 结果
+            if search_results and 0 <= selected_idx < len(search_results):
+                selected = search_results[selected_idx]
+                title = selected.get("title", entry.get("title", ""))
+                artist = selected.get("artist", entry.get("author", ""))
+                album = selected.get("album", entry.get("album", ""))
+                cover_link = selected.get("cover_link", entry.get("cover_link", ""))
+            else:
+                title = entry.get("title", "")
+                artist = entry.get("author", "")
+                album = entry.get("album", "")
+                cover_link = entry.get("cover_link", "")
+
+            # 生成新文件名
+            from auto_tag.utils import sanitize
+            s_title = sanitize(title, False)
+            s_artist = sanitize(artist, False)
+            s_album = sanitize(album, False)
+
+            ext = os.path.splitext(src)[1].lower()
+            if plex:
+                new_name = f"{s_title}{ext}"
+            else:
+                new_name = f"{s_title} - {s_artist} - {s_album}{ext}"
 
             try:
                 if self.tag_only:
-                    title = entry.get("title", "")
-                    artist = entry.get("author", "")
-                    album = entry.get("album", "")
-                    cover_link = entry.get("cover_link", "")
-
                     if src.lower().endswith(".mp3"):
-                        update_mp3_tags(src, title, artist, album)
+                        update_mp3_tags(src, s_title, s_artist, s_album)
                         update_mp3_cover_art(
                             src, cover_link, trace=False
                         )
                     elif src.lower().endswith(".ogg"):
                         update_ogg_tags(
-                            src, title, artist, album,
+                            src, s_title, s_artist, s_album,
                             cover_link,
                             trace=False
                         )
                 else:
-                    target_dir = ""
+                    root_dir = self.copy_dir if (self.copy_enabled and self.copy_dir) else os.path.dirname(src)
                     if plex:
-                        artist = entry.get("author", "Unknown Artist")
-                        album = entry.get("album", "Unknown Album")
-                        artist = "".join(c for c in artist if c.isalnum() or c in (" ", "_")).strip()
-                        album = "".join(c for c in album if c.isalnum() or c in (" ", "_")).strip()
-                        target_dir = os.path.join(os.path.dirname(src), artist, album)
-                        os.makedirs(target_dir, exist_ok=True)
+                        root_dir = os.path.join(root_dir, s_artist, s_album)
+                    os.makedirs(root_dir, exist_ok=True)
+
+                    new_path = os.path.join(root_dir, new_name)
+                    count = 1
+                    while os.path.exists(new_path) and new_path != src:
+                        stem, e2 = os.path.splitext(new_path)
+                        new_path = f"{stem} ({count}){e2}"
+                        count += 1
 
                     if self.copy_enabled and self.copy_dir:
-                        dest_path = os.path.join(self.copy_dir, os.path.basename(unique))
-                        shutil.copy2(src, dest_path)
-                        if not self.tag_only:
-                            os.rename(dest_path, os.path.join(self.copy_dir, unique))
-                    elif plex and target_dir:
-                        dest_path = os.path.join(target_dir, unique)
-                        shutil.move(src, dest_path)
+                        shutil.copy2(src, new_path)
                     else:
-                        dirname = os.path.dirname(src)
-                        os.rename(src, os.path.join(dirname, unique))
+                        os.rename(src, new_path)
 
-                    if not self.tag_only:
-                        title = entry.get("title", "")
-                        artist = entry.get("author", "")
-                        album = entry.get("album", "")
-                        cover_link = entry.get("cover_link", "")
-
-                        final_path = ""
-                        if self.copy_enabled and self.copy_dir:
-                            final_path = os.path.join(self.copy_dir, unique)
-                        elif plex and target_dir:
-                            final_path = os.path.join(target_dir, unique)
-                        else:
-                            final_path = os.path.join(os.path.dirname(src), unique)
-
-                        if final_path.lower().endswith(".mp3"):
-                            update_mp3_tags(final_path, title, artist, album)
-                            update_mp3_cover_art(
-                                final_path, cover_link, trace=False
-                            )
-                        elif final_path.lower().endswith(".ogg"):
-                            update_ogg_tags(
-                                final_path, title, artist, album,
-                                cover_link,
-                                trace=False
-                            )
+                    if ext == ".mp3":
+                        update_mp3_tags(new_path, s_title, s_artist, s_album)
+                        update_mp3_cover_art(
+                            new_path, cover_link, trace=False
+                        )
+                    elif ext == ".ogg":
+                        update_ogg_tags(
+                            new_path, s_title, s_artist, s_album,
+                            cover_link,
+                            trace=False
+                        )
             except Exception as exc:
                 errors.append(f"{src}: {exc}")
 
@@ -531,16 +643,12 @@ class HomePage(QWidget):
             ).exec()
         else:
             checked_count = sum(
-                1 for d in self.data
-                if d.get("apply") and any(
-                    self.result_table.item(i, 0).checkState() == Qt.CheckState.Checked
-                    for i in range(min(self.result_table.rowCount(), len(self.data)))
-                    if i < self.result_table.rowCount() and
-                       self.result_table.item(i, 0) is not None
-                )
-            ) if self.result_table.rowCount() > 0 else 0
+                1 for row in range(self.result_table.rowCount())
+                if self.result_table.item(row, 0) and
+                self.result_table.item(row, 0).checkState() == Qt.CheckState.Checked
+            )
 
-            if checked_count == 0 or not any(d.get("apply") for d in self.data):
+            if checked_count == 0:
                 MessageBox(
                     "Info",
                     tr("no_files_processed"),
@@ -576,11 +684,17 @@ class HomePage(QWidget):
 
         # 更新表头
         self.result_table.setHorizontalHeaderLabels([
-            tr("apply"), tr("old_name"), tr("new_name")
+            tr("apply"),
+            tr("source_platform"),
+            tr("old_name"),
+            tr("title"),
+            tr("artist"),
+            tr("album"),
+            tr("duration"),
         ])
 
         # 更新标题
-        self.table_title.setText(tr("new_name"))
+        self.table_title.setText(tr("search_results"))
 
         # 更新按钮文本
         self.browse_btn.setText(tr("browse"))

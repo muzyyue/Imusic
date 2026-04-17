@@ -6,7 +6,7 @@ eyed3
 argparse
 soundfile
 ffmpeg-python>=0.2.0
-lrxy>=0.1.0
+pymusiclibrary>=1.0.0
 
 # Test dependencies
 pytest>=7.4.0

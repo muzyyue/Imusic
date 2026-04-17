@@ -99,7 +99,8 @@ class RecognizeWorker(QThread):
         异步处理所有音频文件
 
         遍历目录收集音频文件，对每个文件调用 Shazam API 进行识别，
-        并发射进度信号通知主线程。
+        并发射进度信号通知主线程。同时在 Shazam 识别成功后，
+        并发向网易云音乐和酷狗音乐搜索补充信息。
 
         Returns:
             list[dict]: 所有文件的识别结果列表，每个元素为包含以下键的字典：
@@ -109,6 +110,7 @@ class RecognizeWorker(QThread):
                 - author: 艺术家
                 - album: 专辑名
                 - cover_link: 封面 URL
+                - search_results: 多平台搜索结果列表
                 - error: 错误信息（可选）
                 - apply: 是否可应用（无错误时为 True）
 
@@ -164,6 +166,7 @@ class RecognizeWorker(QThread):
                     "new_file_path": str(exc),
                     "apply": False,
                     "error": str(exc),
+                    "search_results": [],
                 }
 
             results.append(result)

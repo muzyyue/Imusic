@@ -34,6 +34,22 @@ class LyricProvider:
 
 # 歌词提供商配置字典
 PROVIDERS: dict[str, LyricProvider] = {
+    'netease': LyricProvider(
+        name='netease',
+        display_name='网易云音乐',
+        description='网易云音乐歌词提供商，支持同步歌词和翻译',
+        api_module='pymusiclibrary.NeteseCloudMusicApi',
+        supports_synced=True,
+        supports_plain=True
+    ),
+    'kugou': LyricProvider(
+        name='kugou',
+        display_name='酷狗音乐',
+        description='酷狗音乐歌词提供商，支持同步歌词',
+        api_module='pymusiclibrary.KuGouMusicApi',
+        supports_synced=True,
+        supports_plain=True
+    ),
     'lrclib': LyricProvider(
         name='lrclib',
         display_name='LRCLib',

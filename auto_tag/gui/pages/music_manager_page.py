@@ -58,7 +58,7 @@ if TYPE_CHECKING:
 from auto_tag.converter.metadata_manager import MetadataManager
 from auto_tag.gui.i18n import tr
 from auto_tag.gui.workers import LyricWorker, LyricEmbedWorker
-from auto_tag.gui.components import CoverPreviewDialog
+from auto_tag.gui.components import CoverPreviewDialog, SongSearchResultDialog
 from auto_tag.lyric import LyricManager
 
 
@@ -387,9 +387,15 @@ class MusicManagerPage(QWidget):
         provider_layout.addWidget(self.provider_label)
 
         self.provider_combo = ComboBox()
-        self.provider_combo.addItem(tr("lrclib"), "lrclib")
-        self.provider_combo.addItem(tr("applemusic"), "applemusic")
-        self.provider_combo.addItem(tr("musixmatch"), "musixmatch")
+        # 添加所有支持的歌词提供商
+        from auto_tag.lyric import list_providers
+        self._provider_list = list_providers()  # 保存提供商列表用于后续查询
+        for idx, provider_name in enumerate(self._provider_list):
+            self.provider_combo.addItem(tr(provider_name))
+        # 默认选中网易云音乐
+        if 'netease' in self._provider_list:
+            default_index = self._provider_list.index('netease')
+            self.provider_combo.setCurrentIndex(default_index)
         self.provider_combo.setFixedHeight(36)
         self.provider_combo.setFixedWidth(150)
         provider_layout.addWidget(self.provider_combo)
@@ -866,7 +872,9 @@ class MusicManagerPage(QWidget):
             MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
             return
 
-        provider = self.provider_combo.currentData()
+        # 通过当前索引获取提供商名称
+        current_index = self.provider_combo.currentIndex()
+        provider = self._provider_list[current_index] if 0 <= current_index < len(self._provider_list) else 'netease'
         self._start_lyric_fetch([self.current_file], provider)
 
     def _on_batch_get_lyrics(self) -> None:
@@ -879,7 +887,9 @@ class MusicManagerPage(QWidget):
             MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
             return
 
-        provider = self.provider_combo.currentData()
+        # 通过当前索引获取提供商名称
+        current_index = self.provider_combo.currentIndex()
+        provider = self._provider_list[current_index] if 0 <= current_index < len(self._provider_list) else 'netease'
         self._start_lyric_fetch(self.selected_files, provider)
 
     def _start_lyric_fetch(self, file_paths: list[str], provider: str) -> None:
@@ -887,6 +897,7 @@ class MusicManagerPage(QWidget):
         启动歌词获取任务
 
         创建工作线程并在后台获取歌词。
+        对于网易云和酷狗音乐，先弹出搜索结果选择对话框。
 
         Args:
             file_paths (list[str]): 要获取歌词的文件路径列表
@@ -897,11 +908,29 @@ class MusicManagerPage(QWidget):
         self.get_lyric_btn.setEnabled(False)
         self.batch_get_lyric_btn.setEnabled(False)
 
-        # 创建工作线程
-        self.lyric_worker = LyricWorker(
-            file_paths=file_paths,
-            provider=provider
-        )
+        # 对于网易云和酷狗，需要先选择歌曲
+        if provider in ['netease', 'kugou'] and len(file_paths) > 0:
+            # 使用第一个文件进行搜索（批量处理时使用相同的选择）
+            selected_song_id = self._show_search_dialog(file_paths[0], provider)
+
+            if selected_song_id is None:
+                # 用户取消选择，恢复按钮状态
+                self.get_lyric_btn.setEnabled(True)
+                self.batch_get_lyric_btn.setEnabled(True)
+                return
+
+            # 创建工作线程，传入选中的歌曲 ID
+            self.lyric_worker = LyricWorker(
+                file_paths=file_paths,
+                provider=provider,
+                song_id=selected_song_id
+            )
+        else:
+            # 其他提供商直接获取歌词
+            self.lyric_worker = LyricWorker(
+                file_paths=file_paths,
+                provider=provider
+            )
 
         # 连接信号
         self.lyric_worker.progress_updated.connect(self._on_lyric_progress)
@@ -911,6 +940,54 @@ class MusicManagerPage(QWidget):
 
         # 启动线程
         self.lyric_worker.start()
+
+    def _show_search_dialog(
+        self,
+        file_path: str,
+        provider: str
+    ) -> int | None:
+        """
+        显示搜索结果选择对话框
+
+        Args:
+            file_path (str): 音频文件路径
+            provider (str): 提供商名称
+
+        Returns:
+            int | None: 选中的歌曲 ID，用户取消返回 None
+        """
+        try:
+            manager = LyricManager()
+            songs = manager.search_songs(file_path, provider)
+
+            if not songs:
+                MessageBox(
+                    tr("no_search_results"),
+                    tr("search_failed"),
+                    self
+                ).exec()
+                return None
+
+            # 如果只有一个结果，直接返回
+            if len(songs) == 1:
+                return songs[0].get('id')
+
+            # 多个结果时显示选择对话框
+            dialog = SongSearchResultDialog(self)
+            dialog.set_search_results(songs)
+
+            if dialog.exec():
+                return dialog.selected_song_id
+
+            return None
+
+        except Exception as e:
+            MessageBox(
+                tr("search_error") + f": {str(e)}",
+                tr("error"),
+                self
+            ).exec()
+            return None
 
     def _on_lyric_progress(self, done: int, total: int, remaining: int) -> None:
         """
@@ -1063,6 +1140,8 @@ class MusicManagerPage(QWidget):
         self.batch_get_lyric_btn.setText(tr("batch_get_lyrics"))
 
         # 更新提供商下拉框
-        self.provider_combo.setItemText(0, tr("lrclib"))
-        self.provider_combo.setItemText(1, tr("applemusic"))
-        self.provider_combo.setItemText(2, tr("musixmatch"))
+        from auto_tag.lyric import list_providers
+        self._provider_list = list_providers()
+        for idx, provider_name in enumerate(self._provider_list):
+            if idx < self.provider_combo.count():
+                self.provider_combo.setItemText(idx, tr(provider_name))

@@ -6,6 +6,8 @@ and update metadata (tags, cover art).  Optionally only tag without renaming.
 OGG files are converted to WAV via soundfile/libsndfile (no ffmpeg),
 but if conversion or recognition on WAV fails, we fall back to the
 original OGG for recognition—so tests with DummyShazam still work.
+
+Multi-source search support for NetEase Cloud Music and KuGou Music.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import base64
 import os
 import shutil
 import tempfile
+from typing import Any
 from urllib.request import urlopen
 
 import eyed3
@@ -27,6 +30,309 @@ from shazamio import Shazam
 from tqdm.asyncio import tqdm
 
 from auto_tag.utils import find_deepest_metadata_key, sanitize
+
+
+# 多数据源搜索结果数据结构
+class SearchResult:
+    """
+    多平台音乐搜索结果封装类
+
+    Attributes:
+        source: 数据来源平台标识（"shazam"|"netease"|"kugou"）
+        title: 歌曲标题
+        artist: 艺术家
+        album: 专辑名
+        cover_link: 封面图片URL
+        song_id: 平台歌曲ID
+        duration: 歌曲时长（秒）
+        confidence: 置信度/相关度评分（0-1）
+        raw_data: 原始API返回数据
+    """
+
+    def __init__(
+        self,
+        source: str,
+        title: str,
+        artist: str,
+        album: str,
+        cover_link: str = "",
+        song_id: str = "",
+        duration: int = 0,
+        confidence: float = 1.0,
+        raw_data: dict | None = None,
+    ) -> None:
+        """
+        初始化搜索结果
+
+        Args:
+            source: 数据来源平台
+            title: 歌曲标题
+            artist: 艺术家
+            album: 专辑名
+            cover_link: 封面URL
+            song_id: 歌曲ID
+            duration: 时长
+            confidence: 置信度
+            raw_data: 原始数据
+        """
+        self.source = source
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.cover_link = cover_link
+        self.song_id = song_id
+        self.duration = duration
+        self.confidence = confidence
+        self.raw_data = raw_data or {}
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        将搜索结果转换为字典格式
+
+        Returns:
+            dict: 包含所有字段信息的字典
+        """
+        return {
+            "source": self.source,
+            "title": self.title,
+            "artist": self.artist,
+            "album": self.album,
+            "cover_link": self.cover_link,
+            "song_id": self.song_id,
+            "duration": self.duration,
+            "confidence": self.confidence,
+        }
+
+
+def _parse_shazam_result(track: dict) -> SearchResult:
+    """
+    解析 Shazam API 返回的歌曲数据
+
+    Args:
+        track: Shazam 返回的 track 字典
+
+    Returns:
+        SearchResult: 解析后的搜索结果
+    """
+    title = track.get("title", "Unknown Title")
+    artist = track.get("subtitle", "Unknown Artist")
+    album = find_deepest_metadata_key(track, "Album") or "Unknown Album"
+    cover = track.get("images", {}).get("coverart", "")
+    duration = 0
+
+    # 尝试从 sections 中提取时长信息
+    for section in track.get("sections", []):
+        if section.get("type") == "SONG":
+            duration = section.get("metadata", {}).get("duration", 0) or 0
+            break
+
+    return SearchResult(
+        source="shazam",
+        title=title,
+        artist=artist,
+        album=album,
+        cover_link=cover,
+        duration=duration,
+        confidence=1.0,  # Shazam 基于音频指纹，置信度最高
+        raw_data=track,
+    )
+
+
+def _parse_netease_result(song: dict) -> SearchResult:
+    """
+    解析网易云音乐 API 返回的歌曲数据
+
+    Args:
+        song: 网易云音乐返回的歌曲字典
+
+    Returns:
+        SearchResult: 解析后的搜索结果
+    """
+    title = song.get("name", "Unknown Title")
+    artists = song.get("artists", [])
+    artist = " / ".join([a.get("name", "Unknown") for a in artists]) if artists else "Unknown Artist"
+    album_info = song.get("album", {})
+    album = album_info.get("name", "Unknown Album") if album_info else "Unknown Album"
+    song_id = str(song.get("id", ""))
+    duration_ms = song.get("duration", 0)
+    duration = duration_ms // 1000 if duration_ms else 0
+
+    # 获取封面（使用 al.picUrl 或 album.picUrl）
+    cover = ""
+    if album_info:
+        cover = album_info.get("picUrl", "") or album_info.get("blurPicUrl", "")
+
+    return SearchResult(
+        source="netease",
+        title=title,
+        artist=artist,
+        album=album,
+        cover_link=cover,
+        song_id=song_id,
+        duration=duration,
+        confidence=0.9,
+        raw_data=song,
+    )
+
+
+def _parse_kugou_result(song: dict) -> SearchResult:
+    """
+    解析酷狗音乐 API 返回的歌曲数据
+
+    Args:
+        song: 酷狗音乐返回的歌曲字典
+
+    Returns:
+        SearchResult: 解析后的搜索结果
+    """
+    title = song.get("songname", song.get("songname_original", "Unknown Title"))
+    artist = song.get("singername", "Unknown Artist")
+    album = song.get("album_name", "Unknown Album")
+    song_id = str(song.get("hash", song.get("fileid", "")))
+    duration = song.get("duration", 0)
+
+    # 获取封面
+    cover = song.get("album_pic", "") or song.get("imgurl", "")
+
+    return SearchResult(
+        source="kugou",
+        title=title,
+        artist=artist,
+        album=album,
+        cover_link=cover,
+        song_id=song_id,
+        duration=duration,
+        confidence=0.85,
+        raw_data=song,
+    )
+
+
+async def _search_netease(keyword: str, limit: int = 5) -> list[SearchResult]:
+    """
+    异步搜索网易云音乐
+
+    Args:
+        keyword: 搜索关键词
+        limit: 返回结果数量
+
+    Returns:
+        list[SearchResult]: 搜索结果列表
+    """
+    try:
+        # 使用 run_in_executor 在线程池中执行阻塞的 API 调用
+        loop = asyncio.get_event_loop()
+
+        def _do_search() -> list[SearchResult]:
+            try:
+                from MusicLibrary.neteaseCloudMusicApi import NeteaseCloudMusicApi
+
+                api = NeteaseCloudMusicApi()
+                result = api.search(keyword, limit=limit)
+
+                if not result or "result" not in result:
+                    return []
+
+                songs = result["result"].get("songs", [])
+                return [_parse_netease_result(song) for song in songs[:limit]]
+            except ImportError:
+                return []
+            except Exception:
+                return []
+
+        return await loop.run_in_executor(None, _do_search)
+    except Exception:
+        return []
+
+
+async def _search_kugou(keyword: str, limit: int = 5) -> list[SearchResult]:
+    """
+    异步搜索酷狗音乐
+
+    Args:
+        keyword: 搜索关键词
+        limit: 返回结果数量
+
+    Returns:
+        list[SearchResult]: 搜索结果列表
+    """
+    try:
+        loop = asyncio.get_event_loop()
+
+        def _do_search() -> list[SearchResult]:
+            try:
+                from MusicLibrary.kuGouMusicApi import KuGouMusicApi
+
+                api = KuGouMusicApi()
+                result = api.search(keyword, limit=limit)
+
+                if not result or "data" not in result:
+                    return []
+
+                songs = result["data"].get("lists", []) if isinstance(result["data"], dict) else []
+                return [_parse_kugou_result(song) for song in songs[:limit]]
+            except ImportError:
+                return []
+            except Exception:
+                return []
+
+        return await loop.run_in_executor(None, _do_search)
+    except Exception:
+        return []
+
+
+async def multi_source_search(
+    keyword: str,
+    shazam_result: dict | None = None,
+    limit: int = 5,
+) -> list[SearchResult]:
+    """
+    多数据源并发搜索音乐信息
+
+    同时向 Shazam、网易云音乐、酷狗音乐发起查询请求，
+    将结果汇总并按置信度排序。
+
+    Args:
+        keyword: 搜索关键词（通常为"艺术家 歌曲名"格式）
+        shazam_result: 已有的 Shazam 识别结果（如果有）
+        limit: 每个平台返回的最大结果数
+
+    Returns:
+        list[SearchResult]: 所有平台的搜索结果，按置信度降序排列
+
+    Example:
+        >>> results = await multi_source_search("周杰伦 晴天")
+        >>> for r in results:
+        ...     print(f"{r.source}: {r.title} - {r.artist}")
+    """
+    all_results: list[SearchResult] = []
+
+    # 如果已有 Shazam 结果，直接解析
+    if shazam_result and "track" in shazam_result:
+        shazam_result_obj = _parse_shazam_result(shazam_result["track"])
+        all_results.append(shazam_result_obj)
+
+    # 并发搜索网易云和酷狗
+    netease_task = asyncio.create_task(_search_netease(keyword, limit))
+    kugou_task = asyncio.create_task(_search_kugou(keyword, limit))
+
+    # 等待两个平台搜索完成（优雅降级：失败的返回空列表）
+    netease_results, kugou_results = await asyncio.gather(
+        netease_task, kugou_task, return_exceptions=True
+    )
+
+    # 处理异常结果
+    if isinstance(netease_results, Exception):
+        netease_results = []
+    if isinstance(kugou_results, Exception):
+        kugou_results = []
+
+    all_results.extend(netease_results)  # type: ignore[arg-type]
+    all_results.extend(kugou_results)  # type: ignore[arg-type]
+
+    # 按置信度降序排序
+    all_results.sort(key=lambda x: x.confidence, reverse=True)
+
+    return all_results
 
 
 async def find_and_recognize_audio_files(
@@ -99,6 +405,7 @@ async def recognize_and_rename_file(
 ) -> dict:
     """
     Recognise file_path with Shazam, then move or copy & tag it.
+    Also performs multi-source search (NetEase, KuGou) for additional results.
     - If tag_only is True, only update metadata on the original file_path.
     - Else if copy_to is set, copy; otherwise rename/move.
     """
@@ -158,7 +465,11 @@ async def recognize_and_rename_file(
     if not out or "track" not in out:
         if trace:
             print(f"Shazam failed: {file_path}")
-        return {"file_path": file_path, "error": "Recognition failed"}
+        return {
+            "file_path": file_path,
+            "error": "Recognition failed",
+            "search_results": [],
+        }
 
     # 3) Extract & sanitize metadata
     track = out["track"]
@@ -170,6 +481,14 @@ async def recognize_and_rename_file(
     s_title = sanitize(title, trace)
     s_artist = sanitize(artist, trace)
     s_album = sanitize(album, trace)
+
+    # 3.5) Multi-source search: query NetEase and KuGou concurrently
+    keyword = f"{artist} {title}"
+    search_results = await multi_source_search(
+        keyword=keyword,
+        shazam_result=out,
+        limit=3,
+    )
 
     # 4) Build final name (if renaming)
     if plex_structure:
@@ -203,7 +522,11 @@ async def recognize_and_rename_file(
                     file_path, s_title, s_artist, s_album, cover, trace
                 )
         except Exception as exc:
-            return {"file_path": file_path, "error": f"Tag error: {exc}"}
+            return {
+                "file_path": file_path,
+                "error": f"Tag error: {exc}",
+                "search_results": [sr.to_dict() for sr in search_results],
+            }
         return {
             "file_path": file_path,
             "new_file_path": file_path,
@@ -211,6 +534,7 @@ async def recognize_and_rename_file(
             "author": s_artist,
             "album": s_album,
             "cover_link": cover,
+            "search_results": [sr.to_dict() for sr in search_results],
         }
 
     # 8) Move or copy & tag
@@ -230,7 +554,11 @@ async def recognize_and_rename_file(
                     new_path, s_title, s_artist, s_album, cover, trace
                 )
         except Exception as exc:
-            return {"file_path": file_path, "error": f"Tag error: {exc}"}
+            return {
+                "file_path": file_path,
+                "error": f"Tag error: {exc}",
+                "search_results": [sr.to_dict() for sr in search_results],
+            }
 
     return {
         "file_path": file_path,
@@ -239,6 +567,7 @@ async def recognize_and_rename_file(
         "author": s_artist,
         "album": s_album,
         "cover_link": cover,
+        "search_results": [sr.to_dict() for sr in search_results],
     }
 
 
