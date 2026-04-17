@@ -12,6 +12,12 @@
   - 实现歌词获取、嵌入、提取和格式转换功能
   - 创建 LyricProvider 数据类管理提供商配置
   - 支持 LRCLib、Apple Music、MusixMatch 三个提供商
+- fix(lyric): 修复歌词嵌入和提取功能
+  - 移除对 lrxy 库的依赖，直接使用 eyed3 和 mutagen 嵌入歌词
+  - 修复 MP3 歌词嵌入方法，使用 USLT 帧格式（网易云音乐等播放器支持）
+  - 增强 MP3 歌词提取方法，支持多种标签位置（USLT/SYLT/TXXX/comments）
+  - 添加备用保存方法，兼容不同版本的 eyed3
+  - 解决用户手动添加歌词后无法识别的问题
 
 ## v0.3.9 (2026-04-16)
 - fix(gui): 优化主窗口初始尺寸
