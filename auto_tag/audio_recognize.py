@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import os
 import shutil
 import tempfile
@@ -30,6 +31,9 @@ from shazamio import Shazam
 from tqdm.asyncio import tqdm
 
 from auto_tag.utils import find_deepest_metadata_key, sanitize
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 
 # 多数据源搜索结果数据结构
@@ -207,6 +211,35 @@ def _parse_kugou_result(song: dict) -> SearchResult:
     )
 
 
+def _extract_response_data(response) -> dict | None:
+    """
+    从API响应中提取数据
+
+    pymusiclibrary 的 API 返回 Response 对象，
+    需要从 .data 或 .body 属性提取实际数据。
+
+    Args:
+        response: API 响应对象
+
+    Returns:
+        dict | None: 提取的数据字典，失败返回None
+    """
+    if response is None:
+        return None
+    
+    # 尝试不同的属性
+    if hasattr(response, 'data') and response.data is not None:
+        return response.data if isinstance(response.data, dict) else None
+    
+    if hasattr(response, 'body') and response.body is not None:
+        return response.body if isinstance(response.body, dict) else None
+    
+    if isinstance(response, dict):
+        return response
+    
+    return None
+
+
 async def _search_netease(keyword: str, limit: int = 5) -> list[SearchResult]:
     """
     异步搜索网易云音乐
@@ -219,28 +252,38 @@ async def _search_netease(keyword: str, limit: int = 5) -> list[SearchResult]:
         list[SearchResult]: 搜索结果列表
     """
     try:
-        # 使用 run_in_executor 在线程池中执行阻塞的 API 调用
-        loop = asyncio.get_event_loop()
-
         def _do_search() -> list[SearchResult]:
             try:
                 from MusicLibrary.neteaseCloudMusicApi import NeteaseCloudMusicApi
 
                 api = NeteaseCloudMusicApi()
-                result = api.search(keyword, limit=limit)
+                logger.info(f"[NetEase] Searching: {keyword}")
+                response = api.search(keyword, limit=limit)
+                result = _extract_response_data(response)
 
                 if not result or "result" not in result:
+                    logger.warning(f"[NetEase] No results for: {keyword}, keys={list(result.keys()) if result else None}")
                     return []
 
                 songs = result["result"].get("songs", [])
+                logger.info(f"[NetEase] Found {len(songs)} songs for: {keyword}")
                 return [_parse_netease_result(song) for song in songs[:limit]]
-            except ImportError:
+            except ImportError as e:
+                logger.error(f"[NetEase] Import error: {e}")
                 return []
-            except Exception:
+            except Exception as e:
+                logger.error(f"[NetEase] Search error: {e}")
                 return []
 
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _do_search)
-    except Exception:
+    except RuntimeError:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_do_search.__wrapped__ if hasattr(_do_search, '__wrapped__') else _do_search())
+            return future.result(timeout=30)
+    except Exception as e:
+        logger.error(f"[NetEase] Async error: {e}")
         return []
 
 
@@ -256,27 +299,38 @@ async def _search_kugou(keyword: str, limit: int = 5) -> list[SearchResult]:
         list[SearchResult]: 搜索结果列表
     """
     try:
-        loop = asyncio.get_event_loop()
-
-        def _do_search() -> list[SearchResult]:
+        def _do_search_kugou() -> list[SearchResult]:
             try:
                 from MusicLibrary.kuGouMusicApi import KuGouMusicApi
 
                 api = KuGouMusicApi()
-                result = api.search(keyword, limit=limit)
+                logger.info(f"[KuGou] Searching: {keyword}")
+                response = api.search(keyword, limit=limit)
+                result = _extract_response_data(response)
 
                 if not result or "data" not in result:
+                    logger.warning(f"[KuGou] No results for: {keyword}, keys={list(result.keys()) if result else None}")
                     return []
 
                 songs = result["data"].get("lists", []) if isinstance(result["data"], dict) else []
+                logger.info(f"[KuGou] Found {len(songs)} songs for: {keyword}")
                 return [_parse_kugou_result(song) for song in songs[:limit]]
-            except ImportError:
+            except ImportError as e:
+                logger.error(f"[KuGou] Import error: {e}")
                 return []
-            except Exception:
+            except Exception as e:
+                logger.error(f"[KuGou] Search error: {e}")
                 return []
 
-        return await loop.run_in_executor(None, _do_search)
-    except Exception:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _do_search_kugou)
+    except RuntimeError:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_do_search_kugou)
+            return future.result(timeout=30)
+    except Exception as e:
+        logger.error(f"[KuGou] Async error: {e}")
         return []
 
 
@@ -305,11 +359,13 @@ async def multi_source_search(
         ...     print(f"{r.source}: {r.title} - {r.artist}")
     """
     all_results: list[SearchResult] = []
+    logger.info(f"[MultiSource] Starting search with keyword: {keyword}")
 
     # 如果已有 Shazam 结果，直接解析
     if shazam_result and "track" in shazam_result:
         shazam_result_obj = _parse_shazam_result(shazam_result["track"])
         all_results.append(shazam_result_obj)
+        logger.info(f"[MultiSource] Shazam result added: {shazam_result_obj.title}")
 
     # 并发搜索网易云和酷狗
     netease_task = asyncio.create_task(_search_netease(keyword, limit))
@@ -322,15 +378,23 @@ async def multi_source_search(
 
     # 处理异常结果
     if isinstance(netease_results, Exception):
+        logger.error(f"[MultiSource] NetEase search exception: {netease_results}")
         netease_results = []
     if isinstance(kugou_results, Exception):
+        logger.error(f"[MultiSource] KuGou search exception: {kugou_results}")
         kugou_results = []
 
+    logger.info(f"[MultiSource] NetEase: {len(netease_results)} results, KuGou: {len(kugou_results)} results")
+    
     all_results.extend(netease_results)  # type: ignore[arg-type]
     all_results.extend(kugou_results)  # type: ignore[arg-type]
 
     # 按置信度降序排序
     all_results.sort(key=lambda x: x.confidence, reverse=True)
+    
+    logger.info(f"[MultiSource] Total results: {len(all_results)}")
+    for r in all_results:
+        logger.info(f"  - [{r.source}] {r.title} - {r.artist}")
 
     return all_results
 

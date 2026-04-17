@@ -136,5 +136,17 @@
   "searching_kugou": "正在搜索酷狗音乐...",
   "platform_unavailable": "平台暂时不可用",
   "seconds_format": "{seconds} 秒",
-  "minutes_seconds_format": "{minutes} 分 {seconds} 秒"
+  "minutes_seconds_format": "{minutes} 分 {seconds} 秒",
+  "cancel": "取消",
+  "select_song": "选择此歌曲",
+  "search_keyword": "搜索关键词",
+  "no_search_results": "未找到搜索结果",
+  "search_failed": "搜索失败，未找到匹配的歌曲",
+  "search_error": "搜索出错",
+  "error": "错误",
+  "song_name": "歌曲名称",
+  "artist": "艺术家",
+  "album": "专辑",
+  "duration": "时长",
+  "id": "ID"
 }

@@ -136,5 +136,17 @@
   "searching_kugou": "Searching KuGou Music...",
   "platform_unavailable": "Platform temporarily unavailable",
   "seconds_format": "{seconds}s",
-  "minutes_seconds_format": "{minutes}m {seconds}s"
+  "minutes_seconds_format": "{minutes}m {seconds}s",
+  "cancel": "Cancel",
+  "select_song": "Select This Song",
+  "search_keyword": "Search keyword",
+  "no_search_results": "No search results found",
+  "search_failed": "Search failed, no matching songs found",
+  "search_error": "Search error",
+  "error": "Error",
+  "song_name": "Song Name",
+  "artist": "Artist",
+  "album": "Album",
+  "duration": "Duration",
+  "id": "ID"
 }
