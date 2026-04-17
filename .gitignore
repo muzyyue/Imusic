@@ -13,3 +13,7 @@ dist/
 # tests/
 history.md
 
+# 临时测试文件
+netease_api_test_report.json
+tests/test_netease_api.py
+

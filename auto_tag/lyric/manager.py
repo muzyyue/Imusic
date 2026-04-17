@@ -53,7 +53,8 @@ class LyricManager:
     def fetch_lyrics(
         self,
         file_path: str,
-        provider: str = 'netease'
+        provider: str = 'netease',
+        lyric_mode: str = 'merged'
     ) -> dict[str, Any] | None:
         """
         从指定提供商获取歌词
@@ -61,6 +62,10 @@ class LyricManager:
         Args:
             file_path: 音频文件路径
             provider: 提供商名称（'netease', 'kugou', 'lrclib', 'applemusic', 'musixmatch'）
+            lyric_mode: 歌词模式（仅对网易云音乐有效）
+                - 'original': 仅返回原始歌词
+                - 'merged': 返回原始歌词和翻译歌词合并（默认）
+                - 'translation': 仅返回翻译歌词
 
         Returns:
             dict | None: 歌词数据字典，格式为：
@@ -77,13 +82,16 @@ class LyricManager:
 
         Raises:
             FileNotFoundError: 文件不存在
-            ValueError: 不支持的提供商
+            ValueError: 不支持的提供商或歌词模式
 
         Example:
             >>> manager = LyricManager()
+            >>> # 获取合并歌词（默认）
             >>> lyrics = manager.fetch_lyrics('song.mp3', 'netease')
-            >>> if lyrics:
-            ...     print(lyrics['synced_lyrics'])
+            >>> # 获取原始歌词
+            >>> lyrics = manager.fetch_lyrics('song.mp3', 'netease', lyric_mode='original')
+            >>> # 获取翻译歌词
+            >>> lyrics = manager.fetch_lyrics('song.mp3', 'netease', lyric_mode='translation')
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"文件不存在: {file_path}")
@@ -92,10 +100,15 @@ class LyricManager:
         provider_config = get_provider(provider)
         if not provider_config:
             raise ValueError(f"不支持的提供商: {provider}")
+        
+        # 验证歌词模式
+        valid_modes = ['original', 'merged', 'translation']
+        if lyric_mode not in valid_modes:
+            raise ValueError(f"不支持的歌词模式: {lyric_mode}, 支持的模式: {valid_modes}")
 
         # 根据提供商类型选择不同的处理方式
         if provider in ['netease', 'kugou']:
-            return self._fetch_lyrics_from_music_api(file_path, provider)
+            return self._fetch_lyrics_from_music_api(file_path, provider, lyric_mode)
         else:
             return self._fetch_lyrics_from_lrxy(file_path, provider)
 
@@ -183,7 +196,8 @@ class LyricManager:
     def fetch_lyric_by_id(
         self,
         song_id: int | str,
-        provider: str = 'netease'
+        provider: str = 'netease',
+        lyric_mode: str = 'merged'
     ) -> dict[str, Any] | None:
         """
         根据歌曲 ID 获取歌词
@@ -191,6 +205,10 @@ class LyricManager:
         Args:
             song_id: 歌曲 ID
             provider: 提供商名称
+            lyric_mode: 歌词模式（仅对网易云音乐有效）
+                - 'original': 仅返回原始歌词
+                - 'merged': 返回原始歌词和翻译歌词合并（默认）
+                - 'translation': 仅返回翻译歌词
 
         Returns:
             dict | None: 歌词数据字典
@@ -221,8 +239,22 @@ class LyricManager:
             if provider == 'netease':
                 lrc_data = body.get('lrc', {})
                 tlyric_data = body.get('tlyric', {})
-                synced_lyrics = lrc_data.get('lyric', '') if isinstance(lrc_data, dict) else ''
-                plain_lyrics = tlyric_data.get('lyric', '') if isinstance(tlyric_data, dict) else ''
+                lrc_lyric = lrc_data.get('lyric', '') if isinstance(lrc_data, dict) else ''
+                tlyric_lyric = tlyric_data.get('lyric', '') if isinstance(tlyric_data, dict) else ''
+                
+                # 根据歌词模式返回不同的内容
+                if lyric_mode == 'original':
+                    # 仅返回原始歌词
+                    synced_lyrics = lrc_lyric
+                    plain_lyrics = ''
+                elif lyric_mode == 'merged':
+                    # 合并原始歌词和翻译歌词（一句原始+一句翻译交替排列）
+                    synced_lyrics = self._merge_lyrics_with_translation(lrc_lyric, tlyric_lyric)
+                    plain_lyrics = tlyric_lyric  # 保留纯翻译歌词
+                elif lyric_mode == 'translation':
+                    # 仅返回翻译歌词
+                    synced_lyrics = tlyric_lyric
+                    plain_lyrics = ''
             else:
                 synced_lyrics = body.get('lyrics', '')
 
@@ -253,7 +285,8 @@ class LyricManager:
     def _fetch_lyrics_from_music_api(
         self,
         file_path: str,
-        provider: str
+        provider: str,
+        lyric_mode: str = 'merged'
     ) -> dict[str, Any] | None:
         """
         从网易云音乐或酷狗音乐获取歌词
@@ -261,6 +294,10 @@ class LyricManager:
         Args:
             file_path: 音频文件路径
             provider: 提供商名称（'netease' 或 'kugou'）
+            lyric_mode: 歌词模式（仅对网易云音乐有效）
+                - 'original': 仅返回原始歌词
+                - 'merged': 返回原始歌词和翻译歌词合并（默认）
+                - 'translation': 仅返回翻译歌词
 
         Returns:
             dict | None: 歌词数据字典
@@ -325,8 +362,22 @@ class LyricManager:
                         # 网易云音乐歌词格式
                         lrc_data = body.get('lrc', {})
                         tlyric_data = body.get('tlyric', {})
-                        synced_lyrics = lrc_data.get('lyric', '') if isinstance(lrc_data, dict) else ''
-                        plain_lyrics = tlyric_data.get('lyric', '') if isinstance(tlyric_data, dict) else ''
+                        lrc_lyric = lrc_data.get('lyric', '') if isinstance(lrc_data, dict) else ''
+                        tlyric_lyric = tlyric_data.get('lyric', '') if isinstance(tlyric_data, dict) else ''
+                        
+                        # 根据歌词模式返回不同的内容
+                        if lyric_mode == 'original':
+                            # 仅返回原始歌词
+                            synced_lyrics = lrc_lyric
+                            plain_lyrics = ''
+                        elif lyric_mode == 'merged':
+                            # 合并原始歌词和翻译歌词（一句原始+一句翻译交替排列）
+                            synced_lyrics = self._merge_lyrics_with_translation(lrc_lyric, tlyric_lyric)
+                            plain_lyrics = tlyric_lyric  # 保留纯翻译歌词
+                        elif lyric_mode == 'translation':
+                            # 仅返回翻译歌词
+                            synced_lyrics = tlyric_lyric
+                            plain_lyrics = ''
                     else:
                         # 酷狗音乐歌词格式
                         synced_lyrics = body.get('lyrics', '')
@@ -428,6 +479,129 @@ class LyricManager:
         except Exception as e:
             self.logger.error(f"获取歌词失败: {file_path}, 错误: {e}")
             return None
+
+    def _merge_lyrics_with_translation(
+        self,
+        original_lrc: str,
+        translation_lrc: str
+    ) -> str:
+        """
+        合并原始歌词和翻译歌词（一句原始+一句翻译交替排列）
+        
+        Args:
+            original_lrc: 原始歌词（LRC格式）
+            translation_lrc: 翻译歌词（LRC格式）
+        
+        Returns:
+            str: 合并后的歌词（LRC格式）
+        
+        Example:
+            >>> manager = LyricManager()
+            >>> original = "[00:00.00]故事的小黄花\\n[00:05.00]从出生那年就飘着"
+            >>> translation = "[00:00.00]The small yellow flower\\n[00:05.00]Has been floating since birth"
+            >>> merged = manager._merge_lyrics_with_translation(original, translation)
+            >>> print(merged)
+            [00:00.00]故事的小黄花
+            [00:00.00]The small yellow flower
+            [00:05.00]从出生那年就飘着
+            [00:05.00]Has been floating since birth
+        """
+        import re
+        
+        # 如果没有翻译歌词，直接返回原始歌词
+        if not translation_lrc or not translation_lrc.strip():
+            return original_lrc
+        
+        # 如果没有原始歌词，返回空字符串
+        if not original_lrc or not original_lrc.strip():
+            return ''
+        
+        # 解析原始歌词为列表 [(时间戳字符串, 歌词文本), ...]
+        original_lines = self._parse_lrc_to_list(original_lrc)
+        
+        # 解析翻译歌词为字典 {时间戳字符串: 歌词文本}
+        translation_dict = self._parse_lrc_to_dict(translation_lrc)
+        
+        # 合并歌词
+        merged_lines = []
+        for timestamp, text in original_lines:
+            # 添加原始歌词行
+            merged_lines.append(f"[{timestamp}]{text}")
+            
+            # 查找对应时间戳的翻译
+            if timestamp in translation_dict and translation_dict[timestamp]:
+                # 添加翻译歌词行（使用相同的时间戳）
+                merged_lines.append(f"[{timestamp}]{translation_dict[timestamp]}")
+        
+        return '\n'.join(merged_lines)
+    
+    def _parse_lrc_to_list(self, lrc_content: str) -> list[tuple[str, str]]:
+        """
+        解析LRC歌词为列表格式
+        
+        Args:
+            lrc_content: LRC格式歌词内容
+        
+        Returns:
+            list[tuple[str, str]]: [(时间戳字符串, 歌词文本), ...]
+        
+        Example:
+            >>> manager = LyricManager()
+            >>> lrc = "[00:00.00]第一行\\n[00:05.00]第二行"
+            >>> result = manager._parse_lrc_to_list(lrc)
+            >>> print(result)
+            [('00:00.00', '第一行'), ('00:05.00', '第二行')]
+        """
+        import re
+        
+        lines = []
+        # LRC格式：[mm:ss.xx]歌词文本 或 [mm:ss.xxx]歌词文本
+        pattern = r'\[(\d{2}:\d{2}\.\d{2,3})\](.*)'
+        
+        for line in lrc_content.split('\n'):
+            match = re.match(pattern, line.strip())
+            if match:
+                timestamp = match.group(1)
+                text = match.group(2).strip()
+                # 只添加非空歌词行
+                if text:
+                    lines.append((timestamp, text))
+        
+        return lines
+    
+    def _parse_lrc_to_dict(self, lrc_content: str) -> dict[str, str]:
+        """
+        解析LRC歌词为字典格式
+        
+        Args:
+            lrc_content: LRC格式歌词内容
+        
+        Returns:
+            dict[str, str]: {时间戳字符串: 歌词文本}
+        
+        Example:
+            >>> manager = LyricManager()
+            >>> lrc = "[00:00.00]第一行\\n[00:05.00]第二行"
+            >>> result = manager._parse_lrc_to_dict(lrc)
+            >>> print(result)
+            {'00:00.00': '第一行', '00:05.00': '第二行'}
+        """
+        import re
+        
+        lrc_dict = {}
+        # LRC格式：[mm:ss.xx]歌词文本 或 [mm:ss.xxx]歌词文本
+        pattern = r'\[(\d{2}:\d{2}\.\d{2,3})\](.*)'
+        
+        for line in lrc_content.split('\n'):
+            match = re.match(pattern, line.strip())
+            if match:
+                timestamp = match.group(1)
+                text = match.group(2).strip()
+                # 只添加非空歌词行
+                if text:
+                    lrc_dict[timestamp] = text
+        
+        return lrc_dict
 
     def _extract_audio_metadata(self, file_path: str) -> dict[str, Any] | None:
         """
