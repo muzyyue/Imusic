@@ -188,30 +188,109 @@ class LyricManager:
                 f"不支持的歌词格式: {format}, 支持的格式: {supported_formats}"
             )
 
-        try:
-            # 导入 lrxy 库
-            from lrxy.utils import load_audio
+        ext = os.path.splitext(file_path)[1].lower()
 
-            # 加载音频文件
-            audio = load_audio(file_path)
-            if audio is None:
-                self.logger.error(f"无法加载音频文件: {file_path}")
+        try:
+            # 首先尝试使用 eyed3 直接嵌入（不依赖 lrxy）
+            if ext == '.mp3':
+                return self._embed_mp3_lyrics(file_path, lyrics, format)
+            elif ext in ['.flac', '.m4a', '.ogg']:
+                return self._embed_generic_lyrics(file_path, lyrics, format)
+            else:
+                self.logger.warning(f"不支持的文件格式: {ext}")
                 return False
 
-            # 嵌入歌词
-            audio.embed_lyric(lyrics)
-
-            self.logger.info(
-                f"成功嵌入歌词: {file_path}, 格式: {format}"
-            )
-            return True
-
-        except ImportError as e:
-            self.logger.error(f"导入 lrxy 库失败: {e}")
-            return False
         except Exception as e:
             self.logger.error(f"嵌入歌词失败: {file_path}, 错误: {e}")
             return False
+
+    def _embed_mp3_lyrics(self, file_path: str, lyrics: str, format: str) -> bool:
+        """
+        使用 eyed3 将歌词嵌入到 MP3 文件
+
+        Args:
+            file_path: MP3 文件路径
+            lyrics: 歌词内容
+            format: 歌词格式
+
+        Returns:
+            bool: 成功返回 True
+        """
+        audio = eyed3.load(file_path)
+        if audio is None:
+            self.logger.error(f"无法加载 MP3 文件: {file_path}")
+            return False
+
+        if audio.tag is None:
+            audio.initTag()
+
+        tag = audio.tag
+
+        # 嵌入同步歌词（USLT 帧 - 网易云音乐等播放器识别此格式）
+        # 使用 USLT (Unsynchronized Lyrics) 格式，这是最广泛支持的格式
+        try:
+            # eyed3 要求歌词内容为字符串
+            tag.lyrics.set(lyrics, lang=b'eng', description=b'')
+        except (TypeError, AttributeError):
+            # 某些版本的 eyed3 可能需要不同的参数格式
+            try:
+                # 尝试使用字符串参数
+                tag.lyrics.set(lyrics, lang='eng', description='')
+            except Exception as e:
+                self.logger.warning(f"使用备用方法嵌入歌词: {e}")
+                # 最后的备用方案：使用 user_text_frames
+                try:
+                    tag.user_text_frames.set(lyrics, description='LYRICS')
+                except Exception:
+                    pass
+
+        # 同时保存为 TXXX 帧（某些播放器支持）
+        try:
+            tag.user_text_frames.set(lyrics, description='SYNCEDLYRICS')
+        except Exception:
+            pass
+
+        # 保存文件 - 使用 tag.save() 而不是 audio.save()
+        try:
+            tag.save()
+        except AttributeError:
+            # 某些版本的 eyed3 可能使用不同的保存方法
+            try:
+                audio.save()
+            except AttributeError:
+                # 最后尝试直接写入文件
+                with open(file_path, 'r+b') as f:
+                    tag.save(f)
+
+        self.logger.info(f"成功嵌入歌词到 MP3: {file_path}")
+        return True
+
+    def _embed_generic_lyrics(self, file_path: str, lyrics: str, format: str) -> bool:
+        """
+        将歌词嵌入到通用音频文件（FLAC/M4A/OGG）
+
+        Args:
+            file_path: 音频文件路径
+            lyrics: 歌词内容
+            format: 歌词格式
+
+        Returns:
+            bool: 成功返回 True
+        """
+        audio = File(file_path, easy=True)
+        if audio is None:
+            self.logger.error(f"无法加载音频文件: {file_path}")
+            return False
+
+        # 保存同步歌词
+        audio['LYRICS'] = lyrics
+        audio['SYNCEDLYRICS'] = lyrics
+
+        # 保存文件
+        audio.save()
+
+        self.logger.info(f"成功嵌入歌词: {file_path}")
+        return True
 
     def extract_lyrics(self, file_path: str) -> dict[str, Any] | None:
         """
@@ -274,22 +353,58 @@ class LyricManager:
             return None
 
         tag = audio.tag
-
-        # 尝试读取同步歌词（SYLT）
         synced_lyrics = ''
-        if hasattr(tag, 'lyrics'):
+        plain_lyrics = ''
+
+        # 方法1: 尝试读取 USLT 帧（非同步歌词传输）
+        # 这是最常见的歌词存储方式，网易云音乐等播放器使用此格式
+        if hasattr(tag, 'lyrics') and tag.lyrics:
             for lyrics_frame in tag.lyrics:
-                if lyrics_frame.lang:
+                if lyrics_frame.text:
                     synced_lyrics = lyrics_frame.text
                     break
 
-        # 尝试读取非同步歌词（USLT）
-        plain_lyrics = ''
-        if hasattr(tag, 'text'):
-            for text_frame in tag.text:
-                if text_frame.description == 'LYRICS':
-                    plain_lyrics = text_frame.text
-                    break
+        # 方法2: 尝试读取 SYLT 帧（同步歌词）
+        if not synced_lyrics and hasattr(tag, 'lyrics'):
+            try:
+                for frame in tag.lyrics:
+                    if hasattr(frame, 'text') and frame.text:
+                        synced_lyrics = frame.text
+                        break
+            except Exception:
+                pass
+
+        # 方法3: 尝试读取 TXXX 帧（用户定义文本）
+        if not synced_lyrics and hasattr(tag, 'user_text_frames'):
+            try:
+                for frame in tag.user_text_frames:
+                    if frame.description in ['LYRICS', 'SYNCEDLYRICS', 'lyrics', 'syncedlyrics']:
+                        synced_lyrics = frame.text
+                        break
+            except Exception:
+                pass
+
+        # 方法4: 尝试读取普通文本帧
+        if not synced_lyrics and hasattr(tag, 'text'):
+            try:
+                for text_frame in tag.text:
+                    if text_frame.description in ['LYRICS', 'SYNCEDLYRICS', 'lyrics', '']:
+                        if text_frame.text:
+                            synced_lyrics = text_frame.text
+                            break
+            except Exception:
+                pass
+
+        # 方法5: 尝试读取 comments
+        if not synced_lyrics and hasattr(tag, 'comments'):
+            try:
+                for comment in tag.comments:
+                    if comment.description in ['LYRICS', 'lyrics', '']:
+                        if comment.text:
+                            synced_lyrics = comment.text
+                            break
+            except Exception:
+                pass
 
         if not synced_lyrics and not plain_lyrics:
             self.logger.info(f"MP3 文件无歌词: {file_path}")
