@@ -36,7 +36,11 @@ from auto_tag.utils import find_deepest_metadata_key, sanitize
 logger = logging.getLogger(__name__)
 
 # 导入全局 MusicLibrary 管理器
-from auto_tag.music_library_manager import initialize as init_music_library, get_netease_api, get_kugou_api, is_permanently_failed
+from auto_tag.music_library_manager import (
+    get_thread_local_netease_api,
+    get_thread_local_kugou_api,
+    is_permanently_failed,
+)
 
 
 # 多数据源搜索结果数据结构
@@ -279,9 +283,9 @@ async def _search_netease(keyword: str, limit: int = 5) -> list[SearchResult]:
     try:
         def _do_search() -> list[SearchResult]:
             try:
-                api = get_netease_api()
+                api = get_thread_local_netease_api()
                 if api is None:
-                    logger.warning("[NetEase] API not available")
+                    logger.warning("[NetEase] Thread-local API not available")
                     return []
                     
                 logger.info(f"[NetEase] Searching: {keyword}")
@@ -340,9 +344,9 @@ async def _search_kugou(keyword: str, limit: int = 5) -> list[SearchResult]:
     try:
         def _do_search_kugou() -> list[SearchResult]:
             try:
-                api = get_kugou_api()
+                api = get_thread_local_kugou_api()
                 if api is None:
-                    logger.warning("[KuGou] API not available")
+                    logger.warning("[KuGou] Thread-local API not available")
                     return []
                     
                 logger.info(f"[KuGou] Searching: {keyword}")

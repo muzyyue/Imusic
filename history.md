@@ -1,5 +1,14 @@
 # 项目变更历史
 
+## v0.4.23 (2026-04-20)
+- feat(core): 重新启用网易云/酷狗搜索（线程安全版本）
+  - **根因**：官方文档明确要求 "API 对象均不能跨线程使用"
+  - **方案**：使用 threading.local() 为每个线程创建独立的 API 实例
+  - 新增 get_thread_local_netease_api() / get_thread_local_kugou_api()
+  - 首次调用时在当前线程中创建实例，后续调用返回缓存
+  - 如果某线程创建失败（access violation），仅标记永久失败不影响其他线程
+  - _init_permanently_failed 默认改回 False，恢复多平台搜索功能
+
 ## v0.4.22 (2026-04-20)
 - fix(core): 修复选择文件夹后应用直接崩溃的问题
   - **根因**：pymusiclibrary 原生 C 库在子线程中调用导致 access violation（C 级别段错误）
