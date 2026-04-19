@@ -17,7 +17,10 @@ from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
 
 from .provider import get_provider, get_provider_api
-from auto_tag.music_library_manager import get_netease_api, get_kugou_api, initialize as init_music_library
+from auto_tag.music_library_manager import (
+    get_thread_local_netease_api,
+    get_thread_local_kugou_api,
+)
 
 
 class LyricManager:
@@ -52,26 +55,27 @@ class LyricManager:
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
         
-        # 预初始化 MusicLibrary（确保全局单例）
-        init_music_library()
+        # 注意：MusicLibrary 使用 threading.local() 线程本地实例，
+        # 不需要预初始化，首次调用时自动创建
+        pass
     
     def _get_netease_api(self):
         """
-        安全获取 NetEase API 实例（使用全局管理器）
+        安全获取 NetEase API 实例（线程本地）
         
         Returns:
-            NeteaseCloudMusicApi or None: API 实例，未初始化则返回 None
+            NeteaseCloudMusicApi or None: 当前线程的 API 实例
         """
-        return get_netease_api()
+        return get_thread_local_netease_api()
     
     def _get_kugou_api(self):
         """
-        安全获取 KuGou API 实例（使用全局管理器）
+        安全获取 KuGou API 实例（线程本地）
         
         Returns:
-            KuGouMusicApi or None: API 实例，未初始化则返回 None
+            KuGouMusicApi or None: 当前线程的 API 实例
         """
-        return get_kugou_api()
+        return get_thread_local_kugou_api()
 
     def fetch_lyrics(
         self,
