@@ -220,10 +220,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
+- [mp3ShazamAutoTag](https://github.com/davidAlgis/mp3ShazamAutoTag) - Original project, inspiration for audio recognition and tagging
 - [shazamio](https://github.com/dotX12/shazamio) - Shazam API wrapper
 - [QFluentWidgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets) - Fluent Design UI library
 - [PySide6](https://www.pyside.org/) - Qt6 Python bindings
 
 ---
 
-*Last updated: 2026-04-14*
+*Last updated: 2026-04-20*

@@ -1,6 +1,10 @@
 # 项目变更历史
 
-#0.4.6(2026-04-20)#将项目名称修改为 Imusic，作者修改为 ling
+#0.4.7(2026-04-20)#在 Readme.md 中添加对原仓库 mp3ShazamAutoTag 的感谢
+
+## v0.4.7 (2026-04-20)
+- docs: 在 Readme.md 的 Acknowledgments 部分添加对原仓库的感谢
+  - 添加 mp3ShazamAutoTag 原仓库链接和说明
 
 ## v0.4.6 (2026-04-20)
 - refactor: 将项目名称修改为 Imusic，作者修改为 ling
@@ -8,8 +12,6 @@
   - pyproject.toml: 更新 GitHub URLs 为 ling/Imusic
   - Readme.md: 更新所有仓库链接和项目名称引用
   - .trae/rules/program.md: 更新项目名称和作者信息
-
-#0.4.5(2026-04-20)#全面重构 UI 为扁平化设计风格，移除所有阴影和立体效果
 
 ## v0.4.5 (2026-04-20)
 - feat(ui): **全面重构 UI 为扁平化设计风格**
