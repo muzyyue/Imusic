@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.4.17 (2026-04-20)
+- fix(ui): 修复展开/收起按钮图标不显示问题
+  - 将 PushButton 改为 ToolButton 以正确显示 FluentIcon 图标
+  - 使用 CHEVRON_UP/CHEVRON_DOWN 图标替代 UP/DOWN
+- fix(core): 增强 MusicLibrary 初始化日志
+  - 添加 init_music_library() 调用后的可用状态日志
+  - 导入 is_available 函数用于状态检查
+
 ## v0.4.16 (2026-04-20)
 - fix(ui): 修复深色模式下搜索结果卡片文本不可见问题
   - 移除 QSS 中所有 QLabel[class="..."] 颜色覆盖，让 QFluentWidgets 自动处理文本颜色

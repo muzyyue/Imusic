@@ -23,7 +23,7 @@ from qfluentwidgets import (
     CardWidget,
     BodyLabel,
     SubtitleLabel,
-    PushButton,
+    ToolButton,
     CheckBox,
     IconWidget,
     FluentIcon as FIF,
@@ -346,7 +346,7 @@ class SongResultCard(CardWidget):
             header_layout.addWidget(self.count_label)
 
         # 展开/收起按钮
-        self.expand_btn = PushButton()
+        self.expand_btn = ToolButton(FIF.UP)
         self.expand_btn.setFixedSize(32, 32)
         self.expand_btn.clicked.connect(self._toggle_expand)
         header_layout.addWidget(self.expand_btn)
@@ -423,9 +423,9 @@ class SongResultCard(CardWidget):
     def _update_expand_icon(self) -> None:
         """更新展开/收起按钮图标"""
         if self.is_expanded:
-            self.expand_btn.setIcon(FIF.UP)
+            self.expand_btn.setIcon(FIF.CHEVRON_UP)
         else:
-            self.expand_btn.setIcon(FIF.DOWN)
+            self.expand_btn.setIcon(FIF.CHEVRON_DOWN)
 
     def _select_platform(self, index: int) -> None:
         """
