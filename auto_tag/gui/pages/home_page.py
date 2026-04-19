@@ -36,6 +36,8 @@ from qfluentwidgets import (
     SwitchButton,
     TableWidget,
     CardWidget,
+    isDarkTheme,
+    qconfig,
 )
 from qfluentwidgets import FluentIcon as FIF
 
@@ -207,10 +209,12 @@ class HomePage(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         self.scroll_area.setMinimumHeight(400)
+        self._update_scroll_area_style()
 
         # 创建内容容器
         self.cards_container = QFrame()
         self.cards_container.setObjectName("cardsContainer")
+        self._update_cards_container_style()
         self.cards_layout = QVBoxLayout(self.cards_container)
         self.cards_layout.setContentsMargins(0, 0, 0, 0)
         self.cards_layout.setSpacing(12)
@@ -253,6 +257,9 @@ class HomePage(QWidget):
         # 仅标签开关状态变化
         self.tag_switch.checkedChanged.connect(self._on_tag_switch_changed)
 
+        # 主题切换
+        qconfig.themeChanged.connect(self._on_theme_changed)
+
     def _on_copy_switch_changed(self, checked: bool) -> None:
         """
         复制到开关切换回调
@@ -272,6 +279,48 @@ class HomePage(QWidget):
             checked (bool): 开关是否选中
         """
         self.tag_only = checked
+
+    def _update_scroll_area_style(self) -> None:
+        """更新滚动区域样式以适配当前主题"""
+        if isDarkTheme():
+            bg_color = "#1e1e1e"
+            border_color = "#3d3d3d"
+        else:
+            bg_color = "#fafafa"
+            border_color = "#e0e0e0"
+
+        self.scroll_area.setStyleSheet(f"""
+            QScrollArea {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+            }}
+            QScrollArea > QWidget > QWidget {{
+                background-color: {bg_color};
+            }}
+        """)
+
+    def _update_cards_container_style(self) -> None:
+        """更新卡片容器样式以适配当前主题"""
+        if isDarkTheme():
+            bg_color = "#1e1e1e"
+        else:
+            bg_color = "#fafafa"
+
+        self.cards_container.setStyleSheet(f"""
+            #cardsContainer {{
+                background-color: {bg_color};
+            }}
+        """)
+
+    def _on_theme_changed(self) -> None:
+        """主题切换回调，更新所有样式"""
+        self._update_scroll_area_style()
+        self._update_cards_container_style()
+
+        # 更新所有卡片的主题
+        for card in self.song_cards.values():
+            card._on_theme_changed()
 
     def _on_browse(self) -> None:
         """

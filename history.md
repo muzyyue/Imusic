@@ -1,5 +1,12 @@
 # 项目变更历史
 
+## v0.4.20 (2026-04-20)
+- fix(ui): 完成深色模式样式适配
+  - 为 QScrollArea 和 cards_container 添加深色模式背景色（#1e1e1e）
+  - 浅色模式使用 #fafafa 背景色，保持视觉一致性
+  - 连接 qconfig.themeChanged 信号实现主题切换时自动更新
+  - 主题切换时同步更新所有已创建的 SongResultCard 样式
+
 ## v0.4.19 (2026-04-20)
 - fix(core+ui): 修复搜索结果卡片创建失败导致完全不显示的问题
   - 将 FIF.CLOCK 替换为 FIF.HISTORY（用户 QFluentWidgets 版本无 CLOCK 常量）
