@@ -3,7 +3,7 @@
 搜索结果卡片组件模块
 
 该模块提供卡片式的搜索结果展示组件，支持折叠/展开交互、
-悬停效果和平台结果选择功能。
+悬停效果和平台结果选择功能，并完整适配 QFluentWidgets 深浅色主题。
 """
 
 from __future__ import annotations
@@ -27,17 +27,75 @@ from qfluentwidgets import (
     CheckBox,
     IconWidget,
     FluentIcon as FIF,
+    isDarkTheme,
+    qconfig,
+    Theme,
+    getFont,
 )
 
 if TYPE_CHECKING:
     pass
 
 
+# 主题颜色映射
+_THEME_COLORS = {
+    "light": {
+        "card_bg": "#ffffff",
+        "card_bg_hover": "#f5f5f7",
+        "card_border": "#e8e8e8",
+        "card_border_hover": "#d0d0d0",
+        "platform_bg": "#f5f5f7",
+        "platform_bg_hover": "#ebebed",
+        "platform_border": "#e8e8e8",
+        "platform_border_hover": "#d0d0d0",
+        "platform_selected_bg": "rgba(124, 77, 255, 0.08)",
+        "platform_selected_border": "#7c4dff",
+        "platform_name_color": "#7c4dff",
+        "meta_text_color": "#888888",
+        "error_card_bg": "rgba(255, 82, 82, 0.05)",
+        "error_card_border": "rgba(255, 82, 82, 0.2)",
+        "error_card_hover_bg": "rgba(255, 82, 82, 0.08)",
+        "error_card_hover_border": "rgba(255, 82, 82, 0.3)",
+        "result_count_bg": "rgba(124, 77, 255, 0.08)",
+        "result_count_color": "#7c4dff",
+        "no_result_color": "#999999",
+    },
+    "dark": {
+        "card_bg": "#2c2c2c",
+        "card_bg_hover": "#333333",
+        "card_border": "#404040",
+        "card_border_hover": "#555555",
+        "platform_bg": "#333333",
+        "platform_bg_hover": "#3a3a3a",
+        "platform_border": "#404040",
+        "platform_border_hover": "#555555",
+        "platform_selected_bg": "rgba(124, 77, 255, 0.15)",
+        "platform_selected_border": "#9c7eff",
+        "platform_name_color": "#9c7eff",
+        "meta_text_color": "#aaaaaa",
+        "error_card_bg": "rgba(255, 82, 82, 0.08)",
+        "error_card_border": "rgba(255, 82, 82, 0.25)",
+        "error_card_hover_bg": "rgba(255, 82, 82, 0.12)",
+        "error_card_hover_border": "rgba(255, 82, 82, 0.35)",
+        "result_count_bg": "rgba(124, 77, 255, 0.12)",
+        "result_count_color": "#9c7eff",
+        "no_result_color": "#888888",
+    },
+}
+
+
+def _get_theme_colors() -> dict:
+    """获取当前主题颜色"""
+    if isDarkTheme():
+        return _THEME_COLORS["dark"]
+    return _THEME_COLORS["light"]
+
+
 class PlatformResultWidget(QFrame):
     """
     平台搜索结果展示组件
 
-    显示单个平台的搜索结果信息，支持选中状态切换。
+    显示单个平台的搜索结果信息，支持选中状态切换和主题自适应。
 
     Attributes:
         platform (str): 平台标识
@@ -67,6 +125,9 @@ class PlatformResultWidget(QFrame):
         self._setup_ui()
         self._setup_style()
 
+        # 监听主题变化
+        qconfig.themeChanged.connect(self._on_theme_changed)
+
     def _setup_ui(self) -> None:
         """构建 UI 布局"""
         layout = QHBoxLayout(self)
@@ -77,26 +138,24 @@ class PlatformResultWidget(QFrame):
         icon_layout = QHBoxLayout()
         icon_layout.setSpacing(8)
 
-        platform_icon = IconWidget()
-        platform_icon.setFixedSize(24, 24)
+        self.platform_icon = IconWidget()
+        self.platform_icon.setFixedSize(24, 24)
 
         # 根据平台设置不同图标
         if self.platform == "shazam":
-            platform_icon.setIcon(FIF.MUSIC)
+            self.platform_icon.setIcon(FIF.MUSIC)
         elif self.platform == "netease":
-            platform_icon.setIcon(FIF.CLOUD)
+            self.platform_icon.setIcon(FIF.CLOUD)
         elif self.platform == "kugou":
-            platform_icon.setIcon(FIF.MUSIC_NOTE)
+            self.platform_icon.setIcon(FIF.MUSIC_NOTE)
         else:
-            platform_icon.setIcon(FIF.MUSIC)
+            self.platform_icon.setIcon(FIF.MUSIC)
 
-        icon_layout.addWidget(platform_icon)
+        icon_layout.addWidget(self.platform_icon)
 
-        platform_name = BodyLabel(self._get_platform_display_name())
-        platform_name.setStyleSheet(
-            "color: #7c4dff; font-weight: 500; min-width: 70px;"
-        )
-        icon_layout.addWidget(platform_name)
+        self.platform_name = BodyLabel(self._get_platform_display_name())
+        self.platform_name.setProperty("class", "PlatformNameLabel")
+        icon_layout.addWidget(self.platform_name)
         icon_layout.addStretch()
 
         layout.addLayout(icon_layout, 0)
@@ -107,17 +166,16 @@ class PlatformResultWidget(QFrame):
 
         # 标题
         title = self.result_data.get("title", "Unknown")
-        title_label = BodyLabel(title)
-        title_label.setStyleSheet("font-weight: 500;")
-        title_label.setWordWrap(True)
-        info_layout.addWidget(title_label)
+        self.title_label = BodyLabel(title)
+        self.title_label.setWordWrap(True)
+        info_layout.addWidget(self.title_label)
 
         # 艺术家和专辑
         artist = self.result_data.get("artist", "Unknown")
         album = self.result_data.get("album", "Unknown Album")
-        meta_label = BodyLabel(f"{artist} · {album}")
-        meta_label.setStyleSheet("color: #888888; font-size: 12px;")
-        info_layout.addWidget(meta_label)
+        self.meta_label = BodyLabel(f"{artist} · {album}")
+        self.meta_label.setProperty("class", "MetaLabel")
+        info_layout.addWidget(self.meta_label)
 
         layout.addLayout(info_layout, 1)
 
@@ -125,16 +183,15 @@ class PlatformResultWidget(QFrame):
         duration_layout = QHBoxLayout()
         duration_layout.setSpacing(4)
 
-        duration_icon = IconWidget(FIF.CLOCK)
-        duration_icon.setFixedSize(16, 16)
-        duration_layout.addWidget(duration_icon)
+        self.duration_icon = IconWidget(FIF.CLOCK)
+        self.duration_icon.setFixedSize(16, 16)
+        duration_layout.addWidget(self.duration_icon)
 
-        duration_text = self._format_duration(
-            self.result_data.get("duration", 0)
+        self.duration_label = BodyLabel(
+            self._format_duration(self.result_data.get("duration", 0))
         )
-        duration_label = BodyLabel(duration_text)
-        duration_label.setStyleSheet("color: #888888; font-size: 12px;")
-        duration_layout.addWidget(duration_label)
+        self.duration_label.setProperty("class", "MetaLabel")
+        duration_layout.addWidget(self.duration_label)
 
         layout.addLayout(duration_layout, 0)
 
@@ -151,30 +208,46 @@ class PlatformResultWidget(QFrame):
         self._update_style()
 
     def _update_style(self) -> None:
-        """根据选中状态更新样式"""
+        """根据主题和选中状态更新样式"""
+        colors = _get_theme_colors()
+
         if self.is_selected:
             self.setStyleSheet("""
                 QFrame[class="PlatformResultWidget"] {
-                    background-color: rgba(124, 77, 255, 0.1);
-                    border: 2px solid #7c4dff;
+                    background-color: """ + colors["platform_selected_bg"] + """;
+                    border: 2px solid """ + colors["platform_selected_border"] + """;
                     border-radius: 8px;
                 }
                 QFrame[class="PlatformResultWidget"]:hover {
-                    background-color: rgba(124, 77, 255, 0.15);
+                    background-color: """ + colors["platform_selected_bg"] + """;
+                }
+                QLabel[class="PlatformNameLabel"] {
+                    color: """ + colors["platform_selected_border"] + """;
+                    font-weight: 600;
+                    min-width: 70px;
                 }
             """)
         else:
             self.setStyleSheet("""
                 QFrame[class="PlatformResultWidget"] {
-                    background-color: rgba(255, 255, 255, 0.03);
-                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    background-color: """ + colors["platform_bg"] + """;
+                    border: 1px solid """ + colors["platform_border"] + """;
                     border-radius: 8px;
                 }
                 QFrame[class="PlatformResultWidget"]:hover {
-                    background-color: rgba(255, 255, 255, 0.06);
-                    border-color: rgba(255, 255, 255, 0.15);
+                    background-color: """ + colors["platform_bg_hover"] + """;
+                    border-color: """ + colors["platform_border_hover"] + """;
+                }
+                QLabel[class="PlatformNameLabel"] {
+                    color: """ + colors["platform_name_color"] + """;
+                    font-weight: 500;
+                    min-width: 70px;
                 }
             """)
+
+    def _on_theme_changed(self, theme: Theme) -> None:
+        """主题切换回调"""
+        self._update_style()
 
     def _get_platform_display_name(self) -> str:
         """获取平台显示名称"""
@@ -224,7 +297,7 @@ class SongResultCard(CardWidget):
     """
     歌曲搜索结果卡片组件
 
-    显示单首歌曲的所有平台搜索结果，支持折叠/展开交互。
+    显示单首歌曲的所有平台搜索结果，支持折叠/展开交互和主题自适应。
 
     Attributes:
         file_path (str): 原始文件路径
@@ -266,6 +339,9 @@ class SongResultCard(CardWidget):
         self._setup_ui()
         self._setup_style()
 
+        # 监听主题变化
+        qconfig.themeChanged.connect(self._on_theme_changed)
+
         # 如果有搜索结果，默认选中第一个
         if search_results:
             self._select_platform(0)
@@ -287,21 +363,16 @@ class SongResultCard(CardWidget):
         header_layout.addWidget(self.checkbox)
 
         # 文件名
-        file_label = SubtitleLabel(self.display_name)
-        file_label.setWordWrap(True)
-        file_label.setStyleSheet(
-            "font-size: 14px; font-weight: 500;"
-        )
-        header_layout.addWidget(file_label, 1)
+        self.file_label = SubtitleLabel(self.display_name)
+        self.file_label.setWordWrap(True)
+        self.file_label.setProperty("class", "SongFileNameLabel")
+        header_layout.addWidget(self.file_label, 1)
 
         # 结果数量标签
         if self.search_results:
-            count_label = BodyLabel(f"{len(self.search_results)} 个结果")
-            count_label.setStyleSheet(
-                "color: #7c4dff; font-size: 12px; padding: 4px 8px; "
-                "background: rgba(124, 77, 255, 0.1); border-radius: 12px;"
-            )
-            header_layout.addWidget(count_label)
+            self.count_label = BodyLabel(f"{len(self.search_results)} 个结果")
+            self.count_label.setProperty("class", "ResultCountLabel")
+            header_layout.addWidget(self.count_label)
 
         # 展开/收起按钮
         self.expand_btn = PushButton()
@@ -330,9 +401,9 @@ class SongResultCard(CardWidget):
                 results_layout.addWidget(platform_widget)
         else:
             # 没有搜索结果，显示默认结果
-            no_result_label = BodyLabel("未找到匹配的搜索结果")
-            no_result_label.setStyleSheet("color: #888888; padding: 8px 0;")
-            results_layout.addWidget(no_result_label)
+            self.no_result_label = BodyLabel("未找到匹配的搜索结果")
+            self.no_result_label.setProperty("class", "NoResultLabel")
+            results_layout.addWidget(self.no_result_label)
 
         main_layout.addWidget(self.results_container)
 
@@ -350,30 +421,74 @@ class SongResultCard(CardWidget):
 
     def _update_style(self) -> None:
         """更新卡片样式"""
+        colors = _get_theme_colors()
+
         if self.has_error:
             self.setStyleSheet("""
                 CardWidget[class="SongResultCard"] {
-                    background-color: rgba(255, 82, 82, 0.05);
-                    border: 1px solid rgba(255, 82, 82, 0.2);
+                    background-color: """ + colors["error_card_bg"] + """;
+                    border: 1px solid """ + colors["error_card_border"] + """;
                     border-radius: 12px;
                 }
                 CardWidget[class="SongResultCard"]:hover {
-                    background-color: rgba(255, 82, 82, 0.08);
-                    border-color: rgba(255, 82, 82, 0.3);
+                    background-color: """ + colors["error_card_hover_bg"] + """;
+                    border-color: """ + colors["error_card_hover_border"] + """;
+                }
+                QLabel[class="SongFileNameLabel"] {
+                    font-size: 14px;
+                    font-weight: 500;
+                }
+                QLabel[class="ResultCountLabel"] {
+                    color: """ + colors["result_count_color"] + """;
+                    font-size: 12px;
+                    padding: 4px 8px;
+                    background: """ + colors["result_count_bg"] + """;
+                    border-radius: 12px;
+                }
+                QLabel[class="MetaLabel"] {
+                    color: """ + colors["meta_text_color"] + """;
+                    font-size: 12px;
+                }
+                QLabel[class="NoResultLabel"] {
+                    color: """ + colors["no_result_color"] + """;
+                    padding: 8px 0;
                 }
             """)
         else:
             self.setStyleSheet("""
                 CardWidget[class="SongResultCard"] {
-                    background-color: rgba(255, 255, 255, 0.03);
-                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    background-color: """ + colors["card_bg"] + """;
+                    border: 1px solid """ + colors["card_border"] + """;
                     border-radius: 12px;
                 }
                 CardWidget[class="SongResultCard"]:hover {
-                    background-color: rgba(255, 255, 255, 0.06);
-                    border-color: rgba(255, 255, 255, 0.15);
+                    background-color: """ + colors["card_bg_hover"] + """;
+                    border-color: """ + colors["card_border_hover"] + """;
+                }
+                QLabel[class="SongFileNameLabel"] {
+                    font-size: 14px;
+                    font-weight: 500;
+                }
+                QLabel[class="ResultCountLabel"] {
+                    color: """ + colors["result_count_color"] + """;
+                    font-size: 12px;
+                    padding: 4px 8px;
+                    background: """ + colors["result_count_bg"] + """;
+                    border-radius: 12px;
+                }
+                QLabel[class="MetaLabel"] {
+                    color: """ + colors["meta_text_color"] + """;
+                    font-size: 12px;
+                }
+                QLabel[class="NoResultLabel"] {
+                    color: """ + colors["no_result_color"] + """;
+                    padding: 8px 0;
                 }
             """)
+
+    def _on_theme_changed(self, theme: Theme) -> None:
+        """主题切换回调"""
+        self._update_style()
 
     def _toggle_expand(self) -> None:
         """切换展开/收起状态"""

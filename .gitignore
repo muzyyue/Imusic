@@ -8,11 +8,7 @@ dist/
 *.sublime-workspace
 *.log
 
-.trae/agents/
-.trae/documents/
-.trae/rules/project-rules.md
-.trae/skills/
-.trae/specs/
+.trae/
 # 测试文件
 # tests/
 # history.md 已改为追踪，用于记录项目变更历史
