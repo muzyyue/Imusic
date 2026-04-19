@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.4.19 (2026-04-20)
+- fix(core+ui): 修复搜索结果卡片创建失败导致完全不显示的问题
+  - 将 FIF.CLOCK 替换为 FIF.HISTORY（用户 QFluentWidgets 版本无 CLOCK 常量）
+  - 移除酷狗 API 的 limit 参数（KuGouMusicApi.search() 不支持）
+  - 当 search_results 为空时，将 Shazam 结果包装为搜索结果格式传入卡片
+  - 使用 objectName 选择器替代属性选择器，确保深色模式样式正确应用
+  - 为 _on_file_processed 添加异常处理和详细日志
+
 ## v0.4.18 (2026-04-20)
 - fix(ui): 修复卡片式布局搜索结果完全不显示的问题
   - 移除 QScrollArea 的透明背景样式，解决内容不可见问题

@@ -173,7 +173,8 @@ class PlatformResultWidget(QFrame):
         duration_layout = QHBoxLayout()
         duration_layout.setSpacing(4)
 
-        self.duration_icon = IconWidget(FIF.CLOCK)
+        # 时长图标和标签
+        self.duration_icon = IconWidget(FIF.HISTORY)
         self.duration_icon.setFixedSize(16, 16)
         duration_layout.addWidget(self.duration_icon)
 
@@ -390,24 +391,27 @@ class SongResultCard(CardWidget):
         self._update_style()
 
     def _update_style(self) -> None:
-        """更新卡片样式"""
+        """根据当前主题更新卡片和子组件的样式"""
         colors = _get_theme_colors()
 
+        # 设置 objectName 以便 QSS 选择器能正确匹配
+        self.setObjectName("SongResultCard")
+
         if self.has_error:
-            self.setStyleSheet("""
-                CardWidget[class="SongResultCard"] {
-                    background-color: """ + colors["error_card_bg"] + """;
-                    border: 1px solid """ + colors["error_card_border"] + """;
+            self.setStyleSheet(f"""
+                #SongResultCard {{
+                    background-color: {colors["error_card_bg"]};
+                    border: 1px solid {colors["error_card_border"]};
                     border-radius: 12px;
-                }
+                }}
             """)
         else:
-            self.setStyleSheet("""
-                CardWidget[class="SongResultCard"] {
-                    background-color: """ + colors["card_bg"] + """;
-                    border: 1px solid """ + colors["card_border"] + """;
+            self.setStyleSheet(f"""
+                #SongResultCard {{
+                    background-color: {colors["card_bg"]};
+                    border: 1px solid {colors["card_border"]};
                     border-radius: 12px;
-                }
+                }}
             """)
 
     def _on_theme_changed(self, theme: Theme) -> None:

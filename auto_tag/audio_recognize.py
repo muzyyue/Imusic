@@ -346,7 +346,7 @@ async def _search_kugou(keyword: str, limit: int = 5) -> list[SearchResult]:
                     return []
                     
                 logger.info(f"[KuGou] Searching: {keyword}")
-                response = api.search(keyword, limit=limit)
+                response = api.search(keyword)
                 result = _extract_response_data(response)
 
                 if not result:
