@@ -1,5 +1,11 @@
 # 项目变更历史
 
+## v0.4.15 (2026-04-20)
+- fix(core): 修复多平台搜索结果未显示在歌曲卡片中的问题
+  - 在 RecognizeWorker._process_files() 中调用 init_music_library() 初始化 API
+  - 修复全局单例 _initialized 始终为 False 导致 get_netease_api() 返回 None 的问题
+  - 现在 Shazam 识别成功后，网易云/酷狗搜索结果能正确显示在卡片中
+
 ## v0.4.14 (2026-04-20)
 - fix(ui): 适配卡片式搜索结果组件的深浅色主题
   - 为 PlatformResultWidget 和 SongResultCard 添加完整的主题颜色映射

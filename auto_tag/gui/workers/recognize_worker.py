@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QThread, Signal
 
 from auto_tag.audio_recognize import recognize_and_rename_file
+from auto_tag.music_library_manager import initialize as init_music_library
 
 if TYPE_CHECKING:
     from shazamio import Shazam
@@ -138,6 +139,9 @@ class RecognizeWorker(QThread):
 
         # 初始化计时器
         self.start_time = time.time()
+
+        # 预初始化 MusicLibrary（必须在子线程中初始化，避免线程安全问题）
+        init_music_library()
 
         # 动态导入 Shazam（避免在模块顶层导入）
         from shazamio import Shazam
