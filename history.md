@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.4.18 (2026-04-20)
+- fix(ui): 修复卡片式布局搜索结果完全不显示的问题
+  - 移除 QScrollArea 的透明背景样式，解决内容不可见问题
+  - 使用 UP/DOWN 图标替代可能不存在的 CHEVRON_UP/DOWN
+  - ToolButton 初始化时不传图标参数，避免构造函数异常
+  - 为 _on_file_processed 添加异常处理和详细日志
+  - 确保卡片创建失败时不会阻塞后续文件处理
+
 ## v0.4.17 (2026-04-20)
 - fix(ui): 修复展开/收起按钮图标不显示问题
   - 将 PushButton 改为 ToolButton 以正确显示 FluentIcon 图标

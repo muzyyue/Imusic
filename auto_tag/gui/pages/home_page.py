@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import shutil
 import time
+import logging
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
@@ -50,6 +51,8 @@ from auto_tag.audio_recognize import (
 from auto_tag.gui.i18n import tr
 from auto_tag.gui.workers import RecognizeWorker
 from auto_tag.gui.components.song_result_card import SongResultCard
+
+logger = logging.getLogger(__name__)
 
 
 # 平台名称映射
@@ -204,14 +207,6 @@ class HomePage(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         self.scroll_area.setMinimumHeight(400)
-        # 使滚动区域和视口透明以适配深色模式
-        self.scroll_area.setStyleSheet(
-            "QScrollArea { border: none; background-color: transparent; }"
-            "QScrollArea > QWidget { background-color: transparent; }"
-        )
-        self.scroll_area.viewport().setStyleSheet(
-            "background-color: transparent;"
-        )
 
         # 创建内容容器
         self.cards_container = QFrame()
@@ -414,39 +409,51 @@ class HomePage(QWidget):
         Args:
             result (dict): 单个文件的识别结果字典
         """
-        self.data.append(result)
-        file_path = result.get("file_path", "")
-        search_results = result.get("search_results", [])
-        has_error = "error" in result
+        try:
+            self.data.append(result)
+            file_path = result.get("file_path", "")
+            search_results = result.get("search_results", [])
+            has_error = "error" in result
 
-        # 存储搜索结果
-        self.search_results_map[file_path] = search_results
-        # 默认选择第一个（置信度最高的）结果
-        self._selected_results[file_path] = 0
+            # 存储搜索结果
+            self.search_results_map[file_path] = search_results
+            # 默认选择第一个（置信度最高的）结果
+            self._selected_results[file_path] = 0
 
-        # 显示文件名
-        display_name = os.path.basename(file_path) if file_path else "Unknown"
+            # 显示文件名
+            display_name = os.path.basename(file_path) if file_path else "Unknown"
 
-        # 创建歌曲卡片
-        card = SongResultCard(
-            file_path=file_path,
-            display_name=display_name,
-            search_results=search_results,
-            default_result=result if not search_results else None,
-            has_error=has_error,
-        )
+            # 创建歌曲卡片
+            card = SongResultCard(
+                file_path=file_path,
+                display_name=display_name,
+                search_results=search_results,
+                default_result=result if not search_results else None,
+                has_error=has_error,
+            )
 
-        # 设置选中变化回调
-        card.set_on_selection_changed(self._on_card_selection_changed)
+            # 设置选中变化回调
+            card.set_on_selection_changed(self._on_card_selection_changed)
 
-        # 添加到布局（在 stretch 之前插入）
-        self.cards_layout.insertWidget(
-            self.cards_layout.count() - 1,
-            card
-        )
+            # 添加到布局（在 stretch 之前插入）
+            self.cards_layout.insertWidget(
+                self.cards_layout.count() - 1,
+                card
+            )
 
-        # 保存卡片引用
-        self.song_cards[file_path] = card
+            # 保存卡片引用
+            self.song_cards[file_path] = card
+
+            logger.info(
+                f"[HomePage] Card created for {display_name}, "
+                f"results={len(search_results)}, error={has_error}"
+            )
+        except Exception as e:
+            logger.error(
+                f"[HomePage] Failed to create card for "
+                f"{result.get('file_path', 'unknown')}: {e}",
+                exc_info=True
+            )
 
     def _on_finished_all(self, results: list) -> None:
         """
