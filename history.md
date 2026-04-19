@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.4.22 (2026-04-20)
+- fix(core): 修复选择文件夹后应用直接崩溃的问题
+  - **根因**：pymusiclibrary 原生 C 库在子线程中调用导致 access violation（C 级别段错误）
+  - Python 无法捕获 C 级别崩溃，直接导致整个进程被 OS 终止
+  - **修复**：移除 RecognizeWorker 中的 init_music_library() 调用
+  - **策略**：默认完全禁用 pymusiclibrary，仅使用 Shazam 识别
+  - _init_permanently_failed 默认设为 True，multi_source_search 直接跳过
+
 ## v0.4.21 (2026-04-20)
 - fix(core): 修复 pymusiclibrary 原生库崩溃导致进度卡死的问题
   - 添加 _init_permanently_failed 标记，检测 access violation 后永久禁用

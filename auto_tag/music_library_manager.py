@@ -22,7 +22,8 @@ _kugou_api = None
 _initialized = False
 
 # 永久失败标记（原生库不兼容时设为 True，避免重复尝试）
-_init_permanently_failed = False
+# 默认禁用：pymusiclibrary 原生 C 库在 Windows 子线程中使用会导致 access violation 崩溃
+_init_permanently_failed = True
 
 
 def _patch_music_library():
