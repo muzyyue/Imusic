@@ -3,14 +3,14 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mp3ShazamAutoTag"
-version = "0.4.2"
+name = "Imusic"
+version = "0.4.6"
 description = "Use shazam to rename and filled the tag of a list of mp3 files."
 readme = "README.md"
 requires-python = ">=3.6"
 license = { file = "LICENSE" }
 authors = [
-    { name = "David Algis", email = "david.algis@tutamail.com" }
+    { name = "ling" }
 ]
 dependencies = [
     "mutagen",
@@ -32,8 +32,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/davidAlgis/mp3ShazamAutoTag"
-"Bug Tracker" = "https://github.com/davidAlgis/mp3ShazamAutoTag/issues"
+Homepage = "https://github.com/ling/Imusic"
+"Bug Tracker" = "https://github.com/ling/Imusic/issues"
 
 [tool.setuptools.packages.find]
 include = ["auto_tag*"]

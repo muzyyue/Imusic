@@ -1,8 +1,94 @@
 # 项目变更历史
 
-#0.4.2(2026-04-17)#添加网易云歌词模式选择功能（原始/合并/翻译）
+#0.4.6(2026-04-20)#将项目名称修改为 Imusic，作者修改为 ling
 
-#0.3.10(2026-04-17)#添加网易云音乐和酷狗音乐多数据源搜索支持
+## v0.4.6 (2026-04-20)
+- refactor: 将项目名称修改为 Imusic，作者修改为 ling
+  - pyproject.toml: name="Imusic", authors=[{name="ling"}]
+  - pyproject.toml: 更新 GitHub URLs 为 ling/Imusic
+  - Readme.md: 更新所有仓库链接和项目名称引用
+  - .trae/rules/program.md: 更新项目名称和作者信息
+
+#0.4.5(2026-04-20)#全面重构 UI 为扁平化设计风格，移除所有阴影和立体效果
+
+## v0.4.5 (2026-04-20)
+- feat(ui): **全面重构 UI 为扁平化设计风格**
+  - 创建全局扁平化 QSS 样式表 (auto_tag/gui/style.qss)
+    - 定义 15+ 种组件的扁平化样式（按钮、卡片、表格、输入框等）
+    - 实现深色/浅色主题双重支持
+    - 去除所有阴影效果，采用简洁边框设计
+    - 统一圆角半径为 6px，组件高度为 36px
+    - 主色调采用紫色 (#7c4dff)
+  - 修改 MainWindow 加载 QSS 样式表
+    - 新增 _load_stylesheet() 方法
+    - 在初始化时自动加载全局样式
+  - 调整所有页面布局间距
+    - 主布局边距从 40px 减至 20px
+    - 组件间距从 16-20px 减至 12px
+    - 输入区域组件间距从 12px 减至 10px
+    - 设置页面边距从 40px 减至 20px
+  - 优化对话框组件样式
+    - 移除 CoverPreviewDialog 阴影效果
+    - 将圆角从 12px 减至 6px
+    - 更新 SongSearchResultDialog 所有圆角为 6-8px
+    - 清理未使用的 QGraphicsDropShadowEffect 导入
+  - 保持所有现有功能完整性
+    - 23 个测试用例全部通过
+    - 不影响任何业务逻辑
+- style: 统一设计语言
+  - 采用扁平化设计原则（去除阴影、渐变、拟物化）
+  - 统一组件高度（36px）和圆角（6px）
+  - 优化视觉层次（减少间距、增强对比度）
+  - 适配不同分辨率（响应式布局）
+
+## v0.4.4 (2026-04-20)
+- docs(program): 全面更新项目技术规范文档
+  - 更新版本号至 0.4.3，添加歌词获取和元信息编辑核心功能
+  - 更新项目结构，新增 lyric/、music_library_manager.py、gui/components/、gui/workers/lyric_worker.py
+  - 更新依赖列表，新增 pymusiclibrary
+  - 新增 lyric 模块文档（LyricManager、MusicLibraryManager）
+  - 新增 MusicManagerPage 文档（文件列表、元信息编辑、封面管理、歌词获取）
+  - 新增歌词工作线程文档（LyricWorker、LyricEmbedWorker）
+  - 新增 SongSearchResultDialog 搜索结果选择对话框文档
+  - 新增 MetadataManager 元数据管理器文档
+  - 新增 CustomFormatManager 自定义格式管理器文档
+  - 更新数据流架构图，新增歌词管理和 pymusiclibrary 层
+  - 新增歌词获取策略和线程安全设计决策
+  - 更新测试策略，新增歌词相关测试用例和 Mock 策略
+  - 扩展开发指南，新增歌词提供商添加和歌词获取流程
+  - 更新 API 参考文档，新增 LyricManager/MusicLibraryManager/MetadataManager/SongSearchResultDialog/LyricWorker/CustomFormatManager
+
+#0.4.3(2026-04-19)#修复识别结果信息不显示和多源搜索失败问题
+
+## v0.4.3 (2026-04-19)
+- fix(core): **关键修复** - 解决 Shazam API 返回数据结构变化导致的解析崩溃
+  - 修复 `_parse_shazam_result` 函数中 `metadata` 字段类型错误（list vs dict）
+  - 兼容新旧两种 Shazam API 响应格式
+  - 添加类型检查和安全的时长提取逻辑，避免 AttributeError
+- fix(threading): **关键修复** - 解决 pymusiclibrary 多线程初始化崩溃问题
+  - 在主线程预初始化原生库，避免子线程中的内存访问违规
+  - 添加 `_preinit_music_library()` 方法，确保 ctypes 原生库安全加载
+  - 增强错误处理，预初始化失败时优雅降级（仅使用 Shazam）
+  - 新增 OSError 捕获，避免原生库初始化失败导致进程崩溃
+- test: 添加 v0.4.3 修复验证测试用例
+  - 测试 Shazam metadata 解析（dict/list 两种格式）
+  - 测试主线程预初始化功能
+  - 测试多源搜索流程（使用 mock）
+  - 测试数据流完整性
+  - 10 个测试用例全部通过
+- fix(ui): 修复 Shazam 识别后标题、艺术家等信息不显示的问题
+  - 改进 home_page.py 的回退逻辑，空字段显示 "--" 而非空白
+  - 添加详细的调试日志输出，便于定位数据流断裂点
+  - 增强字段验证，当所有基础字段为空时发出警告
+- fix(core): 修复网易云音乐和酷狗音乐多源搜索未生效的问题
+  - 增强 _search_netease 和 _search_kugou 的异常处理和日志输出
+  - 改进 multi_source_search 函数的错误处理，添加完整的堆栈跟踪
+  - 优化 API 响应解析逻辑，分步骤记录搜索过程
+  - 确保 Shazam 结果解析失败时不会阻塞其他平台搜索
+- refactor(logging): 统一日志规范
+  - 在 recognize_worker.py 和 home_page.py 中引入 logging 模块
+  - 使用 exc_info=True 输出完整异常堆栈
+  - 添加关键节点的状态日志（文件处理、搜索结果统计等）
 
 ## v0.4.2 (2026-04-17)
 - feat(lyric): 添加网易云歌词模式选择功能

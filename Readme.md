@@ -1,6 +1,6 @@
 # MP3 File Recognizer and Renamer
 
-[![Version](https://img.shields.io/badge/version-0.3.5-blue.svg)](https://github.com/davidAlgis/mp3ShazamAutoTag)
+[![Version](https://img.shields.io/badge/version-0.3.5-blue.svg)](https://github.com/ling/Imusic)
 [![Python](https://img.shields.io/badge/python-3.6%2B-brightgreen.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -27,7 +27,7 @@ This Python project automatically recognizes mp3 or ogg files using Shazam, rena
 
 ### Download Executable
 
-Download the latest release from [GitHub Releases](https://github.com/davidAlgis/mp3ShazamAutoTag/releases).
+Download the latest release from [GitHub Releases](https://github.com/ling/Imusic/releases).
 
 ### Manual Installation
 
@@ -39,8 +39,8 @@ pip install .
 
 **Note:**  
 - Ensure you have Python 3.6 or newer installed on your system.  
-- There might be some issues with Python 3.11 and 3.12 (see [Issue #1](https://github.com/davidAlgis/mp3ShazamAutoTag/issues/1)).  
-- macOS users may need to install *shazamio* manually (see [Issue #5](https://github.com/davidAlgis/mp3ShazamAutoTag/issues/5)).
+- There might be some issues with Python 3.11 and 3.12 (see [Issue #1](https://github.com/ling/Imusic/issues/1)).  
+- macOS users may need to install *shazamio* manually (see [Issue #5](https://github.com/ling/Imusic/issues/5)).
 
 ## 🚀 Usage
 
@@ -98,7 +98,7 @@ python main.py [options]
 ## 📁 Project Structure
 
 ```
-mp3ShazamAutoTag/
+Imusic/
 ├── main.py                    # Main entry point
 ├── pyproject.toml             # Project configuration (PEP 517/518)
 ├── requirements.txt           # Dependencies
@@ -209,8 +209,8 @@ This will create a **build** folder with the executable.
 
 ## 🐛 Known Issues
 
-1. **Python 3.11/3.12 Compatibility** - See [Issue #1](https://github.com/davidAlgis/mp3ShazamAutoTag/issues/1)
-2. **macOS shazamio Installation** - See [Issue #5](https://github.com/davidAlgis/mp3ShazamAutoTag/issues/5)
+1. **Python 3.11/3.12 Compatibility** - See [Issue #1](https://github.com/ling/Imusic/issues/1)
+2. **macOS shazamio Installation** - See [Issue #5](https://github.com/ling/Imusic/issues/5)
 3. **Antivirus False Positives** - The executable may be quarantined (source code is harmless)
 4. **FFmpeg Required** - Audio conversion requires FFmpeg to be installed on your system
 
