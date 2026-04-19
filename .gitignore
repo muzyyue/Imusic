@@ -8,10 +8,14 @@ dist/
 *.sublime-workspace
 *.log
 
-.trae/
+.trae/agents/
+.trae/documents/
+.trae/rules/project-rules.md
+.trae/skills/
+.trae/specs/
 # 测试文件
 # tests/
-history.md
+# history.md 已改为追踪，用于记录项目变更历史
 
 # 临时测试文件
 netease_api_test_report.json

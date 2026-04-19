@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from typing import TYPE_CHECKING
@@ -23,6 +24,9 @@ from auto_tag.audio_recognize import recognize_and_rename_file
 
 if TYPE_CHECKING:
     from shazamio import Shazam
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 
 class RecognizeWorker(QThread):
@@ -171,7 +175,16 @@ class RecognizeWorker(QThread):
 
             results.append(result)
 
-            # 发射单个文件处理完成信号
+            # 发射单个文件处理完成信号（带详细日志）
+            search_count = len(result.get("search_results", []))
+            has_error = "error" in result
+            logger.info(
+                f"[{os.path.basename(file_path)}] "
+                f"title={result.get('title', 'N/A')}, "
+                f"author={result.get('author', 'N/A')}, "
+                f"search_results={search_count}, "
+                f"error={has_error}"
+            )
             self.file_processed.emit(result)
 
             # 计算剩余时间

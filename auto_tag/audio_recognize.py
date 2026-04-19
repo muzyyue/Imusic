@@ -35,6 +35,9 @@ from auto_tag.utils import find_deepest_metadata_key, sanitize
 # 配置日志
 logger = logging.getLogger(__name__)
 
+# 导入全局 MusicLibrary 管理器
+from auto_tag.music_library_manager import initialize as init_music_library, get_netease_api, get_kugou_api
+
 
 # 多数据源搜索结果数据结构
 class SearchResult:
@@ -125,9 +128,31 @@ def _parse_shazam_result(track: dict) -> SearchResult:
     duration = 0
 
     # 尝试从 sections 中提取时长信息
+    # 注意：Shazam API 返回的 metadata 可能是 list 或 dict
     for section in track.get("sections", []):
         if section.get("type") == "SONG":
-            duration = section.get("metadata", {}).get("duration", 0) or 0
+            metadata = section.get("metadata")
+            if isinstance(metadata, dict):
+                # 旧版格式：metadata 是字典
+                duration = metadata.get("duration", 0) or 0
+            elif isinstance(metadata, list):
+                # 新版格式：metadata 是列表，需要查找 duration 条目
+                for item in metadata:
+                    if isinstance(item, dict):
+                        # 尝试通过 title 匹配
+                        if item.get("title") == "Duration":
+                            try:
+                                duration = int(item.get("text", 0)) or 0
+                            except (ValueError, TypeError):
+                                duration = 0
+                            break
+                        # 或者直接尝试获取 duration 键
+                        if "duration" in item:
+                            try:
+                                duration = int(item["duration"]) or 0
+                            except (ValueError, TypeError):
+                                duration = 0
+                            break
             break
 
     return SearchResult(
@@ -137,7 +162,7 @@ def _parse_shazam_result(track: dict) -> SearchResult:
         album=album,
         cover_link=cover,
         duration=duration,
-        confidence=1.0,  # Shazam 基于音频指纹，置信度最高
+        confidence=1.0,
         raw_data=track,
     )
 
@@ -254,25 +279,39 @@ async def _search_netease(keyword: str, limit: int = 5) -> list[SearchResult]:
     try:
         def _do_search() -> list[SearchResult]:
             try:
-                from MusicLibrary.neteaseCloudMusicApi import NeteaseCloudMusicApi
-
-                api = NeteaseCloudMusicApi()
+                api = get_netease_api()
+                if api is None:
+                    logger.warning("[NetEase] API not available")
+                    return []
+                    
                 logger.info(f"[NetEase] Searching: {keyword}")
                 response = api.search(keyword, limit=limit)
                 result = _extract_response_data(response)
 
-                if not result or "result" not in result:
-                    logger.warning(f"[NetEase] No results for: {keyword}, keys={list(result.keys()) if result else None}")
+                if not result:
+                    logger.warning(f"[NetEase] No response data for: {keyword}")
+                    return []
+
+                if "result" not in result:
+                    logger.warning(f"[NetEase] No 'result' key in response for: {keyword}, keys={list(result.keys())}")
                     return []
 
                 songs = result["result"].get("songs", [])
                 logger.info(f"[NetEase] Found {len(songs)} songs for: {keyword}")
-                return [_parse_netease_result(song) for song in songs[:limit]]
-            except ImportError as e:
-                logger.error(f"[NetEase] Import error: {e}")
+
+                if not songs:
+                    logger.warning(f"[NetEase] Empty songs list for: {keyword}")
+                    return []
+
+                parsed = [_parse_netease_result(song) for song in songs[:limit]]
+                logger.info(f"[NetEase] Parsed {len(parsed)} results")
+                return parsed
+
+            except OSError as e:
+                logger.error(f"[NetEase] Native library init failed: {e}")
                 return []
             except Exception as e:
-                logger.error(f"[NetEase] Search error: {e}")
+                logger.error(f"[NetEase] Search error: {e}", exc_info=True)
                 return []
 
         loop = asyncio.get_running_loop()
@@ -283,7 +322,7 @@ async def _search_netease(keyword: str, limit: int = 5) -> list[SearchResult]:
             future = executor.submit(_do_search.__wrapped__ if hasattr(_do_search, '__wrapped__') else _do_search())
             return future.result(timeout=30)
     except Exception as e:
-        logger.error(f"[NetEase] Async error: {e}")
+        logger.error(f"[NetEase] Async error: {e}", exc_info=True)
         return []
 
 
@@ -301,25 +340,39 @@ async def _search_kugou(keyword: str, limit: int = 5) -> list[SearchResult]:
     try:
         def _do_search_kugou() -> list[SearchResult]:
             try:
-                from MusicLibrary.kuGouMusicApi import KuGouMusicApi
-
-                api = KuGouMusicApi()
+                api = get_kugou_api()
+                if api is None:
+                    logger.warning("[KuGou] API not available")
+                    return []
+                    
                 logger.info(f"[KuGou] Searching: {keyword}")
                 response = api.search(keyword, limit=limit)
                 result = _extract_response_data(response)
 
-                if not result or "data" not in result:
-                    logger.warning(f"[KuGou] No results for: {keyword}, keys={list(result.keys()) if result else None}")
+                if not result:
+                    logger.warning(f"[KuGou] No response data for: {keyword}")
+                    return []
+
+                if "data" not in result:
+                    logger.warning(f"[KuGou] No 'data' key in response for: {keyword}, keys={list(result.keys())}")
                     return []
 
                 songs = result["data"].get("lists", []) if isinstance(result["data"], dict) else []
                 logger.info(f"[KuGou] Found {len(songs)} songs for: {keyword}")
-                return [_parse_kugou_result(song) for song in songs[:limit]]
-            except ImportError as e:
-                logger.error(f"[KuGou] Import error: {e}")
+
+                if not songs:
+                    logger.warning(f"[KuGou] Empty songs list for: {keyword}")
+                    return []
+
+                parsed = [_parse_kugou_result(song) for song in songs[:limit]]
+                logger.info(f"[KuGou] Parsed {len(parsed)} results")
+                return parsed
+
+            except OSError as e:
+                logger.error(f"[KuGou] Native library init failed: {e}")
                 return []
             except Exception as e:
-                logger.error(f"[KuGou] Search error: {e}")
+                logger.error(f"[KuGou] Search error: {e}", exc_info=True)
                 return []
 
         loop = asyncio.get_running_loop()
@@ -330,7 +383,7 @@ async def _search_kugou(keyword: str, limit: int = 5) -> list[SearchResult]:
             future = executor.submit(_do_search_kugou)
             return future.result(timeout=30)
     except Exception as e:
-        logger.error(f"[KuGou] Async error: {e}")
+        logger.error(f"[KuGou] Async error: {e}", exc_info=True)
         return []
 
 
@@ -363,11 +416,15 @@ async def multi_source_search(
 
     # 如果已有 Shazam 结果，直接解析
     if shazam_result and "track" in shazam_result:
-        shazam_result_obj = _parse_shazam_result(shazam_result["track"])
-        all_results.append(shazam_result_obj)
-        logger.info(f"[MultiSource] Shazam result added: {shazam_result_obj.title}")
+        try:
+            shazam_result_obj = _parse_shazam_result(shazam_result["track"])
+            all_results.append(shazam_result_obj)
+            logger.info(f"[MultiSource] Shazam result added: {shazam_result_obj.title} - {shazam_result_obj.artist}")
+        except Exception as e:
+            logger.error(f"[MultiSource] Failed to parse Shazam result: {e}", exc_info=True)
 
     # 并发搜索网易云和酷狗
+    logger.info(f"[MultiSource] Launching concurrent searches for NetEase and KuGou...")
     netease_task = asyncio.create_task(_search_netease(keyword, limit))
     kugou_task = asyncio.create_task(_search_kugou(keyword, limit))
 
@@ -378,20 +435,29 @@ async def multi_source_search(
 
     # 处理异常结果
     if isinstance(netease_results, Exception):
-        logger.error(f"[MultiSource] NetEase search exception: {netease_results}")
+        logger.error(f"[MultiSource] NetEase search exception: {netease_results}", exc_info=True)
         netease_results = []
+    elif isinstance(netease_results, list):
+        logger.info(f"[MultiSource] NetEase returned {len(netease_results)} results")
+    else:
+        logger.warning(f"[MultiSource] NetEase returned unexpected type: {type(netease_results)}")
+        netease_results = []
+
     if isinstance(kugou_results, Exception):
-        logger.error(f"[MultiSource] KuGou search exception: {kugou_results}")
+        logger.error(f"[MultiSource] KuGou search exception: {kugou_results}", exc_info=True)
+        kugou_results = []
+    elif isinstance(kugou_results, list):
+        logger.info(f"[MultiSource] KuGou returned {len(kugou_results)} results")
+    else:
+        logger.warning(f"[MultiSource] KuGou returned unexpected type: {type(kugou_results)}")
         kugou_results = []
 
-    logger.info(f"[MultiSource] NetEase: {len(netease_results)} results, KuGou: {len(kugou_results)} results")
-    
     all_results.extend(netease_results)  # type: ignore[arg-type]
     all_results.extend(kugou_results)  # type: ignore[arg-type]
 
     # 按置信度降序排序
     all_results.sort(key=lambda x: x.confidence, reverse=True)
-    
+
     logger.info(f"[MultiSource] Total results: {len(all_results)}")
     for r in all_results:
         logger.info(f"  - [{r.source}] {r.title} - {r.artist}")
@@ -417,6 +483,9 @@ async def find_and_recognize_audio_files(
     - copy_to: if given, base dir to copy files into (instead of moving)
     - tag_only: if True, update tags/cover only on the original file (no rename/move).
     """
+    # 预初始化 MusicLibrary（必须在主线程/主事件循环中）
+    init_music_library()
+    
     exts = {e.lower().lstrip(".") for e in extensions}
     audio_files: list[str] = []
     for root, _, files in os.walk(folder_path):

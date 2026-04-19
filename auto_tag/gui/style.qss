@@ -1,0 +1,48 @@
+/**
+ * MP3 Shazam Auto Tag - 窗口扁平化样式表
+ * 
+ * 设计风格：扁平化 (Flat Design)
+ * 仅调整窗口边框和整体尺寸，不影响内部组件样式
+ * 
+ * @version 1.0.0
+ * @author UI Designer
+ */
+
+/* ==========================================
+   滚动条 - 扁平化设计
+   ========================================== */
+
+QScrollBar:vertical,
+QScrollBar:horizontal {
+    background-color: transparent;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical,
+QScrollBar::handle:horizontal {
+    background-color: #c0c0c0;
+    border-radius: 4px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover,
+QScrollBar::handle:horizontal:hover {
+    background-color: #a0a0a0;
+}
+
+QScrollBar::add-line,
+QScrollBar::sub-line,
+QScrollBar::add-page,
+QScrollBar::sub-page {
+    background-color: transparent;
+    border: none;
+}
+
+/* 深色主题滚动条 */
+[theme="dark"] QScrollBar::handle {
+    background-color: #666666;
+}
+
+[theme="dark"] QScrollBar::handle:hover {
+    background-color: #888888;
+}

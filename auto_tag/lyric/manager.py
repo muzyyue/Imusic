@@ -17,6 +17,7 @@ from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
 
 from .provider import get_provider, get_provider_api
+from auto_tag.music_library_manager import get_netease_api, get_kugou_api, initialize as init_music_library
 
 
 class LyricManager:
@@ -32,10 +33,11 @@ class LyricManager:
     - 歌词格式转换（LRC、TTML、SRT、JSON）
 
     支持的音频格式：
-    - MP3（ID3 标签）
-    - FLAC
-    - M4A
-    - OGG（Vorbis/Opus）
+    - MP3：使用 eyed3 处理 ID3 标签（USLT/SYLT 帧）
+    - FLAC：使用 mutagen.flac.FLAC（LYRICS Vorbis Comment）
+    - M4A：使用 mutagen.mp4.MP4（©lyr iTunes 原子）
+    - OGG：使用 mutagen.oggvorbis.OggVorbis（LYRICS Vorbis Comment）
+    - OPUS：使用 mutagen.oggopus.OggOpus（LYRICS Vorbis Comment）
     """
 
     def __init__(self):
@@ -49,6 +51,27 @@ class LyricManager:
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
+        
+        # 预初始化 MusicLibrary（确保全局单例）
+        init_music_library()
+    
+    def _get_netease_api(self):
+        """
+        安全获取 NetEase API 实例（使用全局管理器）
+        
+        Returns:
+            NeteaseCloudMusicApi or None: API 实例，未初始化则返回 None
+        """
+        return get_netease_api()
+    
+    def _get_kugou_api(self):
+        """
+        安全获取 KuGou API 实例（使用全局管理器）
+        
+        Returns:
+            KuGouMusicApi or None: API 实例，未初始化则返回 None
+        """
+        return get_kugou_api()
 
     def fetch_lyrics(
         self,
@@ -156,15 +179,15 @@ class LyricManager:
             return []
 
         try:
-            # 导入 MusicLibrary
-            from MusicLibrary.neteaseCloudMusicApi import NeteaseCloudMusicApi
-            from MusicLibrary.kuGouMusicApi import KuGouMusicApi
-
-            # 根据提供商创建对应的 API 客户端
+            # 根据提供商获取对应的 API 客户端
             if provider == 'netease':
-                api = NeteaseCloudMusicApi()
+                api = self._get_netease_api()
             else:
-                api = KuGouMusicApi()
+                api = self._get_kugou_api()
+            
+            if api is None:
+                self.logger.error(f"无法初始化 {provider} API")
+                return []
 
             # 从音频文件提取元数据
             metadata = self._extract_audio_metadata(file_path)
@@ -172,8 +195,60 @@ class LyricManager:
                 self.logger.error(f"无法提取音频元数据: {file_path}")
                 return []
 
+            # 调试日志：输出提取到的元数据
+            self.logger.info(f"[DEBUG] 提取到元数据: {metadata}")
+
+            # 构建搜索关键词（优化策略：优先使用歌曲名以提高匹配度）
+            import re
+
+            title = metadata.get('title', '').strip()
+            artist = metadata.get('artist', '').strip()
+
+            # 如果标题和艺术家都为空，尝试从文件名解析
+            if not title and not artist:
+                filename = os.path.basename(file_path)
+                self.logger.warning(f"ID3标签为空，使用文件名: {filename}")
+                name_without_ext = os.path.splitext(filename)[0]
+                if ' - ' in name_without_ext:
+                    parts = name_without_ext.split(' - ', 1)
+                    artist = parts[0].strip()
+                    title = parts[1].strip() if len(parts) > 1 else ''
+                else:
+                    title = name_without_ext
+
+            # 优化搜索关键词构建策略
+            # 策略：优先使用歌曲名，避免过长导致搜索不准确
+            if title:
+                # 清理标题中的常见修饰词和特殊字符
+                # 支持格式：
+                #   - "Song Name - Movie Ver."
+                #   - "Song Name (Key E Ver.)"
+                #   - "Song Name [Remix]"
+                clean_title = re.sub(
+                    r'[\s\-–—(\[]+(Movie|Piano|Short|Full|Key\s*\w)?\s*Ver\.?(\.|\)|\])?'
+                    r'|[\s\-–—(\[]+(Live|Acoustic|Remix|Cover|Inst\.?|Instrumental)'
+                    r'|[\s\-–—(\[]*(feat\.?|ft\.?)\s+.*'
+                    r'|[\s\-–—(\[]*[\d]{1,2}nd?\s*(Anniversary|Edition)?',
+                    '',
+                    title,
+                    flags=re.IGNORECASE
+                ).strip()
+
+                # 如果清理后的标题长度足够（>=4个字符），优先只用标题
+                if len(clean_title) >= 4:
+                    keyword = clean_title
+                elif artist and len(artist) > 2:
+                    # 标题太短时，组合艺术家+标题（但限制总长度）
+                    keyword = f"{artist} {clean_title}".strip()
+                else:
+                    keyword = clean_title
+            else:
+                # 没有标题，使用艺术家或文件名
+                keyword = artist or os.path.splitext(os.path.basename(file_path))[0]
+
+            self.logger.info(f"[DEBUG] 搜索关键词: '{keyword}' (原始title='{title}', 原始artist='{artist}')")
+
             # 搜索歌曲
-            keyword = f"{metadata['artist']} {metadata['title']}"
             search_result = api.search(keyword)
 
             if not search_result or not hasattr(search_result, 'body'):
@@ -214,15 +289,15 @@ class LyricManager:
             dict | None: 歌词数据字典
         """
         try:
-            # 导入 MusicLibrary
-            from MusicLibrary.neteaseCloudMusicApi import NeteaseCloudMusicApi
-            from MusicLibrary.kuGouMusicApi import KuGouMusicApi
-
-            # 根据提供商创建对应的 API 客户端
+            # 根据提供商获取对应的 API 客户端
             if provider == 'netease':
-                api = NeteaseCloudMusicApi()
+                api = self._get_netease_api()
             else:
-                api = KuGouMusicApi()
+                api = self._get_kugou_api()
+            
+            if api is None:
+                self.logger.error(f"无法初始化 {provider} API")
+                return None
 
             # 获取歌词
             lyric_data = api.lyric(id=song_id)
@@ -303,15 +378,15 @@ class LyricManager:
             dict | None: 歌词数据字典
         """
         try:
-            # 导入 MusicLibrary
-            from MusicLibrary.neteaseCloudMusicApi import NeteaseCloudMusicApi
-            from MusicLibrary.kuGouMusicApi import KuGouMusicApi
-
-            # 根据提供商创建对应的 API 客户端
+            # 根据提供商获取对应的 API 客户端
             if provider == 'netease':
-                api = NeteaseCloudMusicApi()
+                api = self._get_netease_api()
             else:
-                api = KuGouMusicApi()
+                api = self._get_kugou_api()
+            
+            if api is None:
+                self.logger.error(f"无法初始化 {provider} API")
+                return None
 
             # 从音频文件提取元数据
             metadata = self._extract_audio_metadata(file_path)
@@ -603,6 +678,138 @@ class LyricManager:
         
         return lrc_dict
 
+    @staticmethod
+    def parse_lrc_duration(lrc_text: str) -> float:
+        """
+        解析 LRC 歌词文本，提取总时长（秒）
+
+        通过正则表达式匹配所有时间戳 [mm:ss.xx] 或 [mm:ss.xxx]，
+        返回最大的时间值作为歌词总时长。
+
+        Args:
+            lrc_text (str): LRC 格式的歌词文本
+
+        Returns:
+            float: 歌词总时长（秒），无法解析时返回 0.0
+
+        Example:
+            >>> lrc = "[00:00.00]故事的小黄花\\n[04:29.65]从出生那年就飘着"
+            >>> duration = LyricManager.parse_lrc_duration(lrc)
+            >>> print(f"歌词总时长: {duration:.2f} 秒")
+            歌词总时长: 269.65 秒
+        """
+        if not lrc_text or not isinstance(lrc_text, str):
+            return 0.0
+
+        import re
+
+        # 匹配 LRC 时间戳格式：[mm:ss.xx] 或 [mm:ss.xxx]
+        # 支持毫秒精度为 2 位或 3 位
+        pattern = r'\[(\d{1,2}):(\d{2})\.(\d{2,3})\]'
+        matches = re.findall(pattern, lrc_text)
+
+        if not matches:
+            return 0.0
+
+        max_duration = 0.0
+        for minutes, seconds, milliseconds in matches:
+            try:
+                # 转换为秒
+                total_seconds = (
+                    int(minutes) * 60 +
+                    int(seconds) +
+                    int(milliseconds.ljust(3, '0')[:3]) / 1000.0  # 统一为 3 位毫秒
+                )
+                if total_seconds > max_duration:
+                    max_duration = total_seconds
+            except (ValueError, IndexError):
+                continue
+
+        return round(max_duration, 2)
+
+    @staticmethod
+    def calculate_duration_match_ratio(
+        song_duration: float,
+        lyric_duration: float,
+        threshold: float = 0.10
+    ) -> dict[str, Any]:
+        """
+        计算歌曲时长与歌词时长的匹配度
+
+        对比音频文件实际时长和歌词总时长，
+        计算差异百分比并判断是否在可接受范围内。
+
+        Args:
+            song_duration (float): 歌曲实际时长（秒）
+            lyric_duration (float): 歌词总时长（秒）
+            threshold (float): 允许的差异阈值（默认 10%）
+
+        Returns:
+            dict: 匹配结果字典，包含：
+                - song_duration: 歌曲时长（格式化字符串）
+                - lyric_duration: 歌词时长（格式化字符串）
+                - difference: 差异（秒）
+                - ratio: 差异百分比
+                - is_match: 是否匹配（布尔值）
+                - match_level: 匹配等级 ('excellent' | 'good' | 'warning' | 'mismatch')
+                - message: 提示消息
+
+        Example:
+            >>> result = LyricManager.calculate_duration_match_ratio(269, 265)
+            >>> print(result['match_level'])
+            excellent
+        """
+        if song_duration <= 0 or lyric_duration <= 0:
+            return {
+                'song_duration': '--:--',
+                'lyric_duration': '--:--',
+                'difference': 0,
+                'ratio': 0,
+                'is_match': False,
+                'match_level': 'unknown',
+                'message': tr('duration_unknown') if 'tr' in dir() else '时长信息未知'
+            }
+
+        # 计算差异
+        difference = abs(song_duration - lyric_duration)
+        ratio = difference / song_duration if song_duration > 0 else 1.0
+
+        # 格式化时长显示
+        def format_duration(seconds: float) -> str:
+            if seconds <= 0:
+                return '--:--'
+            mins = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{mins:02d}:{secs:02d}"
+
+        # 判断匹配等级
+        if ratio <= 0.03:  # 差异 ≤ 3%
+            match_level = 'excellent'
+            is_match = True
+            message = tr('duration_excellent_match') if 'tr' in dir() else '时长完美匹配'
+        elif ratio <= 0.07:  # 差异 ≤ 7%
+            match_level = 'good'
+            is_match = True
+            message = tr('duration_good_match') if 'tr' in dir() else '时长基本匹配'
+        elif ratio <= threshold:  # 差异 ≤ 阈值（默认 10%）
+            match_level = 'warning'
+            is_match = True
+            message = tr('duration_warning') if 'tr' in dir() else f'时长差异 {ratio*100:.1f}%，请确认'
+        else:  # 差异 > 阈值
+            match_level = 'mismatch'
+            is_match = False
+            message = tr('duration_mismatch') if 'tr' in dir() else f'时长差异过大 ({ratio*100:.1f}%)，可能不匹配'
+
+        return {
+            'song_duration': format_duration(song_duration),
+            'lyric_duration': format_duration(lyric_duration),
+            'difference': round(difference, 2),
+            'ratio': round(ratio * 100, 2),
+            'is_match': is_match,
+            'match_level': match_level,
+            'message': message
+        }
+
     def _extract_audio_metadata(self, file_path: str) -> dict[str, Any] | None:
         """
         从音频文件提取元数据
@@ -694,7 +901,8 @@ class LyricManager:
         self,
         file_path: str,
         lyrics: str,
-        format: str = 'lrc'
+        format: str = 'lrc',
+        mode: str = 'embed_only'
     ) -> bool:
         """
         将歌词嵌入到音频文件
@@ -703,37 +911,44 @@ class LyricManager:
             file_path: 音频文件路径
             lyrics: 歌词内容（LRC、TTML、SRT 或 JSON 格式）
             format: 歌词格式（'lrc', 'ttml', 'srt', 'json'）
+            mode: 嵌入模式
+                - 'embed_only' (默认): 仅嵌入音频文件，不生成 .lrc 文件
+                - 'embed_and_lrc': 嵌入音频文件 + 生成同名 .lrc 文件
 
         Returns:
             bool: 嵌入成功返回 True，失败返回 False
 
         Raises:
             FileNotFoundError: 文件不存在
-            ValueError: 不支持的歌词格式
+            ValueError: 不支持的歌词格式或嵌入模式
 
         Example:
             >>> manager = LyricManager()
             >>> lyrics = "[00:00.00]第一行歌词\\n[00:05.00]第二行歌词"
-            >>> success = manager.embed_lyrics('song.mp3', lyrics, 'lrc')
+            >>> success = manager.embed_lyrics('song.mp3', lyrics, 'lrc', 'embed_only')
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"文件不存在: {file_path}")
 
-        # 验证格式
         supported_formats = ['lrc', 'ttml', 'srt', 'json']
         if format.lower() not in supported_formats:
             raise ValueError(
                 f"不支持的歌词格式: {format}, 支持的格式: {supported_formats}"
             )
 
+        supported_modes = ['embed_only', 'embed_and_lrc']
+        if mode not in supported_modes:
+            raise ValueError(
+                f"不支持的嵌入模式: {mode}, 支持的模式: {supported_modes}"
+            )
+
         ext = os.path.splitext(file_path)[1].lower()
 
         try:
-            # 首先尝试使用 eyed3 直接嵌入（不依赖 lrxy）
             if ext == '.mp3':
-                return self._embed_mp3_lyrics(file_path, lyrics, format)
+                return self._embed_mp3_lyrics(file_path, lyrics, format, mode)
             elif ext in ['.flac', '.m4a', '.ogg']:
-                return self._embed_generic_lyrics(file_path, lyrics, format)
+                return self._embed_generic_lyrics(file_path, lyrics, format, mode)
             else:
                 self.logger.warning(f"不支持的文件格式: {ext}")
                 return False
@@ -742,24 +957,30 @@ class LyricManager:
             self.logger.error(f"嵌入歌词失败: {file_path}, 错误: {e}")
             return False
 
-    def _embed_mp3_lyrics(self, file_path: str, lyrics: str, format: str) -> bool:
+    def _embed_mp3_lyrics(
+        self,
+        file_path: str,
+        lyrics: str,
+        format: str,
+        mode: str = 'embed_only'
+    ) -> bool:
         """
-        使用 eyed3 将歌词嵌入到 MP3 文件，并生成独立的 LRC 文件
+        使用 eyed3 将歌词嵌入到 MP3 文件
 
         Args:
             file_path: MP3 文件路径
             lyrics: 歌词内容
             format: 歌词格式
+            mode: 嵌入模式 ('embed_only' 或 'embed_and_lrc')
 
         Returns:
             bool: 成功返回 True
 
         Note:
-            网易云音乐不支持读取 ID3v2 的 USLT 帧，因此需要生成独立的 LRC 文件。
-            LRC 文件要求：
-            1. 文件名与 MP3 文件完全相同（除扩展名）
-            2. 编码必须是 UTF-8 无 BOM
-            3. 与 MP3 文件位于同一目录
+            - 优先使用 SYLT 帧（同步歌词帧，如果歌词包含时间戳）
+            - 同时写入 USLT 帧（无同步歌词，广泛支持）
+            - 同时写入 TXXX 帧，description 设为 'UNSYNCEDLYRICS'（iTunes 兼容）
+            - 仅在 mode='embed_and_lrc' 时生成独立 .lrc 文件（网易云音乐需要）
         """
         audio = eyed3.load(file_path)
         if audio is None:
@@ -770,52 +991,125 @@ class LyricManager:
             audio.initTag()
 
         tag = audio.tag
+        lyrics_embedded = False
 
-        # 嵌入同步歌词（USLT 帧 - 其他播放器识别此格式，但网易云音乐不支持）
-        # 使用 USLT (Unsynchronized Lyrics) 格式，这是最广泛支持的格式
-        try:
-            # eyed3 要求歌词内容为字符串
-            tag.lyrics.set(lyrics, lang=b'eng', description=b'')
-        except (TypeError, AttributeError):
-            # 某些版本的 eyed3 可能需要不同的参数格式
+        has_timestamps = '[' in lyrics and ']' in lyrics
+
+        if has_timestamps:
             try:
-                # 尝试使用字符串参数
-                tag.lyrics.set(lyrics, lang='eng', description='')
+                self._embed_synced_lyrics_frame(tag, lyrics)
+                lyrics_embedded = True
             except Exception as e:
-                self.logger.warning(f"使用备用方法嵌入歌词: {e}")
-                # 最后的备用方案：使用 user_text_frames
-                try:
-                    tag.user_text_frames.set(lyrics, description='LYRICS')
-                except Exception:
-                    pass
+                self.logger.warning(f"SYLT 帧嵌入失败: {e}")
 
-        # 同时保存为 TXXX 帧（某些播放器支持）
         try:
-            tag.user_text_frames.set(lyrics, description='SYNCEDLYRICS')
-        except Exception:
-            pass
+            self._embed_unsynced_lyrics_frame(tag, lyrics)
+            lyrics_embedded = True
+        except Exception as e:
+            self.logger.error(f"USLT 帧嵌入失败: {e}")
+            return False
 
-        # 保存文件 - 使用 tag.save() 而不是 audio.save()
+        try:
+            tag.user_text_frames.set(lyrics, description='UNSYNCEDLYRICS')
+        except Exception as e:
+            self.logger.debug(f"TXXX 帧写入失败: {e}")
+
         try:
             tag.save()
         except AttributeError:
-            # 某些版本的 eyed3 可能使用不同的保存方法
             try:
                 audio.save()
             except AttributeError:
-                # 最后尝试直接写入文件
                 with open(file_path, 'r+b') as f:
                     tag.save(f)
 
-        # 生成独立的 LRC 文件（网易云音乐需要）
-        lrc_success = self._generate_lrc_file(file_path, lyrics)
-        
-        if lrc_success:
-            self.logger.info(f"成功嵌入歌词到 MP3 并生成 LRC 文件: {file_path}")
+        if not lyrics_embedded:
+            self.logger.error("所有歌词帧都未能成功嵌入")
+            return False
+
+        if mode == 'embed_and_lrc':
+            lrc_success = self._generate_lrc_file(file_path, lyrics)
+            if lrc_success:
+                self.logger.info(f"成功嵌入歌词并生成 LRC 文件: {file_path}")
+            else:
+                self.logger.warning(f"歌词嵌入成功，但 LRC 文件生成失败: {file_path}")
         else:
-            self.logger.warning(f"成功嵌入歌词到 MP3，但 LRC 文件生成失败: {file_path}")
-        
+            self.logger.info(f"成功嵌入歌词到 MP3 (仅嵌入模式): {file_path}")
+
         return True
+
+    def _embed_synced_lyrics_frame(self, tag, lyrics: str) -> None:
+        """
+        嵌入同步歌词（SYLT 帧）
+        某些播放器（如 Foobar2000）支持此格式。
+        """
+        try:
+            import re
+            time_pattern = re.compile(r'\[(\d{2}):(\d{2})\.(\d{2,3})\]')
+            matches = time_pattern.findall(lyrics)
+            if not matches:
+                return
+
+            timestamp_millis = []
+            for mm, ss, frac in matches:
+                millis = (int(mm) * 60 + int(ss)) * 1000 + int(frac.ljust(3, '0')[:3])
+                timestamp_millis.append(millis)
+
+            text_without_tags = time_pattern.sub('', lyrics)
+            lines = [line for line in text_without_tags.split('\n') if line.strip()]
+            line_count = min(len(lines), len(timestamp_millis))
+
+            if line_count == 0:
+                return
+
+            import eyed3.id3
+            import struct
+            timestamp_format = 1
+            content_type = 1
+
+            frame = eyed3.id3.SyltFrame()
+            frame.timestamp_format = timestamp_format
+            frame.content_type = content_type
+            frame.language = b'eng'
+            frame.content_descriptor = ''
+
+            text_content = []
+            for i in range(line_count):
+                text_content.append((lines[i], timestamp_millis[i]))
+
+            frame.text = text_content
+            frame.encoding = eyed3.id3.UTF_8_ENCODING
+
+            tag.synchronized_lyrics.set(frame)
+            self.logger.debug("成功写入 SYLT 帧")
+
+        except Exception as e:
+            self.logger.debug(f"SYLT 帧写入失败（fallback 到 USLT）: {e}")
+
+    def _embed_unsynced_lyrics_frame(self, tag, lyrics: str) -> None:
+        """
+        嵌入无同步歌词（USLT 帧）
+        这是最广泛支持的歌词帧格式。
+
+        Note:
+            eyed3 v0.9.9 的 tag.lyrics.set() 要求使用**位置参数**而非关键字参数！
+            签名: set(text: str, lang: str, description: bytes)
+        """
+        try:
+            # eyed3 v0.9.9 decorator requires positional arguments!
+            tag.lyrics.set(lyrics, 'eng', b'')
+            self.logger.debug("成功写入 USLT 帧")
+        except TypeError:
+            # 某些版本的 eyed3 可能要求 description 为 str
+            try:
+                tag.lyrics.set(lyrics, 'eng', '')
+                self.logger.debug("成功写入 USLT 帧 (str description)")
+            except Exception as e:
+                self.logger.warning(f"USLT 帧写入失败: {e}")
+                raise
+        except Exception as e:
+            self.logger.warning(f"USLT 帧写入失败: {e}")
+            raise
 
     def _generate_lrc_file(self, file_path: str, lyrics: str) -> bool:
         """
@@ -853,32 +1147,79 @@ class LyricManager:
             self.logger.error(f"生成 LRC 文件失败: {file_path}, 错误: {e}")
             return False
 
-    def _embed_generic_lyrics(self, file_path: str, lyrics: str, format: str) -> bool:
+    def _embed_generic_lyrics(
+        self,
+        file_path: str,
+        lyrics: str,
+        format: str,
+        mode: str = 'embed_only'
+    ) -> bool:
         """
         将歌词嵌入到通用音频文件（FLAC/M4A/OGG）
+        使用 mutagen 格式特定的 API 进行嵌入。
 
         Args:
             file_path: 音频文件路径
             lyrics: 歌词内容
             format: 歌词格式
+            mode: 嵌入模式 ('embed_only' 或 'embed_and_lrc')
 
         Returns:
             bool: 成功返回 True
         """
-        audio = File(file_path, easy=True)
-        if audio is None:
-            self.logger.error(f"无法加载音频文件: {file_path}")
+        ext = os.path.splitext(file_path)[1].lower()
+
+        try:
+            if ext == '.flac':
+                from mutagen.flac import FLAC
+                audio = FLAC(file_path)
+                audio['LYRICS'] = lyrics
+                audio.save()
+                self.logger.debug("FLAC: 使用 mutagen.FLAC 写入 LYRICS 标签")
+
+            elif ext == '.ogg':
+                from mutagen.oggvorbis import OggVorbis
+                audio = OggVorbis(file_path)
+                audio['LYRICS'] = lyrics
+                audio.save()
+                self.logger.debug("OGG: 使用 mutagen.OggVorbis 写入 LYRICS 标签")
+
+            elif ext == '.opus':
+                audio = OggOpus(file_path)
+                audio['LYRICS'] = lyrics
+                audio.save()
+                self.logger.debug("OPUS: 使用 mutagen.OggOpus 写入 LYRICS 标签")
+
+            elif ext in ('.m4a', '.mp4'):
+                from mutagen.mp4 import MP4
+                audio = MP4(file_path)
+                audio['\xa9lyr'] = lyrics
+                audio.save()
+                self.logger.debug("M4A: 使用 mutagen.MP4 写入 ©lyr 原子")
+
+            else:
+                audio = File(file_path)
+                if audio is None:
+                    self.logger.error(f"无法识别的音频格式: {ext}")
+                    return False
+                audio['LYRICS'] = lyrics
+                audio.save()
+                self.logger.debug(f"{ext.upper()}: 使用 mutagen.File 写入 LYRICS 标签")
+
+            if mode == 'embed_and_lrc':
+                lrc_success = self._generate_lrc_file(file_path, lyrics)
+                if lrc_success:
+                    self.logger.info(f"成功嵌入歌词并生成 LRC 文件: {file_path}")
+                else:
+                    self.logger.warning(f"歌词嵌入成功，但 LRC 文件生成失败: {file_path}")
+            else:
+                self.logger.info(f"成功嵌入歌词 (仅嵌入模式): {file_path}")
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"使用 mutagen 嵌入歌词失败: {file_path}, 错误: {e}")
             return False
-
-        # 保存同步歌词
-        audio['LYRICS'] = lyrics
-        audio['SYNCEDLYRICS'] = lyrics
-
-        # 保存文件
-        audio.save()
-
-        self.logger.info(f"成功嵌入歌词: {file_path}")
-        return True
 
     def extract_lyrics(self, file_path: str) -> dict[str, Any] | None:
         """
@@ -1381,7 +1722,8 @@ class LyricManager:
     def batch_embed_lyrics(
         self,
         file_lyrics_pairs: list[tuple[str, str]],
-        format: str = 'lrc'
+        format: str = 'lrc',
+        mode: str = 'embed_only'
     ) -> dict[str, bool]:
         """
         批量嵌入歌词
@@ -1389,6 +1731,7 @@ class LyricManager:
         Args:
             file_lyrics_pairs: 文件路径和歌词内容的元组列表
             format: 歌词格式
+            mode: 嵌入模式 ('embed_only' 或 'embed_and_lrc')
 
         Returns:
             dict[str, bool]: 文件路径到操作结果的映射
@@ -1398,13 +1741,13 @@ class LyricManager:
             >>> results = manager.batch_embed_lyrics([
             ...     ('song1.mp3', '[00:00.00]歌词1'),
             ...     ('song2.flac', '[00:00.00]歌词2')
-            ... ], format='lrc')
+            ... ], format='lrc', mode='embed_only')
         """
         results = {}
 
         for file_path, lyrics in file_lyrics_pairs:
             try:
-                success = self.embed_lyrics(file_path, lyrics, format)
+                success = self.embed_lyrics(file_path, lyrics, format, mode)
                 results[file_path] = success
             except Exception as e:
                 self.logger.error(f"批量嵌入歌词失败: {file_path}, 错误: {e}")

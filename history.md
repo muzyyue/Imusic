@@ -1,8 +1,46 @@
 # 项目变更历史
 
-#0.4.7(2026-04-20)#在 Readme.md 中添加对原仓库 mp3ShazamAutoTag 的感谢
+## v0.4.10 (2026-04-20)
+- feat(ui): 调整主窗口尺寸为扁平化布局
+  - 窗口尺寸从 1000×800 调整为 1200×650
+  - 宽度增加 20%，高度减少 19%，使界面更加扁平化
+  - 内部组件（按钮、表格、布局间距等）保持原样不变
+- feat(lyric): 重构歌词嵌入架构，MP3 使用 eyed3，其他格式使用 mutagen 格式特定 API
+  - MP3: 使用 eyed3 处理 ID3 标签（USLT/SYLT 帧，位置参数修复）
+  - FLAC: 使用 mutagen.flac.FLAC（LYRICS Vorbis Comment）
+  - OGG: 使用 mutagen.oggvorbis.OggVorbis（LYRICS Vorbis Comment）
+  - OPUS: 使用 mutagen.oggopus.OggOpus（LYRICS Vorbis Comment）
+  - M4A: 使用 mutagen.mp4.MP4（©lyr iTunes 原子）
+  - 移除通用的 File(file_path, easy=True)，改用格式特定 API
+- fix(lyric): 修复 eyed3 v0.9.9 歌词嵌入失败问题
+  - tag.lyrics.set() 要求位置参数而非关键字参数
+  - 修复: tag.lyrics.set(lyrics, 'eng', b'') 
+- fix(lyric): 修复保存歌词和嵌入歌词按钮的错误提示
+  - 失败时显示正确的错误消息而非成功消息
+- feat(lyric): 新增歌词嵌入模式选择器
+  - 仅嵌入文件（默认）：仅写入 ID3/Vorbis 标签
+  - 嵌入文件 + 生成 LRC：兼容网易云音乐
+- feat(lyric): 新增保存歌词按钮（保存用户编辑的歌词到文件）
+- fix(core): 修复 pymusiclibrary 多线程崩溃问题
+  - 创建全局单例管理器 (music_library_manager.py)
+  - Monkey Patch 修复 NeteaseCloudMusicApi 初始化失败时的 AttributeError
+  - 确保 API 实例只在主线程初始化一次
 
-## v0.4.7 (2026-04-20)
+## v0.4.9 (2026-04-20)
+- refactor(ui): 调整窗口尺寸为扁平化布局，还原内部组件样式
+  - main_window.py: 窗口尺寸从 1000×800 调整为 1200×650
+  - style.qss: 移除所有内部组件样式（按钮、表格等），仅保留滚动条样式
+  - 还原各页面布局间距至原始值
+    - home_page.py: setContentsMargins(40,30,40,30), setSpacing(16)
+    - converter_page.py: setContentsMargins(40,30,40,30), setSpacing(16)
+    - music_manager_page.py: setContentsMargins(40,30,40,30), setSpacing(20)
+    - settings_page.py: setContentsMargins(40,40,40,40), setSpacing(24)
+  - 还原对话框组件圆角至原始值
+    - cover_preview_dialog.py: border-radius 恢复为 12px
+    - song_search_dialog.py: 恢复所有 border-radius 原始值
+
+## v0.4.8 (2026-04-20)
+- chore: 升级版本号至 0.4.8
 - docs: 在 Readme.md 的 Acknowledgments 部分添加对原仓库的感谢
   - 添加 mp3ShazamAutoTag 原仓库链接和说明
 
