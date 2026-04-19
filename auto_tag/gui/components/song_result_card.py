@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
 
 # 主题颜色映射
+# 注意：不使用 QSS 覆盖 QLabel 颜色，让 QFluentWidgets 自动处理文本颜色
 _THEME_COLORS = {
     "light": {
         "card_bg": "#ffffff",
@@ -50,36 +51,26 @@ _THEME_COLORS = {
         "platform_border_hover": "#d0d0d0",
         "platform_selected_bg": "rgba(124, 77, 255, 0.08)",
         "platform_selected_border": "#7c4dff",
-        "platform_name_color": "#7c4dff",
-        "meta_text_color": "#888888",
         "error_card_bg": "rgba(255, 82, 82, 0.05)",
         "error_card_border": "rgba(255, 82, 82, 0.2)",
         "error_card_hover_bg": "rgba(255, 82, 82, 0.08)",
         "error_card_hover_border": "rgba(255, 82, 82, 0.3)",
-        "result_count_bg": "rgba(124, 77, 255, 0.08)",
-        "result_count_color": "#7c4dff",
-        "no_result_color": "#999999",
     },
     "dark": {
-        "card_bg": "#2c2c2c",
-        "card_bg_hover": "#333333",
-        "card_border": "#404040",
+        "card_bg": "#2d2d2d",
+        "card_bg_hover": "#363636",
+        "card_border": "#444444",
         "card_border_hover": "#555555",
-        "platform_bg": "#333333",
-        "platform_bg_hover": "#3a3a3a",
-        "platform_border": "#404040",
+        "platform_bg": "#363636",
+        "platform_bg_hover": "#3d3d3d",
+        "platform_border": "#444444",
         "platform_border_hover": "#555555",
         "platform_selected_bg": "rgba(124, 77, 255, 0.15)",
         "platform_selected_border": "#9c7eff",
-        "platform_name_color": "#9c7eff",
-        "meta_text_color": "#aaaaaa",
         "error_card_bg": "rgba(255, 82, 82, 0.08)",
         "error_card_border": "rgba(255, 82, 82, 0.25)",
         "error_card_hover_bg": "rgba(255, 82, 82, 0.12)",
         "error_card_hover_border": "rgba(255, 82, 82, 0.35)",
-        "result_count_bg": "rgba(124, 77, 255, 0.12)",
-        "result_count_color": "#9c7eff",
-        "no_result_color": "#888888",
     },
 }
 
@@ -96,6 +87,7 @@ class PlatformResultWidget(QFrame):
     平台搜索结果展示组件
 
     显示单个平台的搜索结果信息，支持选中状态切换和主题自适应。
+    不覆盖 QLabel 颜色，由 QFluentWidgets 自动处理深浅色文本颜色。
 
     Attributes:
         platform (str): 平台标识
@@ -154,7 +146,6 @@ class PlatformResultWidget(QFrame):
         icon_layout.addWidget(self.platform_icon)
 
         self.platform_name = BodyLabel(self._get_platform_display_name())
-        self.platform_name.setProperty("class", "PlatformNameLabel")
         icon_layout.addWidget(self.platform_name)
         icon_layout.addStretch()
 
@@ -174,7 +165,6 @@ class PlatformResultWidget(QFrame):
         artist = self.result_data.get("artist", "Unknown")
         album = self.result_data.get("album", "Unknown Album")
         self.meta_label = BodyLabel(f"{artist} · {album}")
-        self.meta_label.setProperty("class", "MetaLabel")
         info_layout.addWidget(self.meta_label)
 
         layout.addLayout(info_layout, 1)
@@ -190,7 +180,6 @@ class PlatformResultWidget(QFrame):
         self.duration_label = BodyLabel(
             self._format_duration(self.result_data.get("duration", 0))
         )
-        self.duration_label.setProperty("class", "MetaLabel")
         duration_layout.addWidget(self.duration_label)
 
         layout.addLayout(duration_layout, 0)
@@ -218,14 +207,6 @@ class PlatformResultWidget(QFrame):
                     border: 2px solid """ + colors["platform_selected_border"] + """;
                     border-radius: 8px;
                 }
-                QFrame[class="PlatformResultWidget"]:hover {
-                    background-color: """ + colors["platform_selected_bg"] + """;
-                }
-                QLabel[class="PlatformNameLabel"] {
-                    color: """ + colors["platform_selected_border"] + """;
-                    font-weight: 600;
-                    min-width: 70px;
-                }
             """)
         else:
             self.setStyleSheet("""
@@ -233,15 +214,6 @@ class PlatformResultWidget(QFrame):
                     background-color: """ + colors["platform_bg"] + """;
                     border: 1px solid """ + colors["platform_border"] + """;
                     border-radius: 8px;
-                }
-                QFrame[class="PlatformResultWidget"]:hover {
-                    background-color: """ + colors["platform_bg_hover"] + """;
-                    border-color: """ + colors["platform_border_hover"] + """;
-                }
-                QLabel[class="PlatformNameLabel"] {
-                    color: """ + colors["platform_name_color"] + """;
-                    font-weight: 500;
-                    min-width: 70px;
                 }
             """)
 
@@ -298,6 +270,7 @@ class SongResultCard(CardWidget):
     歌曲搜索结果卡片组件
 
     显示单首歌曲的所有平台搜索结果，支持折叠/展开交互和主题自适应。
+    不覆盖 QLabel 颜色，由 QFluentWidgets 自动处理深浅色文本颜色。
 
     Attributes:
         file_path (str): 原始文件路径
@@ -365,13 +338,11 @@ class SongResultCard(CardWidget):
         # 文件名
         self.file_label = SubtitleLabel(self.display_name)
         self.file_label.setWordWrap(True)
-        self.file_label.setProperty("class", "SongFileNameLabel")
         header_layout.addWidget(self.file_label, 1)
 
         # 结果数量标签
         if self.search_results:
             self.count_label = BodyLabel(f"{len(self.search_results)} 个结果")
-            self.count_label.setProperty("class", "ResultCountLabel")
             header_layout.addWidget(self.count_label)
 
         # 展开/收起按钮
@@ -402,7 +373,6 @@ class SongResultCard(CardWidget):
         else:
             # 没有搜索结果，显示默认结果
             self.no_result_label = BodyLabel("未找到匹配的搜索结果")
-            self.no_result_label.setProperty("class", "NoResultLabel")
             results_layout.addWidget(self.no_result_label)
 
         main_layout.addWidget(self.results_container)
@@ -430,29 +400,6 @@ class SongResultCard(CardWidget):
                     border: 1px solid """ + colors["error_card_border"] + """;
                     border-radius: 12px;
                 }
-                CardWidget[class="SongResultCard"]:hover {
-                    background-color: """ + colors["error_card_hover_bg"] + """;
-                    border-color: """ + colors["error_card_hover_border"] + """;
-                }
-                QLabel[class="SongFileNameLabel"] {
-                    font-size: 14px;
-                    font-weight: 500;
-                }
-                QLabel[class="ResultCountLabel"] {
-                    color: """ + colors["result_count_color"] + """;
-                    font-size: 12px;
-                    padding: 4px 8px;
-                    background: """ + colors["result_count_bg"] + """;
-                    border-radius: 12px;
-                }
-                QLabel[class="MetaLabel"] {
-                    color: """ + colors["meta_text_color"] + """;
-                    font-size: 12px;
-                }
-                QLabel[class="NoResultLabel"] {
-                    color: """ + colors["no_result_color"] + """;
-                    padding: 8px 0;
-                }
             """)
         else:
             self.setStyleSheet("""
@@ -460,29 +407,6 @@ class SongResultCard(CardWidget):
                     background-color: """ + colors["card_bg"] + """;
                     border: 1px solid """ + colors["card_border"] + """;
                     border-radius: 12px;
-                }
-                CardWidget[class="SongResultCard"]:hover {
-                    background-color: """ + colors["card_bg_hover"] + """;
-                    border-color: """ + colors["card_border_hover"] + """;
-                }
-                QLabel[class="SongFileNameLabel"] {
-                    font-size: 14px;
-                    font-weight: 500;
-                }
-                QLabel[class="ResultCountLabel"] {
-                    color: """ + colors["result_count_color"] + """;
-                    font-size: 12px;
-                    padding: 4px 8px;
-                    background: """ + colors["result_count_bg"] + """;
-                    border-radius: 12px;
-                }
-                QLabel[class="MetaLabel"] {
-                    color: """ + colors["meta_text_color"] + """;
-                    font-size: 12px;
-                }
-                QLabel[class="NoResultLabel"] {
-                    color: """ + colors["no_result_color"] + """;
-                    padding: 8px 0;
                 }
             """)
 

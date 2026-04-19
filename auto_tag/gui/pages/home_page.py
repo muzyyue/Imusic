@@ -204,6 +204,14 @@ class HomePage(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         self.scroll_area.setMinimumHeight(400)
+        # 使滚动区域和视口透明以适配深色模式
+        self.scroll_area.setStyleSheet(
+            "QScrollArea { border: none; background-color: transparent; }"
+            "QScrollArea > QWidget { background-color: transparent; }"
+        )
+        self.scroll_area.viewport().setStyleSheet(
+            "background-color: transparent;"
+        )
 
         # 创建内容容器
         self.cards_container = QFrame()

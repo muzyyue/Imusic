@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.4.16 (2026-04-20)
+- fix(ui): 修复深色模式下搜索结果卡片文本不可见问题
+  - 移除 QSS 中所有 QLabel[class="..."] 颜色覆盖，让 QFluentWidgets 自动处理文本颜色
+  - 为 QScrollArea 视口设置透明背景，适配深色模式
+  - 深色模式卡片背景色调整为 #2d2d2d（更贴合系统暗色）
+  - 移除 platform_name_color/meta_text_color/no_result_color 等文本颜色配置
+  - 简化 _THEME_COLORS，仅保留背景色和边框色
+
 ## v0.4.15 (2026-04-20)
 - fix(core): 修复多平台搜索结果未显示在歌曲卡片中的问题
   - 在 RecognizeWorker._process_files() 中调用 init_music_library() 初始化 API
