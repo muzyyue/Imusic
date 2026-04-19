@@ -21,6 +21,9 @@ _netease_api = None
 _kugou_api = None
 _initialized = False
 
+# 永久失败标记（原生库不兼容时设为 True，避免重复尝试）
+_init_permanently_failed = False
+
 
 def _patch_music_library():
     """
@@ -81,42 +84,73 @@ _patch_music_library()
 def initialize() -> None:
     """
     在主线程预初始化 MusicLibrary API 实例
-    
+
     此函数应该在应用启动时在主线程中调用。
     如果已经初始化过，则直接返回（幂等操作）。
-    
+
     Note:
         必须在主线程中调用此函数，否则可能导致线程安全问题。
     """
-    global _netease_api, _kugou_api, _initialized
-    
-    if _initialized:
+    global _netease_api, _kugou_api, _initialized, _init_permanently_failed
+
+    if _initialized or _init_permanently_failed:
         return
-    
+
     try:
         from MusicLibrary.neteaseCloudMusicApi import NeteaseCloudMusicApi
         from MusicLibrary.kuGouMusicApi import KuGouMusicApi
-        
+
+        netease_ok = False
+        kugou_ok = False
+
         try:
             _netease_api = NeteaseCloudMusicApi()
             logger.info("[MusicLibrary] NetEase API initialized")
+            netease_ok = True
         except Exception as e:
-            logger.warning(f"[MusicLibrary] NetEase API init failed: {e}")
-            _netease_api = None
-        
+            error_msg = str(e).lower()
+            if "access violation" in error_msg or "0x" in error_msg:
+                logger.error(
+                    f"[MusicLibrary] NetEase native library CRASHED (access violation): {e}"
+                )
+                logger.warning("[MusicLibrary] Disabling NetEase API permanently")
+                _init_permanently_failed = True
+                _netease_api = None
+            else:
+                logger.warning(f"[MusicLibrary] NetEase API init failed: {e}")
+                _netease_api = None
+
         try:
             _kugou_api = KuGouMusicApi()
             logger.info("[MusicLibrary] KuGou API initialized")
+            kugou_ok = True
         except Exception as e:
-            logger.warning(f"[MusicLibrary] KuGou API init failed: {e}")
-            _kugou_api = None
-        
+            error_msg = str(e).lower()
+            if "access violation" in error_msg or "0x" in error_msg:
+                logger.error(
+                    f"[MusicLibrary] KuGou native library CRASHED (access violation): {e}"
+                )
+                logger.warning("[MusicLibrary] Disabling KuGou API permanently")
+                _init_permanently_failed = True
+                _kugou_api = None
+            else:
+                logger.warning(f"[MusicLibrary] KuGou API init failed: {e}")
+                _kugou_api = None
+
         _initialized = True
-        
+
+        if _init_permanently_failed:
+            logger.warning(
+                "[MusicLibrary] Native library incompatible on this system. "
+                "NetEase/KuGou search disabled. Shazam only."
+            )
+
     except ImportError as e:
         logger.debug(f"[MusicLibrary] pymusiclibrary not available: {e}")
+        _init_permanently_failed = True
     except Exception as e:
         logger.error(f"[MusicLibrary] Initialization error: {e}", exc_info=True)
+        _init_permanently_failed = True
 
 
 def get_netease_api():
@@ -154,8 +188,20 @@ def get_kugou_api():
 def is_available() -> bool:
     """
     检查 MusicLibrary 是否可用
-    
+
     Returns:
         bool: 是否已初始化且至少有一个 API 可用
     """
+    if _init_permanently_failed:
+        return False
     return _initialized and (_netease_api is not None or _kugou_api is not None)
+
+
+def is_permanently_failed() -> bool:
+    """
+    检查原生库是否已标记为永久失败
+
+    Returns:
+        bool: 是否已永久失败（原生库不兼容）
+    """
+    return _init_permanently_failed

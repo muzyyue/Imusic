@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.4.21 (2026-04-20)
+- fix(core): 修复 pymusiclibrary 原生库崩溃导致进度卡死的问题
+  - 添加 _init_permanently_failed 标记，检测 access violation 后永久禁用
+  - initialize() 失败后不再重复尝试初始化，避免反复崩溃
+  - multi_source_search() 在原生库失败时直接跳过网易云/酷狗搜索
+  - 新增 is_permanently_failed() 函数供外部查询状态
+  - 日志输出明确提示 "Native library incompatible, Shazam only"
+
 ## v0.4.20 (2026-04-20)
 - fix(ui): 完成深色模式样式适配
   - 为 QScrollArea 和 cards_container 添加深色模式背景色（#1e1e1e）

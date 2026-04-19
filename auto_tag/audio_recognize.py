@@ -36,7 +36,7 @@ from auto_tag.utils import find_deepest_metadata_key, sanitize
 logger = logging.getLogger(__name__)
 
 # 导入全局 MusicLibrary 管理器
-from auto_tag.music_library_manager import initialize as init_music_library, get_netease_api, get_kugou_api
+from auto_tag.music_library_manager import initialize as init_music_library, get_netease_api, get_kugou_api, is_permanently_failed
 
 
 # 多数据源搜索结果数据结构
@@ -422,6 +422,11 @@ async def multi_source_search(
             logger.info(f"[MultiSource] Shazam result added: {shazam_result_obj.title} - {shazam_result_obj.artist}")
         except Exception as e:
             logger.error(f"[MultiSource] Failed to parse Shazam result: {e}", exc_info=True)
+
+    # 如果原生库已永久失败，直接返回（只使用 Shazam 结果）
+    if is_permanently_failed():
+        logger.info("[MultiSource] Native library permanently failed, skipping NetEase/KuGou")
+        return all_results
 
     # 并发搜索网易云和酷狗
     logger.info(f"[MultiSource] Launching concurrent searches for NetEase and KuGou...")
