@@ -280,8 +280,17 @@ async def _search_netease(keyword: str, limit: int = 5) -> list[SearchResult]:
     Returns:
         list[SearchResult]: 搜索结果列表
     """
+    # 快速检查：如果原生库已永久失败，直接返回空列表
+    if is_permanently_failed():
+        logger.info(f"[NetEase] Skipping search (native library disabled): {keyword}")
+        return []
+    
     try:
         def _do_search() -> list[SearchResult]:
+            # 再次检查（线程安全）
+            if is_permanently_failed():
+                return []
+            
             try:
                 api = get_thread_local_netease_api()
                 if api is None:
@@ -341,8 +350,17 @@ async def _search_kugou(keyword: str, limit: int = 5) -> list[SearchResult]:
     Returns:
         list[SearchResult]: 搜索结果列表
     """
+    # 快速检查：如果原生库已永久失败，直接返回空列表
+    if is_permanently_failed():
+        logger.info(f"[KuGou] Skipping search (native library disabled): {keyword}")
+        return []
+    
     try:
         def _do_search_kugou() -> list[SearchResult]:
+            # 再次检查（线程安全）
+            if is_permanently_failed():
+                return []
+            
             try:
                 api = get_thread_local_kugou_api()
                 if api is None:
@@ -492,8 +510,10 @@ async def find_and_recognize_audio_files(
     - copy_to: if given, base dir to copy files into (instead of moving)
     - tag_only: if True, update tags/cover only on the original file (no rename/move).
     """
-    # 预初始化 MusicLibrary（必须在主线程/主事件循环中）
-    init_music_library()
+    # 注意：pymusiclibrary 原生 C 库在子线程中使用会导致 access violation 崩溃
+    # 因此不再预初始化 MusicLibrary，多平台搜索功能依赖 Crash Protection 机制
+    if is_permanently_failed():
+        logger.info("[MusicLibrary] Native library permanently disabled, using Shazam only")
     
     exts = {e.lower().lstrip(".") for e in extensions}
     audio_files: list[str] = []

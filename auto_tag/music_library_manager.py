@@ -10,6 +10,11 @@ MusicLibrary API 管理器（线程安全版本）
 
 解决方案：使用 threading.local() 为每个线程维护独立的 API 实例，
 确保符合官方的线程安全要求。
+
+⚠️ 安全警告：
+pymusiclibrary 的原生 C 库（QuickJS 引擎）在某些 Windows 环境中
+会导致 access violation 崩溃。这是 C 级别错误，Python try-except 无法捕获。
+因此，默认禁用 pymusiclibrary，仅使用 Shazam 识别。
 """
 
 from __future__ import annotations
@@ -22,7 +27,11 @@ logger = logging.getLogger(__name__)
 
 # 全局状态
 _initialized = False
-_init_permanently_failed = False
+
+# ⚠️ 默认禁用 pymusiclibrary 以防止 access violation 崩溃
+# 原因：QuickJS C 引擎在某些 Windows 环境中不稳定
+# 如需启用，请将此值改为 False（风险自负）
+_init_permanently_failed = True
 
 # 线程本地存储：每个线程拥有独立的 API 实例
 _thread_local = threading.local()

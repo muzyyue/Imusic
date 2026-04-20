@@ -9,7 +9,7 @@
 | 属性 | 值 |
 |------|-----|
 | **项目名称** | Imusic (原 mp3ShazamAutoTag) |
-| **当前版本** | v0.4.23 |
+| **当前版本** | v0.4.24 |
 | **作者** | ling |
 | **许可证** | MIT |
 | **技术栈** | PySide6 + QFluentWidgets + shazamio + pymusiclibrary |
@@ -78,7 +78,20 @@
 - **根因**：重写 `music_library_manager.py` 后删除了旧函数名，但 `lyric/manager.py` 还在导入
 - **修复**：更新 `lyric/manager.py` 的导入为线程安全版本
 
-### 2.8 最终状态：pymusiclibrary 与用户环境不兼容
+### 2.8 问题8：选择目录后程序崩溃（彻底修复）(v0.4.24)
+- **现象**：选择目录后进程直接退出，无 Python 异常堆栈
+- **根因**：
+  1. `audio_recognize.py` 第 496 行调用了不存在的 `init_music_library()` 函数
+  2. pymusiclibrary 原生 C 库（QuickJS 引擎）在 Windows 环境中触发 access violation
+  3. C 级崩溃无法被 Python try-except 捕获，直接导致进程终止
+- **修复**：
+  - 默认禁用 pymusiclibrary，将 `_init_permanently_failed` 初始值改为 `True`
+  - 修复 `audio_recognize.py` 中的函数调用错误
+  - 在 `_search_netease()` 和 `_search_kugou()` 中添加早期 `is_permanently_failed()` 检查
+  - 更新 `recognize_worker.py` 日志消息
+- **结果**：应用稳定运行，仅使用 Shazam 识别（纯 Python，稳定可靠）
+
+### 2.9 最终状态：pymusiclibrary 与用户环境不兼容
 - **日志证据**：
   ```
   [MusicLibrary] NetEase native library CRASHED in thread 'asyncio_0': access violation writing 0x0000000000000008

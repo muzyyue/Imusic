@@ -1,5 +1,15 @@
 # 项目变更历史
 
+## v0.4.24 (2026-04-20)
+- fix(core): 彻底修复选择目录后程序崩溃的问题
+  - **根因**：pymusiclibrary 原生 C 库（QuickJS 引擎）在 Windows 环境中触发 access violation
+  - **关键发现**：C 级崩溃无法被 Python try-except 捕获，直接导致进程终止
+  - **修复方案**：默认禁用 pymusiclibrary，将 `_init_permanently_failed` 初始值改为 `True`
+  - 修复 `audio_recognize.py` 中调用不存在的 `init_music_library()` 函数的错误
+  - 在 `_search_netease()` 和 `_search_kugou()` 中添加早期 `is_permanently_failed()` 检查
+  - 更新 `recognize_worker.py` 日志消息，准确反映原生库状态
+  - **结果**：应用稳定运行，仅使用 Shazam 识别（纯 Python，稳定可靠）
+
 ## v0.4.23 (2026-04-20)
 - feat(core): 重新启用网易云/酷狗搜索（线程安全版本）
   - **根因**：官方文档明确要求 "API 对象均不能跨线程使用"
