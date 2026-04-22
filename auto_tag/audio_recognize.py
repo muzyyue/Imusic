@@ -20,6 +20,7 @@ import os
 import shutil
 import tempfile
 import threading
+import time
 from typing import Any
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
@@ -425,7 +426,215 @@ def _parse_netease_result(song: dict) -> SearchResult:
     )
 
 
-async def _search_netease_rest(keyword: str, limit: int = 5) -> list[SearchResult]:
+class SearchCache:
+    """
+    搜索结果缓存（线程安全LRU + TTL）
+
+    特性：
+    - LRU淘汰：超出容量时自动移除最久未使用的条目
+    - TTL过期：超过时间限制的条目自动失效
+    - 线程安全：使用锁保护并发访问
+    - 命中统计：记录命中率用于性能分析
+    """
+
+    def __init__(self, max_size: int = 100, ttl_seconds: int = 300):
+        """
+        初始化缓存
+
+        Args:
+            max_size: 最大缓存条目数（默认100）
+            ttl_seconds: 条目存活时间，秒（默认5分钟）
+        """
+        self._cache: dict[str, tuple[float, list[SearchResult]]] = {}
+        self._max_size = max_size
+        self._ttl = ttl_seconds
+        self._lock = threading.Lock()
+        self._hits = 0
+        self._misses = 0
+
+    def get(self, keyword: str) -> list[SearchResult] | None:
+        """
+        获取缓存结果
+
+        Args:
+            keyword: 搜索关键词
+
+        Returns:
+            缓存的搜索结果列表，未命中或已过期返回None
+        """
+        with self._lock:
+            if keyword not in self._cache:
+                self._misses += 1
+                return None
+
+            timestamp, results = self._cache[keyword]
+            elapsed = time.time() - timestamp
+
+            if elapsed > self._ttl:
+                del self._cache[keyword]
+                self._misses += 1
+                logger.debug(f"[Cache] EXPIRED '{keyword}' (age={elapsed:.0f}s)")
+                return None
+
+            self._hits += 1
+            logger.info(f"[Cache] HIT '{keyword}' ({len(results)} results, age={elapsed:.0f}s)")
+            return results
+
+    def set(self, keyword: str, results: list[SearchResult]) -> None:
+        """
+        写入缓存
+
+        Args:
+            keyword: 搜索关键词
+            results: 搜索结果列表
+        """
+        with self._lock:
+            if len(self._cache) >= self._max_size and keyword not in self._cache:
+                oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k][0])
+                del self._cache[oldest_key]
+                logger.debug(f"[Cache] EVICTED '{oldest_key}' (cache full)")
+
+            self._cache[keyword] = (time.time(), results)
+            logger.info(f"[Cache] STORED '{keyword}' ({len(results)} results)")
+
+    def clear(self) -> None:
+        """清空所有缓存"""
+        with self._lock:
+            size = len(self._cache)
+            self._cache.clear()
+            logger.info(f"[Cache] CLEARED ({size} entries removed)")
+
+    def stats(self) -> dict:
+        """获取缓存统计信息"""
+        with self._lock:
+            total = self._hits + self._misses
+            hit_rate = (self._hits / total * 100) if total > 0 else 0
+            return {
+                "size": len(self._cache),
+                "max_size": self._max_size,
+                "hits": self._hits,
+                "misses": self._misses,
+                "hit_rate": f"{hit_rate:.1f}%",
+                "ttl_seconds": self._ttl,
+            }
+
+
+class RateLimiter:
+    """
+    API请求限流器（自适应间隔控制）
+
+    特性：
+    - 最小间隔保护：避免请求过于密集触发反爬
+    - 自适应调整：遇到限流自动增加间隔，成功后逐渐恢复
+    - 最大间隔上限：防止等待时间过长影响体验
+    - 线程安全：多线程环境下正确工作
+    """
+
+    def __init__(
+        self,
+        min_interval: float = 1.0,
+        max_interval: float = 10.0,
+        backoff_factor: float = 2.0,
+        recovery_factor: float = 0.8,
+    ):
+        """
+        初始化限流器
+
+        Args:
+            min_interval: 最小请求间隔（秒），默认1秒
+            max_interval: 最大请求间隔（秒），默认10秒
+            backoff_factor: 遇到限流时的退避倍数，默认2倍
+            recovery_factor: 成功后的恢复系数，默认0.8（间隔缩短20%）
+        """
+        self._min_interval = min_interval
+        self._max_interval = max_interval
+        self._backoff_factor = backoff_factor
+        self._recovery_factor = recovery_factor
+        self._current_interval = min_interval
+        self._last_request_time = 0.0
+        self._lock = threading.Lock()
+        self._rate_limited_count = 0
+
+    async def wait_if_needed(self) -> float:
+        """
+        如果距离上次请求太近，则等待适当时间
+
+        Returns:
+            实际等待时间（秒），0表示无需等待
+        """
+        with self._lock:
+            elapsed = time.time() - self._last_request_time
+            wait_time = max(0, self._current_interval - elapsed)
+
+            if wait_time > 0:
+                logger.info(
+                    f"[RateLimiter] Waiting {wait_time:.2f}s "
+                    f"(interval={self._current_interval:.1f}s, elapsed={elapsed:.2f}s)"
+                )
+
+        if wait_time > 0:
+            await asyncio.sleep(wait_time)
+            return wait_time
+
+        return 0.0
+
+    def record_request(self) -> None:
+        """记录一次请求时间戳"""
+        with self._lock:
+            self._last_request_time = time.time()
+
+    def on_success(self) -> None:
+        """
+        请求成功时调用
+
+        逐渐恢复默认间隔（但不会低于最小值）
+        """
+        with self._lock:
+            old_interval = self._current_interval
+            self._current_interval = max(
+                self._min_interval,
+                self._current_interval * self._recovery_factor
+            )
+            logger.debug(
+                f"[RateLimiter] Success: {old_interval:.2f}s → {self._current_interval:.2f}s"
+            )
+
+    def on_rate_limited(self) -> None:
+        """
+        遇到频率限制时调用
+
+        增加请求间隔（但不会超过最大值）
+        """
+        with self._lock:
+            old_interval = self._current_interval
+            self._current_interval = min(
+                self._max_interval,
+                self._current_interval * self._backoff_factor
+            )
+            self._rate_limited_count += 1
+            logger.warning(
+                f"[RateLimiter] Rate limited! Interval increased: "
+                f"{old_interval:.2f}s → {self._current_interval:.2f}s "
+                f"(limit count: {self._rate_limited_count})"
+            )
+
+    def stats(self) -> dict:
+        """获取限流器统计信息"""
+        with self._lock:
+            return {
+                "current_interval": round(self._current_interval, 2),
+                "min_interval": self._min_interval,
+                "max_interval": self._max_interval,
+                "rate_limited_count": self._rate_limited_count,
+            }
+
+
+# 全局单例：搜索缓存和限流器（模块级共享）
+_search_cache = SearchCache(max_size=150, ttl_seconds=300)
+_rate_limiter = RateLimiter(min_interval=1.0, max_interval=8.0)
+
+
+async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 3) -> list[SearchResult]:
     """
     纯 REST API 搜索网易云音乐（完全独立，不依赖 pymusiclibrary）
 
@@ -433,98 +642,176 @@ async def _search_netease_rest(keyword: str, limit: int = 5) -> list[SearchResul
     完全绕开 pymusiclibrary C 库和 urllib 全局状态。
     跨线程安全，无 access violation 风险。
 
+    优化特性：
+    - 内置搜索结果缓存（LRU + TTL），相同关键词直接返回
+    - 自适应请求间隔控制，主动避免触发频率限制
+    - 指数退避重试机制，自动处理网易云 API 频率限制（HTTP 405）
+
     API 接口: GET https://music.163.com/api/search/get/web?s=关键词&type=1&limit=N
 
     Args:
         keyword: 搜索关键词
         limit: 返回结果数量上限
+        max_retries: 最大重试次数（遇到频率限制时）
 
     Returns:
         list[SearchResult]: 搜索结果列表
     """
-    try:
-        def _do_search_rest() -> list[SearchResult]:
-            import ssl
-            import http.client
+    global _search_cache, _rate_limiter
 
-            try:
-                logger.info(f"[NetEase-REST] Searching: {keyword}")
+    # Step 1: 检查缓存（命中则直接返回，无需网络请求）
+    cached_results = _search_cache.get(keyword)
+    if cached_results is not None:
+        return cached_results
 
-                params = urlencode({
-                    's': keyword,
-                    'type': 1,
-                    'offset': 0,
-                    'total': 'true',
-                    'limit': limit
-                })
-                path = f'/api/search/get/web?{params}'
+    # Step 2: 请求前等待（避免过于频繁）
+    await _rate_limiter.wait_if_needed()
 
-                # 创建独立的 SSL context（不使用全局默认配置）
-                # 关键：设置与浏览器兼容的 TLS 配置以通过网易云 API 校验
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = True
-                ctx.verify_mode = ssl.CERT_REQUIRED
-                ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    import random
 
-                conn = http.client.HTTPSConnection(
-                    'music.163.com',
-                    timeout=15,
-                    context=ctx,
+    for attempt in range(max_retries + 1):
+        try:
+            # Step 3: 记录请求时间戳
+            _rate_limiter.record_request()
+
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, _do_single_search, keyword, limit)
+
+            if result:
+                # Step 4a: 成功 → 写入缓存 + 恢复默认间隔
+                _search_cache.set(keyword, result)
+                _rate_limiter.on_success()
+                return result
+
+            if attempt < max_retries:
+                wait_time = (2 ** attempt) + random.uniform(0, 1)
+                logger.warning(
+                    f"[NetEase-REST] Retry {attempt + 1}/{max_retries} "
+                    f"after {wait_time:.1f}s for '{keyword}'"
                 )
+                await asyncio.sleep(wait_time)
 
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Referer': 'https://music.163.com/',
-                    'Accept': '*/*',
-                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                    'Connection': 'keep-alive',
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
-                }
+        except RuntimeError:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                _rate_limiter.record_request()
+                future = executor.submit(_do_single_search, keyword, limit)
+                result = future.result(timeout=30)
 
-                conn.request('GET', path, headers=headers)
-                response = conn.getresponse()
-                status = response.status
-                raw_data = response.read().decode('utf-8')
-                conn.close()
+                if result:
+                    _search_cache.set(keyword, result)
+                    _rate_limiter.on_success()
+                    return result
 
-                if status != 200:
+                if attempt < max_retries:
+                    wait_time = (2 ** attempt) + random.uniform(0, 1)
                     logger.warning(
-                        f"[NetEase-REST] HTTP {status} for '{keyword}'"
+                        f"[NetEase-REST] Retry {attempt + 1}/{max_retries} "
+                        f"after {wait_time:.1f}s for '{keyword}'"
                     )
-                    return []
+                    await asyncio.sleep(wait_time)
 
-                data = json.loads(raw_data)
+        except Exception as e:
+            logger.error(f"[NetEase-REST] Error on attempt {attempt + 1}: {e}", exc_info=True)
+            if attempt < max_retries:
+                await asyncio.sleep(1)
 
-                if not data or 'result' not in data:
-                    logger.warning(
-                        f"[NetEase-REST] No 'result' key for '{keyword}', "
-                        f"code={data.get('code')}, msg={data.get('msg', '')[:50]}"
-                    )
-                    return []
+    logger.error(f"[NetEase-REST] All {max_retries} retries failed for '{keyword}'")
+    return []
 
-                songs = data['result'].get('songs', [])
-                if not songs:
-                    logger.warning(f"[NetEase-REST] Empty songs for '{keyword}'")
-                    return []
 
-                logger.info(f"[NetEase-REST] Found {len(songs)} songs for '{keyword}'")
-                parsed = [_parse_netease_result(song) for song in songs[:limit]]
-                return parsed
+def _do_single_search(keyword: str, limit: int) -> list[SearchResult]:
+    """
+    执行单次 REST API 搜索请求
 
-            except Exception as e:
-                logger.error(f"[NetEase-REST] Error: {e}", exc_info=True)
+    Args:
+        keyword: 搜索关键词
+        limit: 结果数量限制
+
+    Returns:
+        list[SearchResult]: 搜索结果列表，失败返回空列表
+    """
+    import ssl
+    import http.client
+
+    try:
+        logger.info(f"[NetEase-REST] Searching: {keyword}")
+
+        params = urlencode({
+            's': keyword,
+            'type': 1,
+            'offset': 0,
+            'total': 'true',
+            'limit': limit
+        })
+        path = f'/api/search/get/web?{params}'
+
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = True
+        ctx.verify_mode = ssl.CERT_REQUIRED
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+
+        conn = http.client.HTTPSConnection(
+            'music.163.com',
+            timeout=15,
+            context=ctx,
+        )
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://music.163.com/',
+            'Accept': '*/*',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Connection': 'keep-alive',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+        }
+
+        conn.request('GET', path, headers=headers)
+        response = conn.getresponse()
+        status = response.status
+        raw_data = response.read().decode('utf-8')
+        conn.close()
+
+        if status != 200:
+            error_msg = ""
+            try:
+                error_data = json.loads(raw_data)
+                error_msg = error_data.get('msg', '')
+            except:
+                pass
+
+            if status == 405 and "频繁" in error_msg:
+                logger.warning(
+                    f"[NetEase-REST] Rate limited (405) for '{keyword}', "
+                    f"will retry..."
+                )
+                _rate_limiter.on_rate_limited()
+                return []  # 返回空列表触发重试
+            else:
+                logger.warning(f"[NetEase-REST] HTTP {status} for '{keyword}': {error_msg}")
                 return []
 
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, _do_search_rest)
-    except RuntimeError:
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_do_search_rest)
-            return future.result(timeout=30)
+        data = json.loads(raw_data)
+
+        if not data or 'result' not in data:
+            logger.warning(
+                f"[NetEase-REST] No 'result' key for '{keyword}', "
+                f"code={data.get('code')}, msg={data.get('msg', '')[:50]}"
+            )
+            return []
+
+        songs = data['result'].get('songs', [])
+        if not songs:
+            logger.warning(f"[NetEase-REST] Empty songs for '{keyword}'")
+            return []
+
+        logger.info(f"[NetEase-REST] Found {len(songs)} songs for '{keyword}'")
+        parsed = [_parse_netease_result(song) for song in songs[:limit]]
+        return parsed
+
     except Exception as e:
-        logger.error(f"[NetEase-REST] Async error: {e}", exc_info=True)
+        logger.error(f"[NetEase-REST] Error: {e}", exc_info=True)
         return []
 
 
@@ -860,6 +1147,45 @@ async def find_and_recognize_audio_files(
     print(f"Succeeded {ok}/{len(audio_files)}.")
 
 
+def _build_search_keyword_from_filename(file_path: str) -> str:
+    """
+    从文件名提取搜索关键词
+
+    支持的文件名格式：
+    - "艺术家 - 歌曲名.mp3" → "艺术家 歌曲名"
+    - "歌曲名 - 艺术家.mp3" → "歌曲名 艺术家"
+    - "歌曲名.mp3" → "歌曲名"
+
+    Args:
+        file_path: 文件完整路径
+
+    Returns:
+        str: 提取的关键词（去除扩展名和特殊字符），无法解析时返回空字符串
+    """
+    filename = os.path.basename(file_path)
+    name_without_ext = os.path.splitext(filename)[0]
+
+    if not name_without_ext:
+        return ""
+
+    import re
+
+    name = name_without_ext.strip()
+
+    common_separators = [" - ", "-", " – ", "—", "_", "."]
+    for sep in common_separators:
+        if sep in name:
+            parts = name.split(sep, 1)
+            parts = [p.strip() for p in parts if p.strip()]
+            if len(parts) >= 2:
+                keyword = f"{parts[0]} {parts[1]}"
+                logger.info(f"[Keyword] Extracted from filename '{filename}': {keyword}")
+                return keyword
+
+    logger.info(f"[Keyword] Using filename as keyword: {name}")
+    return name
+
+
 async def recognize_and_rename_file(
     *,
     file_path: str,
@@ -934,7 +1260,43 @@ async def recognize_and_rename_file(
 
     if not out or "track" not in out:
         if trace:
-            print(f"Shazam failed: {file_path}")
+            print(f"Shazam failed: {file_path}, attempting fallback search...")
+
+        fallback_keyword = _build_search_keyword_from_filename(file_path)
+
+        if fallback_keyword:
+            logger.info(f"[Fallback] Trying NetEase search with keyword: {fallback_keyword}")
+            try:
+                fallback_results = await multi_source_search(
+                    keyword=fallback_keyword,
+                    shazam_result=None,
+                    limit=5,
+                )
+
+                if fallback_results:
+                    best_match = fallback_results[0]
+                    s_title = sanitize(best_match.title, trace)
+                    s_artist = sanitize(best_match.artist, trace)
+                    s_album = sanitize(best_match.album, trace)
+
+                    logger.info(
+                        f"[Fallback] Success! Found: {best_match.title} - {best_match.artist}"
+                    )
+
+                    return {
+                        "file_path": file_path,
+                        "new_file_path": file_path,
+                        "title": s_title,
+                        "author": s_artist,
+                        "album": s_album,
+                        "cover_link": best_match.cover_link,
+                        "search_results": [sr.to_dict() for sr in fallback_results],
+                    }
+                else:
+                    logger.warning(f"[Fallback] No results for keyword: {fallback_keyword}")
+            except Exception as fallback_error:
+                logger.error(f"[Fallback] Search failed: {fallback_error}", exc_info=True)
+
         return {
             "file_path": file_path,
             "error": "Recognition failed",
