@@ -14,12 +14,16 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 import os
 import shutil
 import tempfile
+import threading
 from typing import Any
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
+from urllib.parse import urlencode
 
 import eyed3
 import soundfile as sf
@@ -35,12 +39,225 @@ from auto_tag.utils import find_deepest_metadata_key, sanitize
 # 配置日志
 logger = logging.getLogger(__name__)
 
-# 导入全局 MusicLibrary 管理器
-from auto_tag.music_library_manager import (
-    get_thread_local_netease_api,
-    get_thread_local_kugou_api,
-    is_permanently_failed,
-)
+# 全局 API 实例缓存（单例模式 - 主线程使用）
+# 重要：pymusiclibrary 原生 C 库只能初始化一次，重复创建会导致 access violation！
+_netease_api = None
+_kugou_api = None
+_initialized = False
+
+# 线程本地存储（子线程使用 - 每个线程独立实例）
+_thread_local = threading.local()
+
+# Monkey Patch 标志（确保只执行一次）
+_monkey_patch_applied = False
+
+
+def _apply_monkey_patch():
+    """
+    应用 Monkey Patch 修复 pymusiclibrary 库的 Bug
+
+    修复问题：
+    1. NeteaseCloudMusicApi.__init__ 失败时没有设置 _destroyed 属性
+    2. KuGouMusicApi.__init__ 失败时没有设置 _destroyed 属性
+    3. __del__ 方法尝试访问 _destroyed 导致 AttributeError
+    """
+    global _monkey_patch_applied
+
+    if _monkey_patch_applied:
+        return
+
+    try:
+        from MusicLibrary import neteaseCloudMusicApi, kuGouMusicApi
+
+        _original_netease_init = neteaseCloudMusicApi.NeteaseCloudMusicApi.__init__
+        _original_kugou_init = kuGouMusicApi.KuGouMusicApi.__init__
+
+        def _patched_netease_init(self, *args, **kwargs):
+            self._destroyed = True
+            try:
+                _original_netease_init(self, *args, **kwargs)
+                self._destroyed = False
+            except Exception as e:
+                logger.debug(f"[Patch] NetEase API init failed: {e}")
+                raise
+
+        def _patched_kugou_init(self, *args, **kwargs):
+            self._destroyed = True
+            try:
+                _original_kugou_init(self, *args, **kwargs)
+                self._destroyed = False
+            except Exception as e:
+                logger.debug(f"[Patch] KuGou API init failed: {e}")
+                raise
+
+        neteaseCloudMusicApi.NeteaseCloudMusicApi.__init__ = _patched_netease_init
+        kuGouMusicApi.KuGouMusicApi.__init__ = _patched_kugou_init
+        _monkey_patch_applied = True
+        logger.info("[MusicLibrary] Monkey patch applied successfully")
+
+    except ImportError:
+        logger.debug("[MusicLibrary] pymusiclibrary not available for patching")
+    except Exception as e:
+        logger.warning(f"[MusicLibrary] Failed to apply monkey patch: {e}")
+
+
+def initialize_music_library():
+    """
+    在主线程预初始化 MusicLibrary API 实例（全局单例）
+
+    此函数应该在应用启动时调用（在 GUI 主线程中）。
+    只创建一次实例，后续所有搜索复用该实例。
+
+    重要：pymusiclibrary 原生 C 库只能初始化一次，
+    重复创建实例会导致 access violation 崩溃！
+    """
+    global _netease_api, _kugou_api, _initialized
+
+    if _initialized:
+        return
+
+    _apply_monkey_patch()
+
+    try:
+        from MusicLibrary.neteaseCloudMusicApi import NeteaseCloudMusicApi
+        try:
+            _netease_api = NeteaseCloudMusicApi()
+            logger.info("[MusicLibrary] NetEase API initialized (global singleton)")
+        except Exception as e:
+            logger.warning(f"[MusicLibrary] NetEase API init failed: {e}")
+            _netease_api = None
+    except ImportError as e:
+        logger.debug(f"[MusicLibrary] pymusiclibrary not available: {e}")
+        _netease_api = None
+
+    try:
+        from MusicLibrary.kuGouMusicApi import KuGouMusicApi
+        try:
+            _kugou_api = KuGouMusicApi()
+            logger.info("[MusicLibrary] KuGou API initialized (global singleton)")
+        except Exception as e:
+            logger.warning(f"[MusicLibrary] KuGou API init failed: {e}")
+            _kugou_api = None
+    except ImportError as e:
+        logger.debug(f"[MusicLibrary] pymusiclibrary not available: {e}")
+        _kugou_api = None
+
+    _initialized = True
+
+
+def get_netease_api():
+    """
+    获取 NetEase API 实例（智能模式）
+
+    智能判断当前线程：
+    - 主线程：返回全局单例（启动时预初始化）
+    - 子线程：返回该线程的独立实例（避免跨线程访问崩溃）
+
+    Returns:
+        NeteaseCloudMusicApi or None: API 实例或 None
+    """
+    current_thread = threading.current_thread()
+    thread_name = current_thread.name
+
+    # 主线程：使用全局单例
+    if thread_name == 'MainThread':
+        if not _initialized:
+            logger.warning(f"[MusicLibrary][{thread_name}] API not initialized, call initialize_music_library() first")
+            return None
+        if _netease_api is None:
+            logger.warning(f"[MusicLibrary][{thread_name}] Global NetEase API is None (init failed?)")
+            return None
+        return _netease_api
+
+    # 子线程：使用线程本地实例（每线程只创建一次）
+    if hasattr(_thread_local, 'netease_api'):
+        api = _thread_local.netease_api
+        if api is not None:
+            return api
+        else:
+            logger.warning(f"[MusicLibrary][{thread_name}] Thread-local NetEase API was set to None (previous init failed)")
+
+    logger.info(f"[MusicLibrary][{thread_name}] Creating new NetEase API instance for this thread...")
+    try:
+        _apply_monkey_patch()
+        from MusicLibrary.neteaseCloudMusicApi import NeteaseCloudMusicApi
+        api = NeteaseCloudMusicApi()
+        _thread_local.netease_api = api
+        logger.info(f"[MusicLibrary][{thread_name}] ✅ NetEase API created successfully!")
+        return api
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"[MusicLibrary][{thread_name}] ❌ Failed to create NetEase API: {error_msg}")
+        if "access violation" in error_msg.lower() or "0x" in error_msg.lower():
+            logger.error(f"[MusicLibrary][{thread_name}] ⚠️ This is a native library crash (QuickJS engine)")
+        _thread_local.netease_api = None
+        return None
+
+
+def get_kugou_api():
+    """
+    获取 KuGou API 实例（智能模式）
+
+    智能判断当前线程：
+    - 主线程：返回全局单例（启动时预初始化）
+    - 子线程：返回该线程的独立实例（避免跨线程访问崩溃）
+
+    Returns:
+        KuGouMusicApi or None: API 实例或 None
+    """
+    current_thread = threading.current_thread()
+    thread_name = current_thread.name
+
+    # 主线程：使用全局单例
+    if thread_name == 'MainThread':
+        if not _initialized:
+            logger.warning(f"[MusicLibrary][{thread_name}] API not initialized, call initialize_music_library() first")
+            return None
+        if _kugou_api is None:
+            logger.warning(f"[MusicLibrary][{thread_name}] Global KuGou API is None (init failed?)")
+            return None
+        return _kugou_api
+
+    # 子线程：使用线程本地实例（每线程只创建一次）
+    if hasattr(_thread_local, 'kugou_api'):
+        api = _thread_local.kugou_api
+        if api is not None:
+            return api
+        else:
+            logger.warning(f"[MusicLibrary][{thread_name}] Thread-local KuGou API was set to None (previous init failed)")
+
+    logger.info(f"[MusicLibrary][{thread_name}] Creating new KuGou API instance for this thread...")
+    try:
+        _apply_monkey_patch()
+        from MusicLibrary.kuGouMusicApi import KuGouMusicApi
+        api = KuGouMusicApi()
+        _thread_local.kugou_api = api
+        logger.info(f"[MusicLibrary][{thread_name}] ✅ KuGou API created successfully!")
+        return api
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"[MusicLibrary][{thread_name}] ❌ Failed to create KuGou API: {error_msg}")
+        if "access violation" in error_msg.lower() or "0x" in error_msg.lower():
+            logger.error(f"[MusicLibrary][{thread_name}] ⚠️ This is a native library crash (QuickJS engine)")
+        _thread_local.kugou_api = None
+        return None
+
+
+def is_music_library_available() -> bool:
+    """
+    检查 MusicLibrary 是否可用
+
+    Returns:
+        bool: 是否已初始化且至少有一个 API 可用
+    """
+    # 主线程检查全局状态
+    if threading.current_thread().name == 'MainThread':
+        return _initialized and (_netease_api is not None or _kugou_api is not None)
+
+    # 子线程检查线程本地状态
+    has_netease = hasattr(_thread_local, 'netease_api') and _thread_local.netease_api is not None
+    has_kugou = hasattr(_thread_local, 'kugou_api') and _thread_local.kugou_api is not None
+    return has_netease or has_kugou
 
 
 # 多数据源搜索结果数据结构
@@ -208,6 +425,109 @@ def _parse_netease_result(song: dict) -> SearchResult:
     )
 
 
+async def _search_netease_rest(keyword: str, limit: int = 5) -> list[SearchResult]:
+    """
+    纯 REST API 搜索网易云音乐（完全独立，不依赖 pymusiclibrary）
+
+    使用 http.client 直接发起 HTTPS 请求，手动管理 SSL context 和连接，
+    完全绕开 pymusiclibrary C 库和 urllib 全局状态。
+    跨线程安全，无 access violation 风险。
+
+    API 接口: GET https://music.163.com/api/search/get/web?s=关键词&type=1&limit=N
+
+    Args:
+        keyword: 搜索关键词
+        limit: 返回结果数量上限
+
+    Returns:
+        list[SearchResult]: 搜索结果列表
+    """
+    try:
+        def _do_search_rest() -> list[SearchResult]:
+            import ssl
+            import http.client
+
+            try:
+                logger.info(f"[NetEase-REST] Searching: {keyword}")
+
+                params = urlencode({
+                    's': keyword,
+                    'type': 1,
+                    'offset': 0,
+                    'total': 'true',
+                    'limit': limit
+                })
+                path = f'/api/search/get/web?{params}'
+
+                # 创建独立的 SSL context（不使用全局默认配置）
+                # 关键：设置与浏览器兼容的 TLS 配置以通过网易云 API 校验
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = True
+                ctx.verify_mode = ssl.CERT_REQUIRED
+                ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+
+                conn = http.client.HTTPSConnection(
+                    'music.163.com',
+                    timeout=15,
+                    context=ctx,
+                )
+
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': 'https://music.163.com/',
+                    'Accept': '*/*',
+                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                    'Connection': 'keep-alive',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                }
+
+                conn.request('GET', path, headers=headers)
+                response = conn.getresponse()
+                status = response.status
+                raw_data = response.read().decode('utf-8')
+                conn.close()
+
+                if status != 200:
+                    logger.warning(
+                        f"[NetEase-REST] HTTP {status} for '{keyword}'"
+                    )
+                    return []
+
+                data = json.loads(raw_data)
+
+                if not data or 'result' not in data:
+                    logger.warning(
+                        f"[NetEase-REST] No 'result' key for '{keyword}', "
+                        f"code={data.get('code')}, msg={data.get('msg', '')[:50]}"
+                    )
+                    return []
+
+                songs = data['result'].get('songs', [])
+                if not songs:
+                    logger.warning(f"[NetEase-REST] Empty songs for '{keyword}'")
+                    return []
+
+                logger.info(f"[NetEase-REST] Found {len(songs)} songs for '{keyword}'")
+                parsed = [_parse_netease_result(song) for song in songs[:limit]]
+                return parsed
+
+            except Exception as e:
+                logger.error(f"[NetEase-REST] Error: {e}", exc_info=True)
+                return []
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _do_search_rest)
+    except RuntimeError:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_do_search_rest)
+            return future.result(timeout=30)
+    except Exception as e:
+        logger.error(f"[NetEase-REST] Async error: {e}", exc_info=True)
+        return []
+
+
 def _parse_kugou_result(song: dict) -> SearchResult:
     """
     解析酷狗音乐 API 返回的歌曲数据
@@ -271,7 +591,10 @@ def _extract_response_data(response) -> dict | None:
 
 async def _search_netease(keyword: str, limit: int = 5) -> list[SearchResult]:
     """
-    异步搜索网易云音乐
+    异步搜索网易云音乐（全局单例模式）
+
+    使用预初始化的全局单例 API 实例，
+    与旧版本表格布局保持一致。
 
     Args:
         keyword: 搜索关键词
@@ -280,26 +603,31 @@ async def _search_netease(keyword: str, limit: int = 5) -> list[SearchResult]:
     Returns:
         list[SearchResult]: 搜索结果列表
     """
-    # 快速检查：如果原生库已永久失败，直接返回空列表
-    if is_permanently_failed():
-        logger.info(f"[NetEase] Skipping search (native library disabled): {keyword}")
-        return []
-    
     try:
         def _do_search() -> list[SearchResult]:
-            # 再次检查（线程安全）
-            if is_permanently_failed():
-                return []
-            
             try:
-                api = get_thread_local_netease_api()
+                current_thread_name = threading.current_thread().name
+                logger.info(f"[NetEase] Getting API for thread: {current_thread_name}")
+                
+                api = get_netease_api()
                 if api is None:
-                    logger.warning("[NetEase] Thread-local API not available")
+                    logger.warning(f"[NetEase] API not available in thread '{current_thread_name}' - search skipped")
                     return []
-                    
+
                 logger.info(f"[NetEase] Searching: {keyword}")
                 response = api.search(keyword, limit=limit)
+
+                # 诊断：记录原始响应对象信息
+                logger.info(f"[NetEase] Response type: {type(response).__name__}, dir: {[a for a in dir(response) if not a.startswith('_')]}")
+                if hasattr(response, 'data'):
+                    logger.info(f"[NetEase] response.data type: {type(response.data)}, keys: {list(response.data.keys()) if isinstance(response.data, dict) else 'N/A'}")
+                elif hasattr(response, 'body'):
+                    logger.info(f"[NetEase] response.body type: {type(response.body)}, keys: {list(response.body.keys()) if isinstance(response.body, dict) else 'N/A'}")
+                elif hasattr(response, 'status_code'):
+                    logger.info(f"[NetEase] response.status_code: {response.status_code}")
+
                 result = _extract_response_data(response)
+                logger.info(f"[NetEase] Extracted data: {'keys=' + str(list(result.keys())) if result else 'None'}")
 
                 if not result:
                     logger.warning(f"[NetEase] No response data for: {keyword}")
@@ -332,7 +660,7 @@ async def _search_netease(keyword: str, limit: int = 5) -> list[SearchResult]:
     except RuntimeError:
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_do_search.__wrapped__ if hasattr(_do_search, '__wrapped__') else _do_search())
+            future = executor.submit(_do_search)
             return future.result(timeout=30)
     except Exception as e:
         logger.error(f"[NetEase] Async error: {e}", exc_info=True)
@@ -341,7 +669,10 @@ async def _search_netease(keyword: str, limit: int = 5) -> list[SearchResult]:
 
 async def _search_kugou(keyword: str, limit: int = 5) -> list[SearchResult]:
     """
-    异步搜索酷狗音乐
+    异步搜索酷狗音乐（全局单例模式）
+
+    使用预初始化的全局单例 API 实例，
+    与旧版本表格布局保持一致。
 
     Args:
         keyword: 搜索关键词
@@ -350,23 +681,14 @@ async def _search_kugou(keyword: str, limit: int = 5) -> list[SearchResult]:
     Returns:
         list[SearchResult]: 搜索结果列表
     """
-    # 快速检查：如果原生库已永久失败，直接返回空列表
-    if is_permanently_failed():
-        logger.info(f"[KuGou] Skipping search (native library disabled): {keyword}")
-        return []
-    
     try:
         def _do_search_kugou() -> list[SearchResult]:
-            # 再次检查（线程安全）
-            if is_permanently_failed():
-                return []
-            
             try:
-                api = get_thread_local_kugou_api()
+                api = get_kugou_api()
                 if api is None:
-                    logger.warning("[KuGou] Thread-local API not available")
+                    logger.warning("[KuGou] API not available")
                     return []
-                    
+
                 logger.info(f"[KuGou] Searching: {keyword}")
                 response = api.search(keyword)
                 result = _extract_response_data(response)
@@ -445,19 +767,18 @@ async def multi_source_search(
         except Exception as e:
             logger.error(f"[MultiSource] Failed to parse Shazam result: {e}", exc_info=True)
 
-    # 如果原生库已永久失败，直接返回（只使用 Shazam 结果）
-    if is_permanently_failed():
-        logger.info("[MultiSource] Native library permanently failed, skipping NetEase/KuGou")
-        return all_results
+    # 使用纯 REST API 搜索网易云（完全独立，不依赖 pymusiclibrary）
+    logger.info("[MultiSource] Using pure REST API for NetEase (no pymusiclibrary dependency)")
+    netease_task = asyncio.create_task(_search_netease_rest(keyword, limit))
 
-    # 并发搜索网易云和酷狗
-    logger.info(f"[MultiSource] Launching concurrent searches for NetEase and KuGou...")
-    netease_task = asyncio.create_task(_search_netease(keyword, limit))
-    kugou_task = asyncio.create_task(_search_kugou(keyword, limit))
+    # 酷狗暂时禁用（REST API 不可用，原生库不稳定）
+    # TODO: 未来可以寻找酷狗的 REST API 或使用第三方服务
+    kugou_task = None
+    logger.info("[MultiSource] KuGou Music temporarily disabled (no stable REST API available)")
 
-    # 等待两个平台搜索完成（优雅降级：失败的返回空列表）
-    netease_results, kugou_results = await asyncio.gather(
-        netease_task, kugou_task, return_exceptions=True
+    # 等待网易云搜索完成
+    netease_results, = await asyncio.gather(
+        netease_task, return_exceptions=True
     )
 
     # 处理异常结果
@@ -470,17 +791,7 @@ async def multi_source_search(
         logger.warning(f"[MultiSource] NetEase returned unexpected type: {type(netease_results)}")
         netease_results = []
 
-    if isinstance(kugou_results, Exception):
-        logger.error(f"[MultiSource] KuGou search exception: {kugou_results}", exc_info=True)
-        kugou_results = []
-    elif isinstance(kugou_results, list):
-        logger.info(f"[MultiSource] KuGou returned {len(kugou_results)} results")
-    else:
-        logger.warning(f"[MultiSource] KuGou returned unexpected type: {type(kugou_results)}")
-        kugou_results = []
-
     all_results.extend(netease_results)  # type: ignore[arg-type]
-    all_results.extend(kugou_results)  # type: ignore[arg-type]
 
     # 按置信度降序排序
     all_results.sort(key=lambda x: x.confidence, reverse=True)
@@ -510,11 +821,8 @@ async def find_and_recognize_audio_files(
     - copy_to: if given, base dir to copy files into (instead of moving)
     - tag_only: if True, update tags/cover only on the original file (no rename/move).
     """
-    # 注意：pymusiclibrary 原生 C 库在子线程中使用会导致 access violation 崩溃
-    # 因此不再预初始化 MusicLibrary，多平台搜索功能依赖 Crash Protection 机制
-    if is_permanently_failed():
-        logger.info("[MusicLibrary] Native library permanently disabled, using Shazam only")
-    
+    # Safe 模式：API 实例在首次使用时惰性创建，无需预初始化
+
     exts = {e.lower().lstrip(".") for e in extensions}
     audio_files: list[str] = []
     for root, _, files in os.walk(folder_path):

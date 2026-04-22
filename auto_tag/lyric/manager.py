@@ -17,10 +17,7 @@ from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
 
 from .provider import get_provider, get_provider_api
-from auto_tag.music_library_manager import (
-    get_thread_local_netease_api,
-    get_thread_local_kugou_api,
-)
+from auto_tag.audio_recognize import get_netease_api, get_kugou_api
 
 
 class LyricManager:
@@ -61,21 +58,21 @@ class LyricManager:
     
     def _get_netease_api(self):
         """
-        安全获取 NetEase API 实例（线程本地）
-        
+        获取 NetEase API 实例（全局单例）
+
         Returns:
             NeteaseCloudMusicApi or None: 当前线程的 API 实例
         """
-        return get_thread_local_netease_api()
-    
+        return get_netease_api()
+
     def _get_kugou_api(self):
         """
-        安全获取 KuGou API 实例（线程本地）
-        
+        获取 KuGou API 实例（全局单例）
+
         Returns:
             KuGouMusicApi or None: 当前线程的 API 实例
         """
-        return get_thread_local_kugou_api()
+        return get_kugou_api()
 
     def fetch_lyrics(
         self,
@@ -183,16 +180,6 @@ class LyricManager:
             return []
 
         try:
-            # 根据提供商获取对应的 API 客户端
-            if provider == 'netease':
-                api = self._get_netease_api()
-            else:
-                api = self._get_kugou_api()
-            
-            if api is None:
-                self.logger.error(f"无法初始化 {provider} API")
-                return []
-
             # 从音频文件提取元数据
             metadata = self._extract_audio_metadata(file_path)
             if not metadata:
@@ -202,7 +189,6 @@ class LyricManager:
             # 调试日志：输出提取到的元数据
             self.logger.info(f"[DEBUG] 提取到元数据: {metadata}")
 
-            # 构建搜索关键词（优化策略：优先使用歌曲名以提高匹配度）
             import re
 
             title = metadata.get('title', '').strip()
@@ -220,46 +206,22 @@ class LyricManager:
                 else:
                     title = name_without_ext
 
-            # 优化搜索关键词构建策略
-            # 策略：优先使用歌曲名，避免过长导致搜索不准确
-            if title:
-                # 清理标题中的常见修饰词和特殊字符
-                # 支持格式：
-                #   - "Song Name - Movie Ver."
-                #   - "Song Name (Key E Ver.)"
-                #   - "Song Name [Remix]"
-                clean_title = re.sub(
-                    r'[\s\-–—(\[]+(Movie|Piano|Short|Full|Key\s*\w)?\s*Ver\.?(\.|\)|\])?'
-                    r'|[\s\-–—(\[]+(Live|Acoustic|Remix|Cover|Inst\.?|Instrumental)'
-                    r'|[\s\-–—(\[]*(feat\.?|ft\.?)\s+.*'
-                    r'|[\s\-–—(\[]*[\d]{1,2}nd?\s*(Anniversary|Edition)?',
-                    '',
-                    title,
-                    flags=re.IGNORECASE
-                ).strip()
-
-                # 如果清理后的标题长度足够（>=4个字符），优先只用标题
-                if len(clean_title) >= 4:
-                    keyword = clean_title
-                elif artist and len(artist) > 2:
-                    # 标题太短时，组合艺术家+标题（但限制总长度）
-                    keyword = f"{artist} {clean_title}".strip()
-                else:
-                    keyword = clean_title
-            else:
-                # 没有标题，使用艺术家或文件名
-                keyword = artist or os.path.splitext(os.path.basename(file_path))[0]
-
+            # 构建搜索关键词（优化策略：保留更多原始信息以提高匹配度）
+            keyword = self._build_search_keyword(title, artist)
             self.logger.info(f"[DEBUG] 搜索关键词: '{keyword}' (原始title='{title}', 原始artist='{artist}')")
 
-            # 搜索歌曲
+            # 使用 pymusiclibrary 原生库进行搜索（已包含认证信息，最可靠）
+            api = self._get_kugou_api() if provider == 'kugou' else self._get_netease_api()
+            if api is None:
+                self.logger.error(f"无法初始化 {provider} API")
+                return []
+
             search_result = api.search(keyword)
 
             if not search_result or not hasattr(search_result, 'body'):
                 self.logger.warning(f"搜索歌曲失败: {keyword}")
                 return []
 
-            # 解析并返回搜索结果
             songs = self._parse_search_result(search_result.body, provider)
             self.logger.info(f"搜索完成: {keyword}, 找到 {len(songs)} 首歌曲")
 
@@ -270,6 +232,121 @@ class LyricManager:
             return []
         except Exception as e:
             self.logger.error(f"搜索歌曲失败: {file_path}, 错误: {e}")
+            return []
+
+    def _build_search_keyword(self, title: str, artist: str) -> str:
+        """
+        构建搜索关键词
+
+        策略：优先使用完整标题（不过度清理），REST API 本身支持模糊匹配
+        如果标题为空或太短，则组合艺术家和标题
+
+        Args:
+            title (str): 歌曲标题
+            artist (str): 艺术家名称
+
+        Returns:
+            str: 构建好的搜索关键词
+        """
+        import re
+
+        if title:
+            # 只清理明显的版本后缀，保留核心歌名
+            clean_title = re.sub(
+                r'\s*[\-–—]\s*(Movie|Piano|Short|Full)\s*Ver\.?\s*$'
+                r'|\s*[\(\[]\s*(Live|Acoustic|Remix|Cover|Inst\.?|Instrumental)\s*[\)\]]\s*$',
+                '',
+                title,
+                flags=re.IGNORECASE
+            ).strip()
+
+            # 优先使用完整标题（REST API 支持模糊匹配，不需要过度清理）
+            if len(clean_title) >= 2:
+                return clean_title
+            elif artist:
+                return f"{artist} {clean_title}".strip()
+            return clean_title
+        else:
+            # 没有标题，使用艺术家
+            return artist if artist else ""
+
+    def _search_netease_rest_api(self, keyword: str, limit: int = 10) -> list[dict[str, Any]]:
+        """
+        使用网易云 REST API 搜索歌曲
+
+        直接调用网易云 Web API，比 pymusiclibrary 更稳定且搜索能力更强。
+        无需登录，使用与网易云 app 相同的搜索接口。
+
+        Args:
+            keyword (str): 搜索关键词
+            limit (int): 返回结果数量上限，默认10
+
+        Returns:
+            list[dict]: 搜索结果列表，每个字典包含 id, name, artist, album, duration
+        """
+        import json
+        from urllib.request import Request, urlopen
+        from urllib.parse import urlencode
+        from urllib.error import URLError, HTTPError
+
+        try:
+            params = urlencode({
+                's': keyword,
+                'type': 1,
+                'offset': 0,
+                'total': 'true',
+                'limit': limit
+            })
+            url = f'https://music.163.com/api/search/get/web?{params}'
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://music.163.com/',
+            }
+            req = Request(url, headers=headers)
+
+            # 使用 urlopen（pymusiclibrary 初始化后会设置必要的 cookie/ssl 配置，
+            # urlopen 会自动继承这些配置，使得 API 请求能正常工作）
+            with urlopen(req, timeout=15) as resp:
+                raw_data = resp.read().decode('utf-8')
+
+            data = json.loads(raw_data)
+
+            # 调试：记录原始响应结构
+            if 'result' not in data:
+                self.logger.warning(
+                    f"[NetEase-REST] API 返回异常 (keyword='{keyword}'):"
+                    f" keys={list(data.keys())}, code={data.get('code')}, msg={data.get('msg')}"
+                )
+                if data.get('code') and data.get('code') != 200:
+                    self.logger.error(
+                        f"[NetEase-REST] API 错误响应: {raw_data[:500]}"
+                    )
+                return []
+
+            result_data = data.get('result', {})
+            song_list = result_data.get('songs', [])
+
+            songs = []
+            for song in song_list:
+                songs.append({
+                    'id': song.get('id'),
+                    'name': song.get('name', ''),
+                    'artist': song.get('artists', [{}])[0].get('name', '') if song.get('artists') else '',
+                    'album': song.get('album', {}).get('name', ''),
+                    'duration': song.get('duration', 0) // 1000
+                })
+
+            self.logger.info(f"[NetEase-REST] 搜索 '{keyword}' 返回 {len(songs)} 条结果")
+            return songs
+
+        except URLError as e:
+            self.logger.warning(f"[NetEase-REST] 网络错误: {e}")
+            return []
+        except HTTPError as e:
+            self.logger.warning(f"[NetEase-REST] HTTP 错误: {e.code} - {e.reason}")
+            return []
+        except Exception as e:
+            self.logger.error(f"[NetEase-REST] 搜索失败: {e}")
             return []
 
     def fetch_lyric_by_id(

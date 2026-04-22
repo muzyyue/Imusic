@@ -76,8 +76,11 @@ class MainWindow(FluentWindow):
 
         # 设置窗口属性（应用名称固定，不随语言切换）
         self.setWindowTitle("MP3 Shazam Auto Tag")
-        # 扁平化窗口尺寸：匹配参考图像的宽扁比例，降低高度
-        self.resize(1600, 480)
+        # 窗口尺寸：适中大小，高度不超过屏幕 70%
+        self.resize(1200, 880)
+        # 允许手动调整窗口大小
+        self.setMinimumSize(900, 500)
+        self.setMaximumSize(1920, 1080)
 
         # 创建页面并设置 objectName（QFluentWidgets 要求）
         self.home_page = HomePage(self)

@@ -24,7 +24,7 @@ from qfluentwidgets import setTheme, Theme
 from auto_tag.gui.main_window import MainWindow
 from auto_tag.gui.config import config
 from auto_tag.gui.i18n import translator
-from auto_tag.music_library_manager import initialize as init_music_library
+from auto_tag.audio_recognize import initialize_music_library
 
 
 def launch_gui() -> None:
@@ -40,8 +40,9 @@ def launch_gui() -> None:
         >>> from auto_tag.gui import launch_gui
         >>> launch_gui()
     """
-    # 预初始化 MusicLibrary（必须在主线程、创建 QApplication 之前）
-    init_music_library()
+    # 预初始化 MusicLibrary（全局单例模式，只在主线程创建一次）
+    # 重要：pymusiclibrary 原生 C 库只能初始化一次！
+    initialize_music_library()
 
     # 高 DPI 支持
     QApplication.setHighDpiScaleFactorRoundingPolicy(

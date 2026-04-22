@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QThread, Signal
 
 from auto_tag.audio_recognize import recognize_and_rename_file
-from auto_tag.music_library_manager import is_available
 
 if TYPE_CHECKING:
     from shazamio import Shazam
@@ -140,11 +139,9 @@ class RecognizeWorker(QThread):
         # 初始化计时器
         self.start_time = time.time()
 
-        # 检查原生库状态并记录日志
-        if is_available():
-            logger.info("[MusicLibrary] Native library available, multi-source search enabled")
-        else:
-            logger.info("[MusicLibrary] Native library disabled, using Shazam only")
+        # 注意：pymusiclibrary 原生 C 库在子线程中使用会导致 access violation 崩溃，
+        # 因此不在子线程中初始化。多平台搜索功能已默认禁用，仅使用 Shazam。
+        logger.info(f"[MusicLibrary] Native library disabled in worker thread (stability)")
 
         # 动态导入 Shazam（避免在模块顶层导入）
         from shazamio import Shazam

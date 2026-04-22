@@ -1,0 +1,277 @@
+Metadata-Version: 2.4
+Name: Imusic
+Version: 0.4.26
+Summary: Use shazam to rename and filled the tag of a list of mp3 files.
+Author: ling
+License: MIT License
+        
+        Copyright (c) 2024 davidAlgis
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+Project-URL: Homepage, https://github.com/ling/Imusic
+Project-URL: Bug Tracker, https://github.com/ling/Imusic/issues
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: mutagen
+Requires-Dist: shazamio>=0.5.0
+Requires-Dist: unidecode
+Requires-Dist: eyed3
+Requires-Dist: tqdm
+Requires-Dist: soundfile
+Requires-Dist: PySide6
+Requires-Dist: PySide6-Fluent-Widgets
+Requires-Dist: ffmpeg-python>=0.2.0
+Requires-Dist: lrxy>=0.1.0
+Provides-Extra: dev
+Requires-Dist: pytest>=6.0; extra == "dev"
+Requires-Dist: pytest-asyncio; extra == "dev"
+Dynamic: license-file
+
+# MP3 File Recognizer and Renamer
+
+[![Version](https://img.shields.io/badge/version-0.3.5-blue.svg)](https://github.com/ling/Imusic)
+[![Python](https://img.shields.io/badge/python-3.6%2B-brightgreen.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+This Python project automatically recognizes mp3 or ogg files using Shazam, renames them according to the recognized song title and artist, and updates their tags and cover art. The project now features a modern **Fluent Design** GUI built with PySide6 and QFluentWidgets, along with audio conversion capabilities.
+
+> [!WARNING]  
+> Your antivirus can quarantine the software, but as the source code of this repository it is completely harmless. Moreover, the first launch of the executable might be a bit long. 
+
+![](example-ui.jpg)
+
+## ✨ Features
+
+- 🎵 **Audio Recognition** - Automatically identify songs using Shazam API
+- 📝 **Auto Rename** - Rename files with `Title - Artist - Album.ext` format
+- 🏷️ **Tag Management** - Update ID3/Vorbis metadata tags automatically
+- 🖼️ **Cover Art** - Download and embed album artwork
+- 📁 **Plex Support** - Organize files into `Artist/Album/Title.ext` structure
+- 🎛️ **Audio Conversion** - Convert between multiple audio formats (MP3/FLAC/AAC/OGG/WAV/M4A)
+- 🌍 **Internationalization** - Support for English and Chinese (中文)
+- 🎨 **Fluent Design UI** - Modern interface with light/dark theme support
+- ⚙️ **Configuration** - Persistent user preferences
+
+## 📦 Installation
+
+### Download Executable
+
+Download the latest release from [GitHub Releases](https://github.com/ling/Imusic/releases).
+
+### Manual Installation
+
+Create a clean environment and install the required Python libraries:
+
+```bash
+pip install .
+```
+
+**Note:**  
+- Ensure you have Python 3.6 or newer installed on your system.  
+- There might be some issues with Python 3.11 and 3.12 (see [Issue #1](https://github.com/ling/Imusic/issues/1)).  
+- macOS users may need to install *shazamio* manually (see [Issue #5](https://github.com/ling/Imusic/issues/5)).
+
+## 🚀 Usage
+
+### Graphical User Interface (GUI)
+
+The application features a modern Fluent Design interface with:
+
+**Home Page (Audio Recognition)**:
+- Select the input directory via a browse button
+- Optionally check **Copy to:** and choose a destination folder to **copy** files
+- See a progress bar with file count and estimated remaining time
+- View a table of audio files with options to check/uncheck rows and edit file names
+- Two apply modes:
+  1. **Apply** - Renames/moves (or copies) files in-place
+  2. **Apply with Plex Convention** - Organizes into `Artist/Album/title.ext`
+
+**Converter Page (Audio Conversion)**:
+- Convert audio files between multiple formats
+- Supported input: MP3, FLAC, AAC, OGG, WAV, M4A, MP4, MKV, AVI, MOV, WMV, WEBM
+- Supported output: MP3, FLAC, AAC, OGG, WAV, M4A
+- Batch conversion with progress tracking
+- Metadata preservation and editing
+
+**Settings Page**:
+- Language selection (English/中文)
+- Theme selection (Light/Dark/Follow System)
+
+Simply run the executable or launch via `python main.py --gui`.
+
+### Command‑Line Interface (CLI)
+
+Run the script from the command line:
+
+```bash
+python main.py [options]
+```
+
+#### CLI Options
+
+| Short | Long           | Description                                                                                                   | Default       |
+| ----- | -------------- | ------------------------------------------------------------------------------------------------------------- | ------------- |
+| `-di` | `--directory`  | Directory where audio files are located. If not specified, the current working directory is used.             | *cwd*         |
+| `-m`  | `--modify`     | Apply modifications to tags and filenames (`True`/`False`).                                                   | `True`        |
+| `-de` | `--delay`      | Delay (in seconds) before retrying Shazam if the call fails.                                                  | `10`          |
+| `-n`  | `--nbrRetry`   | Number of retries if Shazam fails.                                                                            | `3`           |
+| `-tr` | `--trace`      | Enable tracing output (debug).                                                                                | `False`       |
+| `-g`  | `--gui`        | Launch the GUI instead of running headless.                                                                   | `True`        |
+| `-e`  | `--extensions` | Comma-separated list of extensions to process (e.g. `mp3,ogg`).                                               | `mp3,ogg`     |
+| `-o`  | `--output`     | Base output directory for moved files (keeps original folder if omitted).                                     | *same folder* |
+| `-p`  | `--plex`       | Organise output into Plex structure `Artist/Album/Title.ext` (CLI equivalent of the GUI's Plex button).       | *off*         |
+| `-c`  | `--copy-to`    | Instead of moving, **copy** processed files into this directory (can still use `--plex` structure).           | *None*        |
+| `-to` | `--tag-only`   | Apply the modification only to the tags of the file and not the filenames.                                    | `False`       |
+| `-h`  | `--help`       | Show the help message and exit.                                                                               | —             |
+
+## 📁 Project Structure
+
+```
+Imusic/
+├── main.py                    # Main entry point
+├── pyproject.toml             # Project configuration (PEP 517/518)
+├── requirements.txt           # Dependencies
+├── Readme.md                  # This file
+├── LICENSE                    # MIT License
+│
+├── auto_tag/                  # Core module package
+│   ├── __init__.py
+│   ├── audio_recognize.py     # Audio recognition core logic
+│   ├── utils.py               # Utility functions
+│   │
+│   ├── gui/                   # GUI module (PySide6 + QFluentWidgets)
+│   │   ├── __init__.py
+│   │   ├── config.py          # GUI configuration
+│   │   ├── main_window.py     # Main window
+│   │   ├── i18n/              # Internationalization
+│   │   │   ├── translator.py
+│   │   │   └── locales/       # Translation files (en.json, zh.json)
+│   │   ├── pages/             # UI pages
+│   │   │   ├── home_page.py       # Audio recognition page
+│   │   │   ├── converter_page.py  # Audio conversion page
+│   │   │   └── settings_page.py   # Settings page
+│   │   └── workers/           # Background workers
+│   │       └── recognize_worker.py
+│   │
+│   └── converter/             # Audio conversion module
+│       ├── __init__.py
+│       ├── config.py          # Converter configuration
+│       ├── converter.py       # Audio conversion logic
+│       ├── metadata_manager.py # Metadata management
+│       └── workers/
+│           └── converter_worker.py
+│
+├── assets/                    # Static resources
+│   └── auto_tag.ico           # Application icon
+│
+├── build_tools/               # Build tools
+│   └── build_exe.py           # PyInstaller build script
+│
+└── tests/                     # Test directory
+    ├── __init__.py
+    ├── test_recognize.py
+    ├── test_converter.py
+    ├── test_converter_worker.py
+    └── test_settings_page.py
+```
+
+## 🔧 Building the Executable
+
+This project can be built as a standalone executable using `pyinstaller`. 
+
+### Prerequisites
+
+1. Create and activate a virtual environment:
+   ```bash
+   python -m venv venv
+   venv\Scripts\activate  # Windows
+   # source venv/bin/activate  # Linux/macOS
+   ```
+
+2. Install the required packages:
+   ```bash
+   pip install .
+   pip install pyinstaller
+   ```
+
+### Build Command
+
+```bash
+python build_tools/build_exe.py
+```
+
+Or manually:
+
+```bash
+pyinstaller --onefile --noconsole \
+    --icon="assets/auto_tag.ico" \
+    --add-data="assets/auto_tag.ico;assets" \
+    --add-data="auto_tag/gui/i18n/locales;auto_tag/gui/i18n/locales" \
+    --workpath=build --distpath=build --specpath=build \
+    main.py
+```
+
+This will create a **build** folder with the executable.
+
+## 📋 Dependencies
+
+### Core Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `shazamio` >= 0.5.0 | Shazam audio recognition API |
+| `mutagen` | Audio metadata handling |
+| `eyed3` | MP3 ID3 tag processing |
+| `soundfile` | OGG to WAV audio conversion |
+| `unidecode` | Unicode to ASCII conversion |
+| `tqdm` | Progress bar display |
+| `PySide6` | Qt6 GUI framework |
+| `PySide6-Fluent-Widgets` | Fluent Design UI components |
+| `ffmpeg-python` >= 0.2.0 | Audio conversion backend |
+
+### Development Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `pytest` >= 6.0 | Unit testing framework |
+| `pytest-asyncio` | Async test support |
+
+## 🐛 Known Issues
+
+1. **Python 3.11/3.12 Compatibility** - See [Issue #1](https://github.com/ling/Imusic/issues/1)
+2. **macOS shazamio Installation** - See [Issue #5](https://github.com/ling/Imusic/issues/5)
+3. **Antivirus False Positives** - The executable may be quarantined (source code is harmless)
+4. **FFmpeg Required** - Audio conversion requires FFmpeg to be installed on your system
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [mp3ShazamAutoTag](https://github.com/davidAlgis/mp3ShazamAutoTag) - Original project, inspiration for audio recognition and tagging
+- [shazamio](https://github.com/dotX12/shazamio) - Shazam API wrapper
+- [QFluentWidgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets) - Fluent Design UI library
+- [PySide6](https://www.pyside.org/) - Qt6 Python bindings
+
+---
+
+*Last updated: 2026-04-20*

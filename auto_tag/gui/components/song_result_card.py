@@ -247,9 +247,9 @@ class PlatformResultWidget(QFrame):
         return tr("seconds_format", seconds=secs)
 
     def mousePressEvent(self, event) -> None:
-        """鼠标点击事件处理"""
+        """鼠标点击事件处理 - toggle 切换选中状态"""
         if event.button() == Qt.MouseButton.LeftButton:
-            self.set_selected(True)
+            self.set_selected(not self.is_selected)
 
     def set_selected(self, selected: bool) -> None:
         """
