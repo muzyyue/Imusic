@@ -205,6 +205,9 @@ class CoverImageWidget(QFrame):
         self._setup_ui()
         self._setup_style()
 
+        # 监听主题变化
+        qconfig.themeChanged.connect(self._on_theme_changed)
+
         # 自动开始加载
         if cover_url or file_path:
             self.load_cover(cover_url, file_path)
@@ -249,6 +252,10 @@ class CoverImageWidget(QFrame):
         if isDarkTheme():
             return {"bg": "#363636", "border": "#555555"}
         return {"bg": "#f5f5f7", "border": "#e8e8e8"}
+
+    def _on_theme_changed(self, theme: Theme) -> None:
+        """主题切换回调，更新样式以适配新主题"""
+        self._setup_style()
 
     def _show_default_icon(self) -> None:
         """显示默认音乐图标"""
