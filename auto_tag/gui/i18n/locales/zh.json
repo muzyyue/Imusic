@@ -176,5 +176,6 @@
   "no_results_for_keyword": "未找到相关结果，请尝试其他关键词",
   "refresh_file_list": "刷新文件列表",
   "select_directory_first": "请先选择目录",
-  "refresh_song_search": "刷新搜索"
+  "refresh_song_search": "刷新搜索",
+  "clear_data": "清除数据"
 }

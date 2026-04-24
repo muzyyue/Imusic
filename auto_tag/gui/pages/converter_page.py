@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+    QSizePolicy,
 )
 from qfluentwidgets import (
     BodyLabel,
@@ -191,15 +192,24 @@ class ConverterPage(QWidget):
         # === 文件格式过滤区域 ===
         self._setup_format_filter_ui(layout)
 
-        # === 进度区域 ===
+        # 增加文件格式过滤区域与进度条之间的垂直间隔
+        layout.addSpacing(40)
+
+        # === 进度区域（文件格式过滤区域外部独立显示）===
         progress_layout = QHBoxLayout()
         progress_layout.setSpacing(12)
+        progress_layout.setContentsMargins(0, 0, 0, 16)  # 底部16px与文件列表分隔
 
         self.progress_bar = ProgressBar()
         self.progress_bar.setFixedHeight(8)
-        progress_layout.addWidget(self.progress_bar)
+        self.progress_bar.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed
+        )
+        progress_layout.addWidget(self.progress_bar, stretch=1)
 
         self.status_label = BodyLabel(tr("conversion_in_progress"))
+        self.status_label.setMinimumWidth(150)
         progress_layout.addWidget(self.status_label)
 
         layout.addLayout(progress_layout)
@@ -356,7 +366,8 @@ class ConverterPage(QWidget):
 
         parent_layout.addLayout(video_group_layout)
 
-        # === 自定义格式管理区域 ===
+        # === 自定义格式管理区域（与上方视频格式保持间隔）===
+        parent_layout.addSpacing(16)  # 16px垂直间隔
         self._setup_custom_format_ui(parent_layout)
 
     def _setup_custom_format_ui(self, parent_layout: QVBoxLayout) -> None:
@@ -372,7 +383,7 @@ class ConverterPage(QWidget):
 
         # 自定义格式卡片（使用 CardWidget 适配深色模式）
         custom_card = CardWidget(self)
-        custom_card.setFixedHeight(220)
+        custom_card.setMinimumHeight(200)
         card_layout = QVBoxLayout(custom_card)
         card_layout.setContentsMargins(20, 15, 20, 15)
         card_layout.setSpacing(10)
@@ -412,14 +423,16 @@ class ConverterPage(QWidget):
 
         # 自定义格式列表（设置透明背景以适配深色模式）
         self.custom_format_list = QListWidget()
-        self.custom_format_list.setFixedHeight(80)
+        self.custom_format_list.setMinimumHeight(80)
         card_layout.addWidget(self.custom_format_list)
 
         # 适配深色主题样式
         self._apply_list_theme()
 
-        # 操作按钮
+        # 操作按钮（增加顶部间距，使按钮靠下显示）
         btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(12)
+        btn_layout.setContentsMargins(0, 12, 0, 4)  # 顶部12px间隔与列表分开
 
         self.edit_custom_format_btn = PushButton(FIF.EDIT, tr("edit_format"))
         self.edit_custom_format_btn.setFixedHeight(28)
@@ -435,6 +448,9 @@ class ConverterPage(QWidget):
         card_layout.addLayout(btn_layout)
 
         parent_layout.addWidget(custom_card)
+
+        # 增加卡片与进度条之间的视觉分隔（避免卡片背景延伸到进度条区域）
+        parent_layout.addSpacing(50)
 
         # 加载已有的自定义格式
         self._refresh_custom_format_list()

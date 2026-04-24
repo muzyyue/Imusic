@@ -1,0 +1,7 @@
+# uv 配置文件 - 使用清华大学镜像源
+index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+
+# 备用镜像源
+extra-index-url = [
+    "https://pypi.org/simple"
+]

@@ -174,5 +174,6 @@
   "no_results_for_keyword": "No results found, try different keywords",
   "refresh_file_list": "Refresh File List",
   "select_directory_first": "Please select a directory first",
-  "refresh_song_search": "Refresh Search"
+  "refresh_song_search": "Refresh Search",
+  "clear_data": "Clear Data"
 }

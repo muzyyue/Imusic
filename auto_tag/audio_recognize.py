@@ -35,7 +35,7 @@ from mutagen.oggvorbis import OggVorbis
 from shazamio import Shazam
 from tqdm.asyncio import tqdm
 
-from auto_tag.utils import find_deepest_metadata_key, sanitize
+from auto_tag.utils import find_deepest_metadata_key, sanitize, is_file_in_use_error
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -408,10 +408,10 @@ def _parse_netease_result(song: dict) -> SearchResult:
     duration_ms = song.get("duration", 0)
     duration = duration_ms // 1000 if duration_ms else 0
 
-    # 获取封面（使用 al.picUrl 或 album.picUrl）
-    cover = ""
-    if album_info:
-        cover = album_info.get("picUrl", "") or album_info.get("blurPicUrl", "")
+    # 获取封面（多策略尝试）
+    cover = _extract_netease_cover(song, album_info)
+
+    logger.debug(f"[NetEase] Cover URL for '{title}': '{cover[:80]}...' if cover else '(empty)'")
 
     return SearchResult(
         source="netease",
@@ -424,6 +424,56 @@ def _parse_netease_result(song: dict) -> SearchResult:
         confidence=0.9,
         raw_data=song,
     )
+
+
+def _extract_netease_cover(song: dict, album_info: dict) -> str:
+    """
+    从网易云音乐响应中提取封面图片URL
+
+    尝试多种策略获取真实的图片URL，
+    并处理网易云返回的相对路径问题。
+
+    Args:
+        song: 歌曲数据字典
+        album_info: 专辑信息字典
+
+    Returns:
+        str: 封面图片URL（可能是相对路径或绝对路径）
+    """
+    cover = ""
+
+    # 策略1: 从 album_info 获取
+    if album_info:
+        cover = album_info.get("picUrl", "")
+        if not cover:
+            cover = album_info.get("blurPicUrl", "")
+
+    # 策略2: 从 song 顶层获取
+    if not cover:
+        cover = song.get("picUrl", "") or song.get("albumPic", "") or song.get("coverImgUrl", "")
+
+    # 策略3: 从 artists 获取
+    if not cover:
+        artists = song.get("artists", [])
+        for a in artists:
+            artist_cover = a.get("picUrl", "") or a.get("img1v1Url", "")
+            if artist_cover:
+                cover = artist_cover
+                break
+
+    # 策略4: 使用网易云音乐的CDN域名拼接
+    if cover:
+        # 如果URL不是以http开头，需要加上域名
+        if not cover.startswith("http"):
+            # 网易云音乐的图片CDN
+            if cover.startswith("//"):
+                cover = "https:" + cover
+            elif cover.startswith("/"):
+                cover = "https://music.163.com" + cover
+            else:
+                cover = "https://p1.music.126.net/" + cover
+
+    return cover
 
 
 class SearchCache:
@@ -633,6 +683,169 @@ class RateLimiter:
 _search_cache = SearchCache(max_size=150, ttl_seconds=300)
 _rate_limiter = RateLimiter(min_interval=1.0, max_interval=8.0)
 
+# 全局 Cookie（用于网易云 API 请求认证）
+_netease_cookie: str | None = None
+_login_lock = threading.Lock()
+
+
+def _login_netease_guest() -> str | None:
+    """
+    网易云音乐游客登录
+
+    通过访问网易云首页获取游客 cookie，
+    用于后续 API 请求（获取封面图片等）。
+
+    Returns:
+        str | None: 成功返回 Cookie 字符串，失败返回 None
+    """
+    global _netease_cookie
+
+    with _login_lock:
+        # 如果已经尝试过登录（无论成功失败），不再重复尝试
+        if _netease_cookie is not None:
+            return _netease_cookie if _netease_cookie else None
+
+        try:
+            import ssl
+            import http.client
+
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = True
+            ctx.verify_mode = ssl.CERT_REQUIRED
+
+            conn = http.client.HTTPSConnection(
+                'music.163.com',
+                timeout=10,
+                context=ctx,
+            )
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://music.163.com/',
+            }
+
+            # 访问首页获取 Cookie
+            conn.request('GET', '/', headers=headers)
+            response = conn.getresponse()
+
+            # 提取 Set-Cookie 头
+            set_cookie_headers = response.getheaders()
+            cookies = []
+            for name, value in set_cookie_headers:
+                if name.lower() == 'set-cookie':
+                    # 提取第一个 key=value 对
+                    if ';' in value:
+                        cookie_part = value.split(';')[0]
+                    else:
+                        cookie_part = value
+                    cookies.append(cookie_part)
+            
+            response.read()  # 读取并丢弃响应体
+            conn.close()
+
+            if cookies:
+                # 合并所有 Cookie
+                cookie = '; '.join(cookies)
+                _netease_cookie = cookie
+                logger.info(f"[NetEase-Login] Guest login successful, cookie: {cookie[:50]}...")
+                return cookie
+            else:
+                logger.warning(f"[NetEase-Login] No cookie received from homepage visit")
+                _netease_cookie = ''
+                return None
+        except Exception as e:
+            logger.error(f"[NetEase-Login] Login error: {e}")
+            _netease_cookie = ''
+            return None
+
+
+def _get_netease_cover_by_id(song_id: str, cookie: str | None = None) -> str:
+    """
+    通过歌曲ID获取网易云音乐封面URL
+
+    网易云搜索API不返回封面URL，需要通过歌曲详情接口获取。
+
+    Args:
+        song_id: 歌曲ID
+        cookie: Cookie（可选）
+
+    Returns:
+        str: 封面图片URL，失败返回空字符串
+    """
+    if not song_id:
+        return ''
+
+    try:
+        import ssl
+        import http.client
+        import json
+
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = True
+        ctx.verify_mode = ssl.CERT_REQUIRED
+
+        conn = http.client.HTTPSConnection(
+            'music.163.com',
+            timeout=10,
+            context=ctx,
+        )
+
+        path = f'/api/song/detail?id={song_id}&ids=[{song_id}]'
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://music.163.com/',
+        }
+
+        if cookie:
+            headers['Cookie'] = cookie
+
+        conn.request('GET', path, headers=headers)
+        response = conn.getresponse()
+        raw_data = response.read().decode('utf-8')
+        conn.close()
+
+        if response.status != 200:
+            logger.warning(f"[NetEase-Cover] Failed to get song detail: status={response.status}")
+            return ''
+
+        data = json.loads(raw_data)
+        songs = data.get('songs', [])
+        if not songs:
+            return ''
+
+        song = songs[0]
+        album = song.get('album', {})
+
+        # 尝试多种字段
+        cover = (
+            album.get('picUrl', '') or
+            album.get('blurPicUrl', '') or
+            song.get('albumPic', '') or
+            song.get('picUrl', '')
+        )
+
+        # 处理相对路径
+        if cover and not cover.startswith("http"):
+            if cover.startswith("//"):
+                cover = "https:" + cover
+            elif cover.startswith("/"):
+                cover = "https://music.163.com" + cover
+            else:
+                # 使用网易云CDN域名
+                cover = f"https://p1.music.126.net/{cover}"
+
+        if cover:
+            logger.debug(f"[NetEase-Cover] Got cover for song {song_id}: {cover[:80]}...")
+            return cover
+        else:
+            logger.warning(f"[NetEase-Cover] No cover URL for song {song_id}")
+            return ''
+
+    except Exception as e:
+        logger.error(f"[NetEase-Cover] Error: {e}")
+        return ''
+
 
 async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 3) -> list[SearchResult]:
     """
@@ -767,6 +980,11 @@ def _do_single_search(keyword: str, limit: int) -> list[SearchResult]:
             'Pragma': 'no-cache',
         }
 
+        # 添加登录 Cookie（如果已获取）
+        cookie = _login_netease_guest()
+        if cookie:
+            headers['Cookie'] = cookie
+
         conn.request('GET', path, headers=headers)
         response = conn.getresponse()
         status = response.status
@@ -808,6 +1026,32 @@ def _do_single_search(keyword: str, limit: int) -> list[SearchResult]:
 
         logger.info(f"[NetEase-REST] Found {len(songs)} songs for '{keyword}'")
         parsed = [_parse_netease_result(song) for song in songs[:limit]]
+        
+        # 通过歌曲详情接口获取封面URL（搜索接口不返回封面）
+        if parsed:
+            if _netease_cookie:
+                logger.info("[NetEase-REST] Using cookie for cover fetch")
+            
+            # 为每个结果获取封面URL
+            for i, result in enumerate(parsed):
+                cover_url = _get_netease_cover_by_id(result.song_id, _netease_cookie)
+                if cover_url:
+                    logger.debug(f"[NetEase-REST] Got cover for result {i}: {cover_url[:80]}...")
+                    # 更新该结果的封面
+                    parsed[i] = SearchResult(
+                        source=result.source,
+                        title=result.title,
+                        artist=result.artist,
+                        album=result.album,
+                        cover_link=cover_url,
+                        song_id=result.song_id,
+                        duration=result.duration,
+                        confidence=result.confidence,
+                        raw_data=result.raw_data,
+                    )
+                else:
+                    logger.warning(f"[NetEase-REST] Failed to get cover for result {i}")
+        
         return parsed
 
     except Exception as e:
@@ -1371,26 +1615,39 @@ async def recognize_and_rename_file(
 
     # 8) Move or copy & tag
     if modify and not tag_only:
-        try:
-            if copy_to:
-                shutil.copy2(file_path, new_path)
-            else:
-                os.rename(file_path, new_path)
+        # 文件占用重试逻辑
+        max_retries = 3
+        retry_delay = 0.5
+        for attempt in range(max_retries + 1):
+            try:
+                if copy_to:
+                    shutil.copy2(file_path, new_path)
+                else:
+                    os.rename(file_path, new_path)
 
-            if ext == ".mp3":
-                update_mp3_tags(new_path, s_title, s_artist, s_album)
-                if cover:
-                    update_mp3_cover_art(new_path, cover, trace)
-            else:
-                update_ogg_tags(
-                    new_path, s_title, s_artist, s_album, cover, trace
-                )
-        except Exception as exc:
-            return {
-                "file_path": file_path,
-                "error": f"Tag error: {exc}",
-                "search_results": [sr.to_dict() for sr in search_results],
-            }
+                if ext == ".mp3":
+                    update_mp3_tags(new_path, s_title, s_artist, s_album)
+                    if cover:
+                        update_mp3_cover_art(new_path, cover, trace)
+                else:
+                    update_ogg_tags(
+                        new_path, s_title, s_artist, s_album, cover, trace
+                    )
+                break  # 成功则跳出重试循环
+            except Exception as exc:
+                if is_file_in_use_error(exc) and attempt < max_retries:
+                    wait_time = retry_delay * (attempt + 1)
+                    logger.warning(
+                        f"文件被占用，将在 {wait_time:.1f} 秒后重试 "
+                        f"({attempt + 1}/{max_retries}): {exc}"
+                    )
+                    time.sleep(wait_time)
+                    continue
+                return {
+                    "file_path": file_path,
+                    "error": f"Tag error: {exc}",
+                    "search_results": [sr.to_dict() for sr in search_results],
+                }
 
     return {
         "file_path": file_path,
@@ -1404,30 +1661,89 @@ async def recognize_and_rename_file(
 
 
 def update_mp3_cover_art(file_path: str, cover_url: str, trace: bool) -> None:
+    """
+    更新 MP3 文件的封面图片
+
+    Args:
+        file_path (str): MP3 文件路径
+        cover_url (str): 封面图片 URL
+        trace (bool): 是否输出调试信息
+
+    Raises:
+        ValueError: 无法加载 MP3 文件
+        RuntimeError: 封面图片下载或保存失败
+    """
+    logger.info(f"[update_mp3_cover_art] Processing: {file_path}")
+
     if not cover_url:
+        logger.info(f"[update_mp3_cover_art] No cover URL provided, skipping")
         if trace:
-            print("No cover art:", file_path)
+            print(f"No cover art for {file_path}")
         return
-    audio = eyed3.load(file_path)
-    if audio.tag is None:
-        audio.initTag()
-    img = urlopen(cover_url).read()
-    audio.tag.images.set(3, img, "image/jpeg", "cover")
-    audio.tag.save()
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"MP3 文件不存在: {file_path}")
+
+    try:
+        audio = eyed3.load(file_path)
+        if not audio:
+            raise ValueError(f"无法加载 MP3 文件: {file_path}")
+
+        if audio.tag is None:
+            audio.initTag()
+
+        logger.info(f"[update_mp3_cover_art] Downloading cover from URL...")
+        img = urlopen(cover_url).read()
+        audio.tag.images.set(3, img, "image/jpeg", "cover")
+        audio.tag.save()
+        logger.info(f"[update_mp3_cover_art] ✓ Cover art saved successfully for {os.path.basename(file_path)}")
+    except Exception as e:
+        logger.error(f"[update_mp3_cover_art] ✗ Failed to save cover art: {e}", exc_info=True)
+        raise RuntimeError(f"保存封面失败: {e}") from e
 
 
 def update_mp3_tags(
     file_path: str, title: str, artist: str, album: str
 ) -> None:
+    """
+    更新 MP3 文件的 ID3 标签
+
+    Args:
+        file_path (str): MP3 文件路径
+        title (str): 歌曲标题
+        artist (str): 艺术家
+        album (str): 专辑名
+
+    Raises:
+        ValueError: 无法加载或解析 MP3 文件
+        RuntimeError: 标签保存失败
+    """
+    logger.info(f"[update_mp3_tags] Loading file: {file_path}")
+    logger.info(f"[update_mp3_tags] Metadata to write - title='{title}', artist='{artist}', album='{album}'")
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"MP3 文件不存在: {file_path}")
+
     audio = eyed3.load(file_path)
     if not audio:
-        return
+        raise ValueError(f"无法加载 MP3 文件（可能格式损坏或不支持）: {file_path}")
+
+    logger.info(f"[update_mp3_tags] File loaded successfully, tag exists: {audio.tag is not None}")
+
     if audio.tag is None:
+        logger.info(f"[update_mp3_tags] Initializing new ID3 tag...")
         audio.initTag()
-    audio.tag.title = title
-    audio.tag.artist = artist
-    audio.tag.album = album
-    audio.tag.save()
+
+    try:
+        audio.tag.title = title
+        audio.tag.artist = artist
+        audio.tag.album = album
+        logger.info(f"[update_mp3_tags] Tag values set, saving...")
+        audio.tag.save()
+        logger.info(f"[update_mp3_tags] ✓ Tags saved successfully for {os.path.basename(file_path)}")
+    except Exception as e:
+        logger.error(f"[update_mp3_tags] ✗ Failed to save tags: {e}", exc_info=True)
+        raise RuntimeError(f"保存 MP3 标签失败: {e}") from e
 
 
 def update_ogg_tags(
@@ -1438,35 +1754,71 @@ def update_ogg_tags(
     cover_url: str,
     trace: bool,
 ) -> None:
+    """
+    更新 OGG 文件的 Vorbis/Opus 标签
+
+    Args:
+        file_path (str): OGG 文件路径
+        title (str): 歌曲标题
+        artist (str): 艺术家
+        album (str): 专辑名
+        cover_url (str): 封面图片 URL
+        trace (bool): 是否输出调试信息
+
+    Raises:
+        FileNotFoundError: OGG 文件不存在
+        RuntimeError: 不支持的 OGG 格式或标签保存失败
+    """
+    logger.info(f"[update_ogg_tags] Loading file: {file_path}")
+    logger.info(f"[update_ogg_tags] Metadata to write - title='{title}', artist='{artist}', album='{album}'")
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"OGG 文件不存在: {file_path}")
+
     # Try Vorbis, then Opus, then generic
+    audio = None
     try:
         audio = OggVorbis(file_path)
-    except Exception:
+        logger.info(f"[update_ogg_tags] Loaded as OggVorbis")
+    except Exception as e:
+        logger.debug(f"[update_ogg_tags] Not Vorbis format: {e}")
         try:
             audio = OggOpus(file_path)
-        except Exception:
+            logger.info(f"[update_ogg_tags] Loaded as OggOpus")
+        except Exception as e2:
+            logger.debug(f"[update_ogg_tags] Not Opus format: {e2}")
             audio = File(file_path)
             if audio is None:
-                raise RuntimeError("Unsupported OGG type for tagging")
+                raise RuntimeError(f"不支持的 OGG 文件格式: {file_path}")
+            logger.info(f"[update_ogg_tags] Loaded as generic File")
 
-    audio["TITLE"] = [title]
-    audio["ARTIST"] = [artist]
-    audio["ALBUM"] = [album]
+    try:
+        audio["TITLE"] = [title]
+        audio["ARTIST"] = [artist]
+        audio["ALBUM"] = [album]
+        logger.info(f"[update_ogg_tags] Tag values set")
 
-    if cover_url:
-        try:
-            img = urlopen(cover_url).read()
-            pic = Picture()
-            pic.data = img
-            pic.type = 3
-            pic.mime = "image/jpeg"
-            pic.width = pic.height = pic.depth = pic.colors = 0
-            b64 = base64.b64encode(pic.write()).decode("ascii")
-            audio["METADATA_BLOCK_PICTURE"] = [b64]
-        except Exception as exc:
-            if trace:
-                print("Cover art error:", exc)
-    elif trace:
-        print("No cover art for OGG:", file_path)
+        if cover_url:
+            try:
+                logger.info(f"[update_ogg_tags] Downloading cover art from URL...")
+                img = urlopen(cover_url).read()
+                pic = Picture()
+                pic.data = img
+                pic.type = 3
+                pic.mime = "image/jpeg"
+                pic.width = pic.height = pic.depth = pic.colors = 0
+                b64 = base64.b64encode(pic.write()).decode("ascii")
+                audio["METADATA_BLOCK_PICTURE"] = [b64]
+                logger.info(f"[update_ogg_tags] Cover art embedded successfully")
+            except Exception as exc:
+                logger.warning(f"[update_ogg_tags] Cover art error (non-fatal): {exc}")
+                if trace:
+                    print(f"Cover art error: {exc}")
+        else:
+            logger.info(f"[update_ogg_tags] No cover URL provided")
 
-    audio.save()
+        audio.save()
+        logger.info(f"[update_ogg_tags] ✓ Tags saved successfully for {os.path.basename(file_path)}")
+    except Exception as e:
+        logger.error(f"[update_ogg_tags] ✗ Failed to save tags: {e}", exc_info=True)
+        raise RuntimeError(f"保存 OGG 标签失败: {e}") from e

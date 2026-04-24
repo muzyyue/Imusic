@@ -14,7 +14,8 @@ import time
 import logging
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QIcon, QTransform
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -36,6 +37,7 @@ from qfluentwidgets import (
     SwitchButton,
     TableWidget,
     CardWidget,
+    ToolButton,
     isDarkTheme,
     qconfig,
 )
@@ -53,6 +55,7 @@ from auto_tag.audio_recognize import (
 from auto_tag.gui.i18n import tr
 from auto_tag.gui.workers import RecognizeWorker
 from auto_tag.gui.components.song_result_card import SongResultCard
+from auto_tag.utils import is_file_in_use_error
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +88,8 @@ class HomePage(QWidget):
 
     # 自定义信号
     selection_changed = Signal(str, int)
+    _song_refresh_result = Signal(str, object)
+    _song_refresh_error = Signal(str, str)
 
     def __init__(self, parent=None) -> None:
         """
@@ -107,6 +112,11 @@ class HomePage(QWidget):
         self.search_results_map: dict[str, list[dict]] = {}
         self._selected_results: dict[str, int] = {}
         self.song_cards: dict[str, "SongResultCard"] = {}
+
+        # 顶部刷新按钮动画状态
+        self._refresh_files_angle = 0
+        self._refresh_files_timer: QTimer | None = None
+        self._is_refreshing_files = False
 
         # 构建 UI
         self._setup_ui()
@@ -196,8 +206,21 @@ class HomePage(QWidget):
         layout.addLayout(progress_layout)
 
         # === 搜索结果区域 ===
+        results_header_layout = QHBoxLayout()
+        results_header_layout.setSpacing(12)
+
         self.table_title = SubtitleLabel(tr("search_results"))
-        layout.addWidget(self.table_title)
+        results_header_layout.addWidget(self.table_title)
+
+        results_header_layout.addStretch()
+
+        self.refresh_files_btn = ToolButton(FIF.SYNC)
+        self.refresh_files_btn.setFixedSize(32, 32)
+        self.refresh_files_btn.setToolTip(tr("refresh_file_list"))
+        self.refresh_files_btn.clicked.connect(self._on_refresh_files)
+        results_header_layout.addWidget(self.refresh_files_btn)
+
+        layout.addLayout(results_header_layout)
 
         # 创建滚动区域
         self.scroll_area = QScrollArea()
@@ -243,6 +266,10 @@ class HomePage(QWidget):
         self.apply_plex_btn.clicked.connect(lambda: self._on_apply(plex=True))
         btn_layout.addWidget(self.apply_plex_btn)
 
+        self.clear_data_btn = PushButton(FIF.DELETE, tr("clear_data"))
+        self.clear_data_btn.clicked.connect(self._on_clear_data)
+        btn_layout.addWidget(self.clear_data_btn)
+
         layout.addLayout(btn_layout)
 
     def _connect_signals(self) -> None:
@@ -259,6 +286,10 @@ class HomePage(QWidget):
 
         # 主题切换
         qconfig.themeChanged.connect(self._on_theme_changed)
+
+        # 歌曲搜索刷新结果（跨线程）
+        self._song_refresh_result.connect(self._on_song_search_completed)
+        self._song_refresh_error.connect(self._on_song_search_error)
 
     def _on_copy_switch_changed(self, checked: bool) -> None:
         """
@@ -356,6 +387,154 @@ class HomePage(QWidget):
         if directory:
             self.copy_dir = directory
             self.copy_dir_entry.setText(directory)
+
+    def _on_refresh_files(self) -> None:
+        """
+        刷新文件列表按钮点击处理
+
+        重新扫描当前目录下的音频文件并执行识别，同时启动 loading 动画。
+        """
+        if self._is_refreshing_files:
+            return
+        if not self.dir_var:
+            MessageBox(
+                "Info",
+                tr("select_directory_first"),
+                self
+            ).exec()
+            return
+        self._set_refresh_files_loading(True)
+        self._start_recognition(self.dir_var)
+
+    def _set_refresh_files_loading(self, loading: bool) -> None:
+        """
+        设置顶部刷新按钮的加载状态
+
+        Args:
+            loading (bool): 是否正在加载
+        """
+        self._is_refreshing_files = loading
+        self.refresh_files_btn.setEnabled(not loading)
+        self.browse_btn.setEnabled(not loading)
+
+        if loading:
+            # 启动旋转动画
+            self._refresh_files_angle = 0
+            self._refresh_files_timer = QTimer(self)
+            self._refresh_files_timer.setInterval(30)
+            self._refresh_files_timer.timeout.connect(
+                self._rotate_refresh_files_icon
+            )
+            self._refresh_files_timer.start()
+        else:
+            # 停止旋转动画
+            if (self._refresh_files_timer
+                    and self._refresh_files_timer.isActive()):
+                self._refresh_files_timer.stop()
+                self._refresh_files_timer = None
+            self._refresh_files_angle = 0
+            self.refresh_files_btn.setIcon(FIF.SYNC)
+
+    def _rotate_refresh_files_icon(self) -> None:
+        """定时器回调，旋转顶部刷新按钮图标"""
+        self._refresh_files_angle = (self._refresh_files_angle + 15) % 360
+        icon = FIF.SYNC.icon()
+        pixmap = icon.pixmap(20, 20)
+        rotated = pixmap.transformed(
+            QTransform().rotate(self._refresh_files_angle),
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.refresh_files_btn.setIcon(QIcon(rotated))
+
+    def _on_refresh_song_search(self, file_path: str) -> None:
+        """
+        刷新单首歌曲搜索结果
+
+        在后台线程中重新搜索指定文件，通过信号将结果传回主线程更新 UI。
+
+        Args:
+            file_path (str): 要刷新搜索结果的文件路径
+        """
+        import asyncio
+        from threading import Thread
+
+        def run_search():
+            """在后台线程中运行搜索任务（仅数据处理，不操作UI）"""
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    from shazamio import Shazam
+                    from auto_tag.audio_recognize import recognize_and_rename_file
+
+                    shazam = Shazam()
+                    result = loop.run_until_complete(
+                        recognize_and_rename_file(
+                            file_path=file_path,
+                            shazam=shazam,
+                            modify=False,
+                            delay=10,
+                            nbr_retry=3,
+                            trace=False,
+                            output_dir=None,
+                            plex_structure=False,
+                            copy_to=self.copy_dir if self.copy_enabled else None,
+                            tag_only=self.tag_only,
+                        )
+                    )
+                    search_results = result.get("search_results", [])
+                    if not search_results and result.get("title"):
+                        search_results = [{
+                            "platform": "Shazam",
+                            "title": result.get("title", ""),
+                            "artist": result.get("author", ""),
+                            "album": result.get("album", ""),
+                            "cover_url": result.get("cover_link", ""),
+                        }]
+
+                    logger.info(f"[HomePage] Search completed for {file_path}, results={len(search_results)}")
+                    self._song_refresh_result.emit(file_path, search_results)
+                finally:
+                    loop.close()
+            except Exception as e:
+                logger.error(f"[HomePage] Failed to refresh search for {file_path}: {e}")
+                self._song_refresh_error.emit(file_path, str(e))
+
+        thread = Thread(target=run_search, daemon=True)
+        thread.start()
+
+    def _on_song_search_completed(self, file_path: str, search_results: list) -> None:
+        """
+        歌曲搜索完成回调（主线程执行）
+
+        更新搜索结果映射和对应卡片的 UI 显示。
+
+        Args:
+            file_path (str): 文件路径
+            search_results (list): 新的搜索结果列表
+        """
+        self.search_results_map[file_path] = search_results
+
+        card = self.song_cards.get(file_path)
+        if card:
+            card.update_search_results(search_results)
+
+        logger.info(f"[HomePage] Card updated for {file_path}")
+
+    def _on_song_search_error(self, file_path: str, error_msg: str) -> None:
+        """
+        歌曲搜索错误回调（主线程执行）
+
+        显示错误消息对话框，停止对应卡片的刷新动画。
+
+        Args:
+            file_path (str): 文件路径
+            error_msg (str): 错误信息
+        """
+        card = self.song_cards.get(file_path)
+        if card:
+            card.set_refreshing(False)
+        MessageBox("Error", f"刷新搜索失败: {error_msg}", self).exec()
 
     def _start_recognition(self, directory: str) -> None:
         """
@@ -499,6 +678,9 @@ class HomePage(QWidget):
             # 设置选中变化回调
             card.set_on_selection_changed(self._on_card_selection_changed)
 
+            # 连接刷新搜索信号
+            card.refresh_requested.connect(self._on_refresh_song_search)
+
             # 添加到布局（在 stretch 之前插入）
             self.cards_layout.insertWidget(
                 self.cards_layout.count() - 1,
@@ -524,10 +706,12 @@ class HomePage(QWidget):
         所有文件处理完成回调
 
         更新最终状态，如果没有找到音频文件则显示提示消息。
+        停止顶部刷新按钮的加载动画。
 
         Args:
             results (list): 所有文件的识别结果列表
         """
+        self._set_refresh_files_loading(False)
         self.progress_bar.setValue(100)
         if not results:
             MessageBox(
@@ -540,11 +724,12 @@ class HomePage(QWidget):
         """
         错误发生回调
 
-        显示错误消息对话框。
+        显示错误消息对话框，停止顶部刷新按钮的加载动画。
 
         Args:
             error_msg (str): 错误信息文本
         """
+        self._set_refresh_files_loading(False)
         MessageBox("Error", error_msg, self).exec()
 
     def _on_card_selection_changed(self, file_path: str, index: int) -> None:
@@ -567,6 +752,48 @@ class HomePage(QWidget):
         for card in self.song_cards.values():
             card.checkbox.setChecked(False)
 
+    def _on_clear_data(self) -> None:
+        """
+        清除数据按钮点击处理
+
+        清除所有搜索结果和缓存数据，释放文件句柄，
+        解决 Windows 下文件被占用的问题。
+        """
+        # 停止当前工作线程（如果正在运行）
+        if self.worker and self.worker.isRunning():
+            self.worker.terminate()
+            self.worker.wait()
+            self.worker = None
+
+        # 清空所有数据
+        self.data.clear()
+        self.search_results_map.clear()
+        self._selected_results.clear()
+
+        # 删除所有卡片组件（释放文件句柄）
+        for card in self.song_cards.values():
+            card.deleteLater()
+        self.song_cards.clear()
+
+        # 清空卡片容器
+        while self.cards_layout.count():
+            child = self.cards_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        self.cards_layout.addStretch()
+
+        # 重置进度条和状态
+        self.progress_bar.setValue(0)
+        self.status_label.setText(
+            tr("progress_format", done=0, total=0, remaining=0)
+        )
+
+        # 强制垃圾回收，释放文件句柄
+        import gc
+        gc.collect()
+
+        logger.info("[HomePage] Data cleared, file handles released")
+
     def _on_apply(self, plex: bool = False) -> None:
         """
         应用更改
@@ -577,6 +804,10 @@ class HomePage(QWidget):
             plex (bool): 是否按 Plex 结构组织文件
         """
         errors: list[str] = []
+        success_count = 0
+
+        logger.info(f"[HomePage] _on_apply called: plex={plex}, tag_only={self.tag_only}, "
+                     f"total_files={len(self.data)}, total_cards={len(self.song_cards)}")
 
         for entry in self.data:
             file_path = entry.get("file_path", "")
@@ -586,12 +817,41 @@ class HomePage(QWidget):
             if not card or not card.is_checked():
                 continue
 
-            src = entry.get("file_path")
-            if not src:
+            # 尝试多个可能的文件路径（解决路径不同步问题）
+            src = entry.get("file_path", "")
+
+            # 策略 1: 直接使用 entry 的 file_path
+            if src and os.path.exists(src):
+                logger.info(f"[HomePage] Found file via entry.file_path: {os.path.basename(src)}")
+            # 策略 2: 使用 new_file_path（重命名后的路径）
+            elif entry.get("new_file_path") and os.path.exists(entry["new_file_path"]):
+                src = entry["new_file_path"]
+                logger.info(f"[HomePage] Found file via entry.new_file_path: {os.path.basename(src)}")
+            # 策略 3: 使用 card 存储的 file_path
+            elif card.file_path and os.path.exists(card.file_path):
+                src = card.file_path
+                logger.info(f"[HomePage] Found file via card.file_path: {os.path.basename(src)}")
+            else:
+                # 所有路径都无效
+                error_msg = (f"{os.path.basename(src) if src else 'Unknown'}: "
+                            f"file not found (tried multiple paths)")
+                logger.error(f"[HomePage] {error_msg}")
+                errors.append(error_msg)
                 continue
+
+            logger.info(f"[HomePage] Processing file: {os.path.basename(src)}")
 
             # 获取用户选择的结果
             selected_result = card.get_selected_result()
+            logger.info(f"[HomePage] Selected result: {selected_result}")
+
+            # DEBUG: 实时显示关键信息到控制台
+            print(f"\n{'='*60}")
+            print(f"[DEBUG] Processing: {os.path.basename(src)}")
+            print(f"[DEBUG] card.selected_platform_index = {card.selected_platform_index}")
+            print(f"[DEBUG] selected_result = {selected_result}")
+            print(f"{'='*60}\n")
+
             title = selected_result.get("title", entry.get("title", ""))
             artist = selected_result.get("artist", entry.get("author", ""))
             album = selected_result.get("album", entry.get("album", ""))
@@ -599,35 +859,97 @@ class HomePage(QWidget):
                 "cover_link", entry.get("cover_link", "")
             )
 
-            # 生成新文件名
-            from auto_tag.utils import sanitize
-            s_title = sanitize(title, False)
-            s_artist = sanitize(artist, False)
-            s_album = sanitize(album, False)
+            logger.info(f"[HomePage] Metadata extracted - title='{title}', "
+                        f"artist='{artist}', album='{album}', cover={'yes' if cover_link else 'no'}")
+
+            # DEBUG: 输出元数据
+            print(f"[DEBUG] Raw metadata: title='{title}', artist='{artist}', album='{album}'")
+
+            if not title and not artist and not album:
+                error_msg = f"{src}: 无法获取有效的元数据（title/artist/album 均为空）"
+                logger.error(f"[HomePage] {error_msg}")
+                errors.append(error_msg)
+                continue
+
+            # 生成文件名（保留原始语言字符，只移除文件系统非法字符）
+            from auto_tag.utils import sanitize_filename_safe
+            f_title = sanitize_filename_safe(title)
+            f_artist = sanitize_filename_safe(artist)
+            f_album = sanitize_filename_safe(album)
+
+            # DEBUG: 输出结果
+            print(f"[DEBUG] Filename (preserving original language): title='{f_title}', artist='{f_artist}', album='{f_album}'")
+            print(f"[DEBUG] Tags (original): title='{title}', artist='{artist}', album='{album}'")
 
             ext = os.path.splitext(src)[1].lower()
             if plex:
-                new_name = f"{s_title}{ext}"
+                new_name = f"{f_title}{ext}"
             else:
-                new_name = f"{s_title} - {s_artist} - {s_album}{ext}"
+                new_name = f"{f_title} - {f_artist} - {f_album}{ext}"
+
+            logger.info(f"[HomePage] Generated filename: {new_name}")
+            print(f"[DEBUG] New filename: {new_name}")
 
             try:
+                # DEBUG: 输出模式信息
+                print(f"[DEBUG] Mode: tag_only={self.tag_only}, plex={plex}")
+                print(f"[DEBUG] Source file exists: {os.path.exists(src)}")
+                print(f"[DEBUG] Source file path: {src}")
+
                 if self.tag_only:
-                    if src.lower().endswith(".mp3"):
-                        update_mp3_tags(src, s_title, s_artist, s_album)
-                        update_mp3_cover_art(
-                            src, cover_link, trace=False
-                        )
-                    elif src.lower().endswith(".ogg"):
-                        update_ogg_tags(
-                            src, s_title, s_artist, s_album,
-                            cover_link,
-                            trace=False
-                        )
+                    print(f"[DEBUG] >>> Entering TAG-ONLY mode <<<")
+                    logger.info(f"[HomePage] Tag-only mode: updating tags for {src}")
+                    if not os.path.exists(src):
+                        raise FileNotFoundError(f"源文件不存在: {src}")
+
+                    # 文件占用重试逻辑
+                    max_retries = 3
+                    retry_delay = 0.5
+                    for attempt in range(max_retries + 1):
+                        try:
+                            if src.lower().endswith(".mp3"):
+                                logger.info(f"[HomePage] Calling update_mp3_tags for MP3...")
+                                print(f"[DEBUG] Writing MP3 tags with ORIGINAL text (not sanitized)")
+                                update_mp3_tags(src, title, artist, album)
+                                logger.info(f"[HomePage] update_mp3_tags completed successfully")
+                                if cover_link:
+                                    logger.info(f"[HomePage] Calling update_mp3_cover_art...")
+                                    update_mp3_cover_art(
+                                        src, cover_link, trace=False
+                                    )
+                                    logger.info(f"[HomePage] update_mp3_cover_art completed")
+                            elif src.lower().endswith(".ogg"):
+                                logger.info(f"[HomePage] Calling update_ogg_tags for OGG...")
+                                print(f"[DEBUG] Writing OGG tags with ORIGINAL text (not sanitized)")
+                                update_ogg_tags(
+                                    src, title, artist, album,
+                                    cover_link,
+                                    trace=False
+                                )
+                                logger.info(f"[HomePage] update_ogg_tags completed")
+                            else:
+                                raise ValueError(f"不支持的文件格式: {ext}")
+
+                            success_count += 1
+                            logger.info(f"[HomePage] ✓ Tags updated successfully for {os.path.basename(src)}")
+                            print(f"[DEBUG] ✓✓✓ TAG-ONLY mode completed successfully!")
+                            break  # 成功则跳出重试循环
+                        except Exception as tag_exc:
+                            if is_file_in_use_error(tag_exc) and attempt < max_retries:
+                                wait_time = retry_delay * (attempt + 1)
+                                logger.warning(
+                                    f"[HomePage] 文件被占用，将在 {wait_time:.1f} 秒后重试 "
+                                    f"({attempt + 1}/{max_retries}): {tag_exc}"
+                                )
+                                time.sleep(wait_time)
+                                continue
+                            raise
                 else:
+                    print(f"[DEBUG] >>> Entering RENAME + TAG mode <<<")
                     root_dir = self.copy_dir if (self.copy_enabled and self.copy_dir) else os.path.dirname(src)
+                    print(f"[DEBUG] root_dir: {root_dir}")
                     if plex:
-                        root_dir = os.path.join(root_dir, s_artist, s_album)
+                        root_dir = os.path.join(root_dir, f_artist, f_album)
                     os.makedirs(root_dir, exist_ok=True)
 
                     new_path = os.path.join(root_dir, new_name)
@@ -637,24 +959,84 @@ class HomePage(QWidget):
                         new_path = f"{stem} ({count}){e2}"
                         count += 1
 
-                    if self.copy_enabled and self.copy_dir:
-                        shutil.copy2(src, new_path)
-                    else:
-                        os.rename(src, new_path)
+                    print(f"[DEBUG] Target path: {new_path}")
+                    print(f"[DEBUG] Target exists already? {os.path.exists(new_path)}")
+                    print(f"[DEBUG] Target == Source? {new_path == src}")
 
+                    # 如果源路径和目标路径相同，说明文件已经是正确命名，跳过重命名
+                    if new_path == src:
+                        logger.info(f"[HomePage] File already has correct name, skipping rename: {os.path.basename(src)}")
+                        print(f"[DEBUG] Skipping rename - paths are identical")
+                        target_path = src
+                    else:
+                        logger.info(f"[HomePage] {'Copying' if (self.copy_enabled and self.copy_dir) else 'Renaming'} "
+                                    f"{src} -> {new_path}")
+
+                        # 文件占用重试逻辑
+                        max_retries = 3
+                        retry_delay = 0.5
+                        for attempt in range(max_retries + 1):
+                            try:
+                                if self.copy_enabled and self.copy_dir:
+                                    shutil.copy2(src, new_path)
+                                else:
+                                    os.rename(src, new_path)
+                                print(f"[DEBUG] ✓ Rename/Copy completed successfully!")
+                                target_path = new_path
+                                break  # 成功则跳出重试循环
+                            except Exception as rename_err:
+                                if is_file_in_use_error(rename_err) and attempt < max_retries:
+                                    wait_time = retry_delay * (attempt + 1)
+                                    logger.warning(
+                                        f"[HomePage] 文件被占用，将在 {wait_time:.1f} 秒后重试 "
+                                        f"({attempt + 1}/{max_retries}): {rename_err}"
+                                    )
+                                    time.sleep(wait_time)
+                                    continue
+                                print(f"[DEBUG] ✗ Rename/Copy FAILED: {type(rename_err).__name__}: {rename_err}")
+                                raise
+                    print(f"[DEBUG] Writing tags to: {target_path}")
                     if ext == ".mp3":
-                        update_mp3_tags(new_path, s_title, s_artist, s_album)
-                        update_mp3_cover_art(
-                            new_path, cover_link, trace=False
-                        )
+                        logger.info(f"[HomePage] Calling update_mp3_tags for {target_path}...")
+                        print(f"[DEBUG] Writing MP3 tags with ORIGINAL text: title='{title}', artist='{artist}', album='{album}'")
+                        update_mp3_tags(target_path, title, artist, album)
+                        logger.info(f"[HomePage] update_mp3_tags completed")
+                        print(f"[DEBUG] ✓ MP3 tags written successfully!")
+                        if cover_link:
+                            logger.info(f"[HomePage] Calling update_mp3_cover_art...")
+                            update_mp3_cover_art(
+                                target_path, cover_link, trace=False
+                            )
+                            logger.info(f"[HomePage] update_mp3_cover_art completed")
                     elif ext == ".ogg":
+                        logger.info(f"[HomePage] Calling update_ogg_tags for {target_path}...")
+                        print(f"[DEBUG] Writing OGG tags with ORIGINAL text: title='{title}', artist='{artist}', album='{album}'")
                         update_ogg_tags(
-                            new_path, s_title, s_artist, s_album,
+                            target_path, title, artist, album,
                             cover_link,
                             trace=False
                         )
+                        logger.info(f"[HomePage] update_ogg_tags completed")
+
+                    success_count += 1
+                    logger.info(f"[HomePage] ✓ File processed successfully: {os.path.basename(src)}")
+                    print(f"[DEBUG] ✓✓✓✓ File processing completed successfully!")
             except Exception as exc:
-                errors.append(f"{src}: {exc}")
+                error_msg = f"{os.path.basename(src)}: {exc}"
+                print(f"[DEBUG] ✗✗✗ EXCEPTION: {type(exc).__name__}: {exc}")
+                logger.error(f"[HomePage] ✗ Error processing file: {error_msg}", exc_info=True)
+                errors.append(error_msg)
+
+        logger.info(f"[HomePage] Apply completed: success={success_count}, errors={len(errors)}")
+        print(f"\n{'='*60}")
+        print(f"[DEBUG] FINAL RESULT: success={success_count}, errors={len(errors)}")
+        if errors:
+            print(f"[DEBUG] Errors:")
+            for err in errors:
+                print(f"      - {err}")
+        else:
+            print(f"[DEBUG] All operations completed successfully!")
+        print(f"{'='*60}\n")
 
         if errors:
             MessageBox(
@@ -712,6 +1094,7 @@ class HomePage(QWidget):
         self.uncheck_all_btn.setText(tr("uncheck_all"))
         self.apply_btn.setText(tr("apply"))
         self.apply_plex_btn.setText(tr("apply_plex"))
+        self.refresh_files_btn.setToolTip(tr("refresh_file_list"))
 
         # 刷新所有卡片的平台名称
         for card in self.song_cards.values():

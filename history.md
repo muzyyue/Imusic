@@ -1,5 +1,90 @@
 # 项目变更历史
 
+## v0.4.37 (2026-04-24)
+- **feat(core): 🧹 添加清除数据功能和修复 WinError 32 错误**
+  - **问题分析**：
+    1. 用户报告 WinError 32 错误，但并非其他进程占用
+    2. 根本原因：源路径和目标路径相同（`src == new_path`）时，Windows 的 `os.rename()` 会抛出 WinError 32
+    3. 用户需要手动清除数据来释放文件句柄
+  - **修复方案**：
+    1. **修复路径相同时跳过重命名**：
+       - 在 `home_page.py/_on_apply()` 中，当 `new_path == src` 时直接跳过 `os.rename()`
+       - 避免 Windows 上因路径相同导致的 WinError 32 错误
+    2. **添加"清除数据"按钮**：
+       - `home_page.py` - 清除搜索结果、缓存数据和文件句柄
+       - `music_manager_page.py` - 清除文件列表和缓存数据
+       - 释放所有占用的文件句柄，解决 Windows 文件锁定问题
+    3. **添加 i18n 支持**：
+       - `clear_data` 键的中英文翻译
+  - **效果**：
+    - ✅ 修复了源路径和目标路径相同时的 WinError 32 错误
+    - ✅ 提供"清除数据"按钮，用户可主动释放文件句柄
+    - ✅ 强制垃圾回收，彻底释放文件锁定
+    - ✅ 保持向后兼容，不影响正常操作流程
+  - **涉及文件**：
+    - `auto_tag/gui/pages/home_page.py` - 修复路径相同问题、添加清除数据按钮和方法
+    - `auto_tag/gui/pages/music_manager_page.py` - 添加清除数据按钮和方法
+    - `auto_tag/gui/i18n/locales/zh.json` - 添加"清除数据"翻译
+    - `auto_tag/gui/i18n/locales/en.json` - 添加"Clear Data"翻译
+
+## v0.4.36 (2026-04-24)
+- **refine(gui): 🎨 增强搜索加载对话框视觉效果**
+  - 添加 FluentIcon.SYNC 旋转图标（或 emoji 回退）
+  - 调整对话框尺寸 320x160，优化布局间距
+  - 添加"取消"按钮，允许用户中断搜索
+  - 隐藏关闭按钮，强制使用取消按钮操作
+  - 文本自动换行（WordWrap），适配多语言
+  - 回调中增加 self._loading_dialog 空值保护
+
+## v0.4.36 (2026-04-24)
+- **fix(core): 🖼️ 完善网易云封面获取 - 通过歌曲详情接口获取封面URL**
+  - **问题**：网易云音乐搜索结果的封面URL为空，导致显示默认图片
+  - **根因分析**：
+    1. 网易云**搜索API**（`/api/search/get/web`）**不返回封面URL**，原始数据中 `album.picUrl` 字段不存在
+    2. 需要通过**歌曲详情接口**（`/api/song/detail`）额外获取封面URL
+    3. 游客登录虽然获取Cookie成功，但搜索接口仍不返回封面字段
+  - **修复方案**：
+    1. **新增 `_get_netease_cover_by_id()` 函数**：
+       - 通过歌曲ID调用 `/api/song/detail?id={id}&ids=[{id}]` 接口
+       - 从响应中提取 `album.picUrl`、`album.blurPicUrl`、`song.albumPic` 等字段
+       - 处理相对路径（`//` 和 `/` 开头），补全为 HTTPS 绝对路径
+    2. **优化游客登录逻辑**：
+       - 使用 `getheaders()` 替代 `getheader('Set-Cookie')` 获取所有Cookie
+       - 合并多个 Set-Cookie 头为一个 Cookie 字符串
+    3. **修改 `_do_single_search()` 流程**：
+       - 搜索完成后，遍历所有结果
+       - 为每个结果调用 `_get_netease_cover_by_id()` 获取封面URL
+       - 更新 SearchResult 的 `cover_link` 字段
+  - **测试验证**：
+    - ✅ 网易云搜索结果成功获取封面URL（如 `https://p2.music.126.net/.../109951164927614269.jpg`）
+    - ✅ 封面URL为绝对路径，可直接用于图片加载
+    - ✅ 所有搜索结果都获取到了封面URL
+  - **注意**：
+    - 每个搜索结果需要额外请求一次歌曲详情接口，可能影响性能
+    - 后续可考虑批量获取封面（如果API支持）或增加缓存机制
+
+## v0.4.35 (2026-04-24)
+- **fix(gui): 🔄 歌词搜索异步化 - 消除UI未响应卡顿**
+  - **问题**：点击「获取歌词」后，REST API 搜索耗时约 15 秒，期间界面显示"未响应"
+  - **根因分析**：
+    1. `_show_search_dialog()` 在主线程同步调用 REST API 搜索
+    2. `urlopen()` 阻塞主线程事件循环，导致 UI 冻结
+  - **修复方案**：
+    1. **创建 SongSearchWorker 后台线程**（auto_tag/gui/workers/song_search_worker.py）：
+       - 继承 QThread，在后台线程执行搜索
+       - 通过 Qt Signal 向主线程发射搜索结果
+    2. **重构 _start_lyric_fetch() 流程**：
+       - 异步搜索：启动 SongSearchWorker + 显示模态加载对话框
+       - 加载动画：IndeterminateProgressBar + "正在搜索，请稍候..."
+       - 搜索完成后自动显示结果选择对话框
+    3. **新增 _continue_fetch() 方法**：用户选择歌曲后继续歌词获取流程
+    4. **添加 i18n 支持**：中英文搜索等待提示
+  - **效果**：
+    - ✅ 搜索期间 UI 保持响应，显示加载动画
+    - ✅ 不再出现"未响应"状态
+    - ✅ 搜索完成后自动弹出结果选择
+    - ✅ 保持向后兼容（_show_search_dialog() 保留但标记为已弃用）
+
 ## v0.4.34 (2026-04-24)
 - **fix(core): 🖼️ 修复网易云封面显示问题 - 游客登录+URL解析**
   - **问题**：网易云音乐搜索结果的封面图片显示为默认蓝色图标，而非实际专辑封面

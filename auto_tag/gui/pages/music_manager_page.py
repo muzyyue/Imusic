@@ -215,6 +215,11 @@ class MusicManagerPage(QWidget):
         self.uncheck_all_btn.clicked.connect(self._on_uncheck_all)
         btn_layout.addWidget(self.uncheck_all_btn)
 
+        self.clear_data_btn = PushButton(FIF.DELETE, tr("clear_data"))
+        self.clear_data_btn.setFixedHeight(32)
+        self.clear_data_btn.clicked.connect(self._on_clear_data)
+        btn_layout.addWidget(self.clear_data_btn)
+
         layout.addLayout(btn_layout)
 
         return panel
@@ -541,6 +546,64 @@ class MusicManagerPage(QWidget):
 
         if directory:
             self._scan_audio_files(directory)
+
+    def _on_clear_data(self) -> None:
+        """
+        清除数据按钮点击处理
+
+        清除所有文件列表和缓存数据，释放文件句柄，
+        解决 Windows 下文件被占用的问题。
+        """
+        # 清空文件列表数据
+        self.all_files.clear()
+        self.selected_files.clear()
+        self.current_file = None
+
+        # 清空表格
+        self.file_table.setRowCount(0)
+
+        # 清空封面缓存
+        self._current_cover_data = None
+
+        # 重置表单为占位符状态
+        self.title_edit.clear()
+        self.artist_edit.clear()
+        self.album_edit.clear()
+        self.year_edit.clear()
+        self.genre_edit.clear()
+
+        # 重置封面预览
+        self.cover_label.clear()
+        self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.cover_label.setStyleSheet(
+            "background-color: #f5f5f5; border: 1px solid #ddd; border-radius: 4px;"
+        )
+        self.cover_label.setText(
+            "<div style='text-align: center; color: #999;'>"
+            "<p>🖼️</p>"
+            f"<p style='font-size: 14px;'>{tr('no_cover')}</p>"
+            "</div>"
+        )
+
+        # 重置歌词编辑区
+        self.lyrics_edit.clear()
+
+        # 停止可能正在运行的工作线程
+        if hasattr(self, 'lyric_worker') and self.lyric_worker and self.lyric_worker.isRunning():
+            self.lyric_worker.terminate()
+            self.lyric_worker.wait()
+            self.lyric_worker = None
+
+        if hasattr(self, 'embed_worker') and self.embed_worker and self.embed_worker.isRunning():
+            self.embed_worker.terminate()
+            self.embed_worker.wait()
+            self.embed_worker = None
+
+        # 强制垃圾回收，释放文件句柄
+        import gc
+        gc.collect()
+
+        logger.info("[MusicManagerPage] Data cleared, file handles released")
 
     def _scan_audio_files(self, directory: str) -> None:
         """
