@@ -94,6 +94,7 @@
   "embed_only_desc": "歌词嵌入到音频文件中",
   "embed_and_lrc": "嵌入文件 + 生成 LRC",
   "embed_and_lrc_desc": "同时生成 .lrc 文件，兼容网易云音乐",
+  "lrc_file_filter": "LRC 文件 (*.lrc)",
   "save_lyrics_to_file": "保存歌词",
   "lyric_saved": "歌词已保存",
   "metadata_save_success": "元信息保存成功",

@@ -415,6 +415,15 @@ class MusicManagerPage(QWidget):
         self.provider_combo.setFixedWidth(150)
         provider_layout.addWidget(self.provider_combo)
 
+        # === 歌词嵌入模式选择器 ===
+        self.embed_mode_combo = ComboBox()
+        self.embed_mode_combo.addItem(tr("embed_only"))
+        self.embed_mode_combo.addItem(tr("embed_and_lrc"))
+        self.embed_mode_combo.setFixedHeight(36)
+        self.embed_mode_combo.setFixedWidth(180)
+        self.embed_mode_combo.setToolTip(tr("embed_only_desc") + " / " + tr("embed_and_lrc_desc"))
+        provider_layout.addWidget(self.embed_mode_combo)
+
         provider_layout.addStretch()
         layout.addLayout(provider_layout)
 
@@ -446,6 +455,11 @@ class MusicManagerPage(QWidget):
         self.embed_lyric_btn.setFixedHeight(36)
         self.embed_lyric_btn.clicked.connect(self._on_embed_lyrics)
         btn_layout.addWidget(self.embed_lyric_btn)
+
+        self.save_lyric_btn = PushButton(FIF.SAVE, tr("save_lyrics_to_file"))
+        self.save_lyric_btn.setFixedHeight(36)
+        self.save_lyric_btn.clicked.connect(self._on_save_lyrics)
+        btn_layout.addWidget(self.save_lyric_btn)
 
         self.batch_get_lyric_btn = PushButton(FIF.SYNC, tr("batch_get_lyrics"))
         self.batch_get_lyric_btn.setFixedHeight(36)
@@ -555,7 +569,7 @@ class MusicManagerPage(QWidget):
         解决 Windows 下文件被占用的问题。
         """
         # 清空文件列表数据
-        self.all_files.clear()
+        self.files.clear()
         self.selected_files.clear()
         self.current_file = None
 
@@ -1328,6 +1342,7 @@ class MusicManagerPage(QWidget):
         嵌入歌词按钮点击处理
 
         将当前歌词编辑器中的歌词嵌入到当前文件。
+        根据嵌入模式选择器决定仅嵌入文件或同时生成 LRC 文件。
         """
         if not self.current_file:
             MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
@@ -1338,17 +1353,69 @@ class MusicManagerPage(QWidget):
             MessageBox(tr("no_lyrics_found"), tr("get_lyrics"), self).exec()
             return
 
+        # 获取嵌入模式
+        mode_index = self.embed_mode_combo.currentIndex()
+        mode = 'embed_and_lrc' if mode_index == 1 else 'embed_only'
+
         try:
             success = self.lyric_manager.embed_lyrics(
                 self.current_file,
                 lyrics_text,
-                'lrc'
+                'lrc',
+                mode=mode
             )
 
             if success:
-                MessageBox(tr("success"), tr("lyric_embed_success"), self).exec()
+                if mode == 'embed_and_lrc':
+                    MessageBox(tr("success"), tr("lyric_embed_success") + "\n" + tr("embed_and_lrc_desc"), self).exec()
+                else:
+                    MessageBox(tr("success"), tr("lyric_embed_success"), self).exec()
             else:
-                MessageBox(tr("errors_occurred"), tr("lyric_embed_success"), self).exec()
+                MessageBox(tr("errors_occurred"), tr("lyric_embed_failed"), self).exec()
+        except Exception as e:
+            MessageBox(tr("errors_occurred"), str(e), self).exec()
+
+    def _on_save_lyrics(self) -> None:
+        """
+        保存歌词按钮点击处理
+
+        将当前歌词编辑器中的歌词保存为 .lrc 文件。
+        用户可以选择保存位置，默认与 MP3 文件同目录。
+        """
+        if not self.current_file:
+            MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
+            return
+
+        lyrics_text = self.lyric_text.toPlainText()
+        if not lyrics_text:
+            MessageBox(tr("no_lyrics_found"), tr("get_lyrics"), self).exec()
+            return
+
+        # 获取默认保存路径（与 MP3 文件同目录）
+        default_dir = os.path.dirname(self.current_file)
+        default_name = os.path.splitext(os.path.basename(self.current_file))[0] + '.lrc'
+        default_path = os.path.join(default_dir, default_name)
+
+        # 弹出文件保存对话框
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            tr("save_lyrics_to_file"),
+            default_path,
+            tr("lrc_file_filter")
+        )
+
+        if not file_path:
+            return  # 用户取消
+
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(lyrics_text)
+
+            MessageBox(
+                tr("success"),
+                tr("lyric_saved") + f"\n{file_path}",
+                self
+            ).exec()
         except Exception as e:
             MessageBox(tr("errors_occurred"), str(e), self).exec()
 
@@ -1405,7 +1472,13 @@ class MusicManagerPage(QWidget):
         self.lyric_text.setPlaceholderText(tr("no_lyrics_found"))
         self.get_lyric_btn.setText(tr("get_lyrics"))
         self.embed_lyric_btn.setText(tr("embed_lyrics"))
+        self.save_lyric_btn.setText(tr("save_lyrics_to_file"))
         self.batch_get_lyric_btn.setText(tr("batch_get_lyrics"))
+
+        # 更新歌词嵌入模式选择器
+        self.embed_mode_combo.setItemText(0, tr("embed_only"))
+        self.embed_mode_combo.setItemText(1, tr("embed_and_lrc"))
+        self.embed_mode_combo.setToolTip(tr("embed_only_desc") + " / " + tr("embed_and_lrc_desc"))
 
         # 更新提供商下拉框
         from auto_tag.lyric import list_providers

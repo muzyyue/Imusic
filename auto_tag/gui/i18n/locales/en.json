@@ -91,6 +91,7 @@
   "embed_only_desc": "Lyrics embedded into audio file",
   "embed_and_lrc": "Embed + Generate LRC",
   "embed_and_lrc_desc": "Also generates .lrc file, compatible with NetEase Cloud Music",
+  "lrc_file_filter": "LRC Files (*.lrc)",
   "save_lyrics_to_file": "Save Lyrics",
   "lyric_saved": "Lyrics saved",
   "metadata_save_success": "Metadata saved successfully",
