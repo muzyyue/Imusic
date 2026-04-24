@@ -1046,3 +1046,14 @@ class SongResultCard(CardWidget):
         self.selected_platform_index = 0
         if search_results:
             self._select_platform(0)
+
+        # 刷新成功，重置错误状态并重新应用卡片样式
+        self.has_error = False
+        if hasattr(self, 'checkbox') and self.checkbox:
+            self.checkbox.setChecked(True)
+        self._update_style()
+        self.results_container.setStyleSheet("""
+            QFrame#resultsContainer {
+                background-color: transparent;
+            }
+        """)

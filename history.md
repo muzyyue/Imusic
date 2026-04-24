@@ -1,5 +1,23 @@
 # 项目变更历史
 
+## v0.4.41 (2026-04-25)
+- **fix(gui): 🎨 修复重新获取歌曲数据后卡片背景色未更新的问题（根因修复）**
+  - **问题**：点击刷新按钮重新获取歌曲数据后，SongResultCard 卡片背景色变为异常的暗红色/棕红色
+  - **根因**：`update_search_results()` 方法重建子组件后未调用 `_update_style()` 重新应用卡片自身的背景色样式，导致 CardWidget 基类默认样式或残留的错误状态样式覆盖了自定义样式
+  - **修复方案**：
+    1. **在 `update_search_results()` 末尾添加关键调用**：
+       - 重置 `has_error = False`（刷新成功说明无错误）
+       - 调用 `self._update_style()` 重新应用正确的 card_bg 背景色
+       - 更新 checkbox 勾选状态为已选中
+       - 设置 results_container 背景透明避免颜色污染
+    2. **保留 v0.4.40 的 CoverImageWidget 主题监听改进**
+  - **效果**：
+    - ✅ 刷新后卡片背景色恢复正常（深色模式 #2d2d2d / 浅色模式 #ffffff）
+    - ✅ 不再出现暗红色/棕红色的异常背景
+    - ✅ checkbox 状态正确同步更新
+  - **涉及文件**：
+    - `auto_tag/gui/components/song_result_card.py` - update_search_results() 添加样式刷新
+
 ## v0.4.40 (2026-04-25)
 - **fix(gui): 🎨 修复重新获取歌曲数据后封面图片组件主题颜色未更新的问题**
   - **问题**：点击刷新搜索按钮重新获取歌曲数据后，新的封面图片组件（CoverImageWidget）没有监听主题变化，导致深浅色切换时颜色不正确
