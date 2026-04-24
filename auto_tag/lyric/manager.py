@@ -1230,6 +1230,8 @@ class LyricManager:
             - 同时写入 USLT 帧（无同步歌词，广泛支持）
             - 同时写入 TXXX 帧，description 设为 'UNSYNCEDLYRICS'（iTunes 兼容）
             - 仅在 mode='embed_and_lrc' 时生成独立 .lrc 文件（网易云音乐需要）
+            - **关键修复**：显式使用 ID3v2.3 版本保存（Windows Media Player 兼容性）
+            - **关键修复**：USLT 帧 description 设为 'Lyrics'（非空值，播放器识别需要）
         """
         audio = eyed3.load(file_path)
         if audio is None:
@@ -1237,7 +1239,7 @@ class LyricManager:
             return False
 
         if audio.tag is None:
-            audio.initTag()
+            audio.initTag(version=(2, 3, 0))
 
         tag = audio.tag
         lyrics_embedded = False
@@ -1263,14 +1265,18 @@ class LyricManager:
         except Exception as e:
             self.logger.debug(f"TXXX 帧写入失败: {e}")
 
+        # 关键修复：显式保存为 ID3v2.3 版本，确保 Windows Media Player 等播放器兼容
         try:
-            tag.save()
-        except AttributeError:
+            tag.save(version=eyed3.id3.ID3_V2_3)
+            self.logger.debug(f"歌词已保存为 ID3v2.3: {file_path}")
+        except Exception as e:
+            self.logger.error(f"ID3v2.3 保存失败: {e}")
+            # fallback：尝试标准保存
             try:
-                audio.save()
-            except AttributeError:
-                with open(file_path, 'r+b') as f:
-                    tag.save(f)
+                tag.save()
+            except Exception as e2:
+                self.logger.error(f"标准保存也失败: {e2}")
+                return False
 
         if not lyrics_embedded:
             self.logger.error("所有歌词帧都未能成功嵌入")
@@ -1343,16 +1349,20 @@ class LyricManager:
         Note:
             eyed3 v0.9.9 的 tag.lyrics.set() 要求使用**位置参数**而非关键字参数！
             签名: set(text: str, lang: str, description: bytes)
+
+            **关键修复**：description 必须为非空值（如 b'Lyrics'），
+            否则 Windows Media Player、Melosik 等播放器无法识别歌词帧。
         """
         try:
+            # description 设为 b'Lyrics'（非空），确保播放器能识别歌词
             # eyed3 v0.9.9 decorator requires positional arguments!
-            tag.lyrics.set(lyrics, 'eng', b'')
-            self.logger.debug("成功写入 USLT 帧")
+            tag.lyrics.set(lyrics, 'eng', b'Lyrics')
+            self.logger.debug("成功写入 USLT 帧 (description='Lyrics')")
         except TypeError:
             # 某些版本的 eyed3 可能要求 description 为 str
             try:
-                tag.lyrics.set(lyrics, 'eng', '')
-                self.logger.debug("成功写入 USLT 帧 (str description)")
+                tag.lyrics.set(lyrics, 'eng', 'Lyrics')
+                self.logger.debug("成功写入 USLT 帧 (str description='Lyrics')")
             except Exception as e:
                 self.logger.warning(f"USLT 帧写入失败: {e}")
                 raise
