@@ -1964,7 +1964,12 @@ def update_mp3_cover_art(file_path: str, cover_url: str, trace: bool) -> None:
             audio.initTag()
 
         logger.info(f"[update_mp3_cover_art] Downloading cover from URL...")
-        img = urlopen(cover_url).read()
+        import urllib.request
+        req = urllib.request.Request(
+            cover_url,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        )
+        img = urlopen(req, timeout=10).read()
         audio.tag.images.set(3, img, "image/jpeg", "cover")
         audio.tag.save()
         logger.info(f"[update_mp3_cover_art] ✓ Cover art saved successfully for {os.path.basename(file_path)}")

@@ -1004,10 +1004,16 @@ class HomePage(QWidget):
                         print(f"[DEBUG] ✓ MP3 tags written successfully!")
                         if cover_link:
                             logger.info(f"[HomePage] Calling update_mp3_cover_art...")
-                            update_mp3_cover_art(
-                                target_path, cover_link, trace=False
-                            )
-                            logger.info(f"[HomePage] update_mp3_cover_art completed")
+                            print(f"[DEBUG] Downloading cover from: {cover_link[:60]}...")
+                            try:
+                                update_mp3_cover_art(
+                                    target_path, cover_link, trace=False
+                                )
+                                logger.info(f"[HomePage] update_mp3_cover_art completed")
+                                print(f"[DEBUG] ✓ Cover art written successfully!")
+                            except Exception as cover_err:
+                                logger.error(f"[HomePage] Cover art failed: {cover_err}")
+                                print(f"[DEBUG] ✗ Cover art FAILED: {type(cover_err).__name__}: {cover_err}")
                     elif ext == ".ogg":
                         logger.info(f"[HomePage] Calling update_ogg_tags for {target_path}...")
                         print(f"[DEBUG] Writing OGG tags with ORIGINAL text: title='{title}', artist='{artist}', album='{album}'")

@@ -1,5 +1,27 @@
 # 项目变更历史
 
+## v0.4.42 (2026-04-25)
+- **fix(core): 🖼️ 修复 MP3 封面写入失败 - urlopen 缺少 User-Agent 导致 CDN 拒绝请求**
+  - **问题**：点击"应用"后标签写入成功但封面图片未嵌入 MP3 文件
+  - **根因**：`update_mp3_cover_art()` 使用裸 `urlopen(cover_url).read()` 无 User-Agent 请求头
+    - 网易云音乐 CDN（`p1.music.126.net`）会拒绝无 User-Agent 的请求
+    - 对比 `CoverImageLoader._load_from_url()` 已有正确的请求头处理
+  - **修复方案**：
+    1. **为 `update_mp3_cover_art()` 添加完整的 HTTP 请求头**：
+       - 使用 `urllib.request.Request()` 构造带 User-Agent 的请求
+       - 添加 10 秒超时防止无限等待
+    2. **增强 `_on_apply()` 中封面写入的日志和错误处理**：
+       - TAG-ONLY 和 RENAME+TAG 两种模式都添加 try/except 包裹
+       - 输出封面 URL 前 60 字符便于排查
+       - 封面失败时输出详细错误信息而非静默跳过
+  - **效果**：
+    - ✅ 网易云封面 URL 能正确下载并嵌入 MP3 文件
+    - ✅ Windows 资源管理器正确显示专辑封面
+    - ✅ 封面失败时有明确的错误日志输出
+  - **涉及文件**：
+    - `auto_tag/audio_recognize.py` - update_mp3_cover_art() 添加 User-Agent
+    - `auto_tag/gui/pages/home_page.py` - _on_apply() 增强封面错误处理
+
 ## v0.4.41 (2026-04-25)
 - **fix(gui): 🎨 修复重新获取歌曲数据后卡片背景色未更新的问题（根因修复）**
   - **问题**：点击刷新按钮重新获取歌曲数据后，SongResultCard 卡片背景色变为异常的暗红色/棕红色
