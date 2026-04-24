@@ -1391,6 +1391,78 @@ async def find_and_recognize_audio_files(
     print(f"Succeeded {ok}/{len(audio_files)}.")
 
 
+def _is_filename_like_song_name(file_path: str) -> bool:
+    """
+    判断文件名是否像歌曲名
+
+    识别以下情况为"不像歌曲名"：
+    - 包含连续数字/下划线组合（如 32671414_da3-1-30216）
+    - 纯数字或数字占主导
+    - 包含常见无意义前缀/后缀（如 download, temp, rec）
+    - 文件名过长且无空格/分隔符
+    - 仅包含特殊字符
+
+    Args:
+        file_path: 文件完整路径
+
+    Returns:
+        bool: True 表示像歌曲名，False 表示不像歌曲名
+    """
+    import re
+
+    filename = os.path.basename(file_path)
+    name_without_ext, ext = os.path.splitext(filename)
+    name_without_ext = name_without_ext.strip()
+
+    # 处理只有扩展名没有文件名的情况（如 ".mp3"）
+    if not name_without_ext or name_without_ext.startswith('.'):
+        return False
+
+    # 规则1: 包含连续数字+下划线+数字模式（如 32671414_da3-1-30216）
+    if re.search(r'\d+[_\-]\w+[_\-]\d+', name_without_ext):
+        logger.info(f"[FilenameCheck] Not song-like (pattern): {filename}")
+        return False
+
+    # 规则2: 纯数字或数字占比超过70%
+    digit_count = sum(1 for c in name_without_ext if c.isdigit())
+    total_chars = len(name_without_ext.replace(' ', '').replace('-', ''))
+    if total_chars > 0 and digit_count / total_chars > 0.7:
+        logger.info(f"[FilenameCheck] Not song-like (too many digits): {filename}")
+        return False
+
+    # 规则3: 包含常见无意义关键词（英文使用单词边界或下划线/连字符边界匹配，中文直接使用 in 检查）
+    meaningless_keywords = [
+        'download', 'temp', 'rec', 'record', 'recording', 'audio',
+        'sound', 'untitled', 'noname', 'unknown',
+        '新建', '未命名', '录音', '音频'
+    ]
+    name_lower = name_without_ext.lower()
+    for kw in meaningless_keywords:
+        if re.match(r'^[a-zA-Z]+$', kw):
+            # 英文短词：匹配开始/结束或空白/下划线/连字符边界
+            pattern = r'(?:^|[\s_\-])' + re.escape(kw) + r'(?:$|[\s_\-])'
+            if re.search(pattern, name_lower):
+                logger.info(f"[FilenameCheck] Not song-like (keyword '{kw}'): {filename}")
+                return False
+        else:
+            if kw in name_lower:
+                logger.info(f"[FilenameCheck] Not song-like (keyword '{kw}'): {filename}")
+                return False
+
+    # 规则4: 文件名过长（>50字符）且无空格/分隔符
+    if len(name_without_ext) > 50 and ' ' not in name_without_ext and '-' not in name_without_ext:
+        logger.info(f"[FilenameCheck] Not song-like (too long): {filename}")
+        return False
+
+    # 规则5: 仅包含特殊字符（添加韩文范围 \uac00-\ud7af）
+    if re.match(r'^[^a-zA-Z\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]+$', name_without_ext):
+        logger.info(f"[FilenameCheck] Not song-like (no valid chars): {filename}")
+        return False
+
+    logger.info(f"[FilenameCheck] Song-like filename: {filename}")
+    return True
+
+
 def _build_search_keyword_from_filename(file_path: str) -> str:
     """
     从文件名提取搜索关键词
@@ -1466,7 +1538,16 @@ async def recognize_and_rename_file(
                 print(f"[{os.path.basename(file_path)}] OGG→WAV failed: {exc}")
             input_path = file_path
 
-    # 2) Recognise with retries
+    # 2) 判断文件名是否像歌曲名，决定搜索策略
+    filename_is_song_like = _is_filename_like_song_name(file_path)
+
+    # 如果文件名不像歌曲名，优先使用 Shazam 音频识别
+    # 如果文件名像歌曲名，可以直接使用文件名搜索
+    if not filename_is_song_like:
+        logger.info(f"[Strategy] Filename not song-like, prioritizing Shazam recognition: {file_path}")
+    else:
+        logger.info(f"[Strategy] Filename looks like song name, can use direct search: {file_path}")
+
     out = None
     for attempt in range(1, nbr_retry + 1):
         try:
@@ -1506,40 +1587,45 @@ async def recognize_and_rename_file(
         if trace:
             print(f"Shazam failed: {file_path}, attempting fallback search...")
 
-        fallback_keyword = _build_search_keyword_from_filename(file_path)
+        # 只有当文件名像歌曲名时，才使用文件名作为关键词搜索
+        # 如果文件名不像歌曲名，Shazam 已失败则无法获得有效信息
+        if filename_is_song_like:
+            fallback_keyword = _build_search_keyword_from_filename(file_path)
 
-        if fallback_keyword:
-            logger.info(f"[Fallback] Trying NetEase search with keyword: {fallback_keyword}")
-            try:
-                fallback_results = await multi_source_search(
-                    keyword=fallback_keyword,
-                    shazam_result=None,
-                    limit=5,
-                )
-
-                if fallback_results:
-                    best_match = fallback_results[0]
-                    s_title = sanitize(best_match.title, trace)
-                    s_artist = sanitize(best_match.artist, trace)
-                    s_album = sanitize(best_match.album, trace)
-
-                    logger.info(
-                        f"[Fallback] Success! Found: {best_match.title} - {best_match.artist}"
+            if fallback_keyword:
+                logger.info(f"[Fallback] Trying NetEase search with keyword: {fallback_keyword}")
+                try:
+                    fallback_results = await multi_source_search(
+                        keyword=fallback_keyword,
+                        shazam_result=None,
+                        limit=5,
                     )
 
-                    return {
-                        "file_path": file_path,
-                        "new_file_path": file_path,
-                        "title": s_title,
-                        "author": s_artist,
-                        "album": s_album,
-                        "cover_link": best_match.cover_link,
-                        "search_results": [sr.to_dict() for sr in fallback_results],
-                    }
-                else:
-                    logger.warning(f"[Fallback] No results for keyword: {fallback_keyword}")
-            except Exception as fallback_error:
-                logger.error(f"[Fallback] Search failed: {fallback_error}", exc_info=True)
+                    if fallback_results:
+                        best_match = fallback_results[0]
+                        s_title = sanitize(best_match.title, trace)
+                        s_artist = sanitize(best_match.artist, trace)
+                        s_album = sanitize(best_match.album, trace)
+
+                        logger.info(
+                            f"[Fallback] Success! Found: {best_match.title} - {best_match.artist}"
+                        )
+
+                        return {
+                            "file_path": file_path,
+                            "new_file_path": file_path,
+                            "title": s_title,
+                            "author": s_artist,
+                            "album": s_album,
+                            "cover_link": best_match.cover_link,
+                            "search_results": [sr.to_dict() for sr in fallback_results],
+                        }
+                    else:
+                        logger.warning(f"[Fallback] No results for keyword: {fallback_keyword}")
+                except Exception as fallback_error:
+                    logger.error(f"[Fallback] Search failed: {fallback_error}", exc_info=True)
+        else:
+            logger.warning(f"[Fallback] Filename not song-like, skipping filename-based search: {file_path}")
 
         return {
             "file_path": file_path,

@@ -165,6 +165,10 @@ class TestConverterConfig:
         
         # 测试 HIGH 预设
         config.set_output_format("mp3", QualityPreset.HIGH)
+        assert config.output_format.bitrate == 256
+        
+        # 测试 LOSSLESS 预设
+        config.set_output_format("mp3", QualityPreset.LOSSLESS)
         assert config.output_format.bitrate == 320
     
     def test_flac_config(self):

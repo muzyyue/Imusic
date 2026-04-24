@@ -46,6 +46,7 @@ class FormatConfig:
     sample_rate: Optional[int] = None
     channels: Optional[int] = None
     codec: Optional[str] = None
+    smart_bitrate: bool = True
     
     def __post_init__(self):
         """初始化后设置默认值"""
@@ -68,76 +69,76 @@ class FormatConfig:
                 self.sample_rate = 44100
                 self.codec = "libmp3lame"
             elif preset == QualityPreset.HIGH:
-                self.bitrate = 320
-                self.sample_rate = 48000
+                self.bitrate = 256
+                self.sample_rate = 44100
                 self.codec = "libmp3lame"
             elif preset == QualityPreset.LOSSLESS:
                 self.bitrate = 320
-                self.sample_rate = 48000
+                self.sample_rate = 44100
                 self.codec = "libmp3lame"
         
         elif self.format == OutputFormat.FLAC:
             self.bitrate = None
-            self.sample_rate = 48000
+            self.sample_rate = 44100
             self.codec = "flac"
         
         elif self.format == OutputFormat.AAC:
             if preset == QualityPreset.LOW:
-                self.bitrate = 128
+                self.bitrate = 96
                 self.sample_rate = 44100
                 self.codec = "aac"
             elif preset == QualityPreset.MEDIUM:
-                self.bitrate = 192
+                self.bitrate = 128
                 self.sample_rate = 44100
                 self.codec = "aac"
             elif preset == QualityPreset.HIGH:
-                self.bitrate = 256
-                self.sample_rate = 48000
+                self.bitrate = 160
+                self.sample_rate = 44100
                 self.codec = "aac"
             elif preset == QualityPreset.LOSSLESS:
-                self.bitrate = 320
-                self.sample_rate = 48000
+                self.bitrate = 192
+                self.sample_rate = 44100
                 self.codec = "aac"
         
         elif self.format == OutputFormat.OGG:
             if preset == QualityPreset.LOW:
-                self.bitrate = 128
+                self.bitrate = 96
                 self.sample_rate = 44100
                 self.codec = "libvorbis"
             elif preset == QualityPreset.MEDIUM:
-                self.bitrate = 192
+                self.bitrate = 128
                 self.sample_rate = 44100
                 self.codec = "libvorbis"
             elif preset == QualityPreset.HIGH:
-                self.bitrate = 256
-                self.sample_rate = 48000
+                self.bitrate = 160
+                self.sample_rate = 44100
                 self.codec = "libvorbis"
             elif preset == QualityPreset.LOSSLESS:
-                self.bitrate = 320
-                self.sample_rate = 48000
+                self.bitrate = 192
+                self.sample_rate = 44100
                 self.codec = "libvorbis"
         
         elif self.format == OutputFormat.WAV:
             self.bitrate = None
-            self.sample_rate = 48000
+            self.sample_rate = 44100
             self.codec = "pcm_s16le"
         
         elif self.format == OutputFormat.M4A:
             if preset == QualityPreset.LOW:
-                self.bitrate = 128
+                self.bitrate = 96
                 self.sample_rate = 44100
                 self.codec = "aac"
             elif preset == QualityPreset.MEDIUM:
-                self.bitrate = 192
+                self.bitrate = 128
                 self.sample_rate = 44100
                 self.codec = "aac"
             elif preset == QualityPreset.HIGH:
-                self.bitrate = 256
-                self.sample_rate = 48000
+                self.bitrate = 160
+                self.sample_rate = 44100
                 self.codec = "aac"
             elif preset == QualityPreset.LOSSLESS:
-                self.bitrate = 320
-                self.sample_rate = 48000
+                self.bitrate = 192
+                self.sample_rate = 44100
                 self.codec = "aac"
 
 
