@@ -13,11 +13,14 @@
 from __future__ import annotations
 
 import os
+import time
+import logging
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QPixmap, QImage, QCursor
 from PySide6.QtWidgets import (
+    QDialog,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
@@ -60,6 +63,7 @@ from auto_tag.gui.i18n import tr
 from auto_tag.gui.workers import LyricWorker, LyricEmbedWorker, SongSearchWorker
 from auto_tag.gui.components import CoverPreviewDialog, SongSearchResultDialog
 from auto_tag.lyric import LyricManager
+from auto_tag.utils import is_file_in_use_error
 
 
 class MusicManagerPage(QWidget):
@@ -115,6 +119,7 @@ class MusicManagerPage(QWidget):
         # 搜索相关状态（用于异步搜索后继续歌词获取）
         self._pending_file_paths: list[str] = []
         self._pending_provider: str = ""
+        self._loading_dialog: QDialog | None = None
 
         # 构建 UI
         self._setup_ui()
@@ -760,6 +765,7 @@ class MusicManagerPage(QWidget):
 
         将当前编辑的元数据保存到文件中。
         如果选中了多个文件，则进行批量编辑。
+        包含文件占用重试机制，自动重试最多 3 次。
         """
         if not self.current_file and not self.selected_files:
             MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
@@ -787,14 +793,33 @@ class MusicManagerPage(QWidget):
                     self
                 ).exec()
             elif self.current_file:
-                # 单文件编辑
-                success = self.metadata_manager.write_metadata(
-                    self.current_file, metadata
-                )
+                # 单文件编辑 - 包含文件占用重试机制
+                max_retries = 3
+                retry_delay = 0.5
+                success = False
+                for attempt in range(max_retries + 1):
+                    try:
+                        success = self.metadata_manager.write_metadata(
+                            self.current_file, metadata
+                        )
+                        if success:
+                            break
+                        raise RuntimeError(tr("metadata_save_failed"))
+                    except Exception as save_exc:
+                        if is_file_in_use_error(save_exc) and attempt < max_retries:
+                            wait_time = retry_delay * (attempt + 1)
+                            logging.warning(
+                                f"[MusicManagerPage] 文件被占用，将在 {wait_time:.1f} 秒后重试 "
+                                f"({attempt + 1}/{max_retries}): {save_exc}"
+                            )
+                            time.sleep(wait_time)
+                            continue
+                        raise
+
                 if success:
                     MessageBox(tr("success"), tr("metadata_save_success"), self).exec()
                 else:
-                    MessageBox(tr("errors_occurred"), tr("metadata_save_success"), self).exec()
+                    MessageBox(tr("errors_occurred"), tr("metadata_save_failed"), self).exec()
         except Exception as e:
             MessageBox(tr("errors_occurred"), str(e), self).exec()
 
@@ -944,32 +969,63 @@ class MusicManagerPage(QWidget):
         """
         启动后台搜索并显示加载动画
 
-        在后台线程中执行搜索，同时显示模态加载对话框，
-        搜索完成后弹出搜索结果选择对话框。
+        在后台线程中执行搜索，同时显示非阻塞加载对话框，
+        搜索完成后自动弹出搜索结果选择对话框。
+
+        注意：使用 show() 而非 exec()，避免嵌套事件循环导致 UI 未响应。
 
         Args:
             file_path: 音频文件路径
             provider: 歌词提供商名称
         """
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QMovie
         from qfluentwidgets import IndeterminateProgressBar
 
-        # 创建加载对话框
-        loading_dialog = QDialog(self)
-        loading_dialog.setWindowTitle(tr("searching"))
-        loading_dialog.setModal(True)
-        loading_dialog.setFixedSize(280, 120)
+        # 创建加载对话框（非模态，使用 show() 而非 exec()）
+        self._loading_dialog = QDialog(self)
+        self._loading_dialog.setWindowTitle(tr("searching"))
+        self._loading_dialog.setFixedSize(320, 160)
+        self._loading_dialog.setWindowModality(Qt.WindowModality.NonModal)
+        self._loading_dialog.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
 
-        layout = QVBoxLayout(loading_dialog)
+        layout = QVBoxLayout(self._loading_dialog)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(12)
 
+        # 顶部：加载动画图标
+        loading_icon_label = QLabel()
+        loading_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_icon_label.setFixedSize(48, 48)
+        layout.addWidget(loading_icon_label)
+
+        # 中间：提示文字
         loading_label = QLabel(tr("searching_please_wait"))
         loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_label.setWordWrap(True)
         layout.addWidget(loading_label)
 
+        # 进度条
         progress_bar = IndeterminateProgressBar()
         layout.addWidget(progress_bar)
+
+        # 底部：取消按钮
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setFixedWidth(80)
+        btn_layout.addWidget(cancel_btn)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+        # 加载动画（使用内置的旋转动画）
+        try:
+            from qfluentwidgets import FluentIcon
+            loading_icon_label.setPixmap(FluentIcon.SYNC.fluentIcon().pixmap(48, 48))
+        except Exception:
+            loading_icon_label.setText("🔍")
+            loading_icon_label.setStyleSheet("font-size: 36px;")
 
         # 创建搜索工作线程
         self.search_worker = SongSearchWorker(
@@ -977,53 +1033,62 @@ class MusicManagerPage(QWidget):
             provider=provider,
         )
 
+        # 取消搜索标志
+        self._search_cancelled = False
+
+        def on_cancel_clicked() -> None:
+            """取消按钮点击回调"""
+            self._search_cancelled = True
+            self.search_worker.terminate()
+            self.search_worker.wait()
+            self._loading_dialog.close()
+            self.get_lyric_btn.setEnabled(True)
+            self.batch_get_lyric_btn.setEnabled(True)
+
+        cancel_btn.clicked.connect(on_cancel_clicked)
+
         def on_search_finished(songs: list[dict]) -> None:
             """搜索完成回调：关闭加载对话框，显示结果"""
-            loading_dialog.accept()
+            if self._loading_dialog:
+                self._loading_dialog.close()
 
             if not songs:
                 MessageBox(
                     tr("no_search_results"),
                     tr("search_failed"),
                     self
-                ).exec()
+                ).show()
                 self.get_lyric_btn.setEnabled(True)
                 self.batch_get_lyric_btn.setEnabled(True)
                 return
 
-            # 如果只有一个结果，直接返回
+            # 如果只有一个结果，直接进入歌词获取
             if len(songs) == 1:
                 self._continue_fetch(songs[0].get('id'))
                 return
 
             # 多个结果时显示选择对话框
-            dialog = SongSearchResultDialog(self)
-            dialog.set_search_results(songs)
-
-            if dialog.exec():
-                self._continue_fetch(dialog.selected_song_id)
-            else:
-                # 用户取消选择
-                self.get_lyric_btn.setEnabled(True)
-                self.batch_get_lyric_btn.setEnabled(True)
+            self._show_result_dialog(songs)
 
         def on_search_error(error_msg: str) -> None:
             """搜索错误回调"""
-            loading_dialog.accept()
+            if self._loading_dialog:
+                self._loading_dialog.close()
             MessageBox(
                 tr("search_error"),
                 error_msg,
                 self
-            ).exec()
+            ).show()
             self.get_lyric_btn.setEnabled(True)
             self.batch_get_lyric_btn.setEnabled(True)
 
         self.search_worker.search_finished.connect(on_search_finished)
         self.search_worker.search_error.connect(on_search_error)
 
-        # 启动搜索线程并显示加载对话框
+        # 启动搜索线程并显示加载对话框（非阻塞）
+        self._search_cancelled = False
         self.search_worker.start()
-        loading_dialog.exec()
+        self._loading_dialog.show()
 
     def _continue_fetch(self, selected_song_id: int | None) -> None:
         """
@@ -1052,6 +1117,31 @@ class MusicManagerPage(QWidget):
 
         # 启动线程
         self.lyric_worker.start()
+
+    def _show_result_dialog(self, songs: list[dict]) -> None:
+        """
+        显示搜索结果选择对话框
+
+        当搜索返回多个结果时，显示 SongSearchResultDialog 让用户选择，
+        选择后继续歌词获取流程。
+
+        Args:
+            songs: 搜索结果歌曲列表
+        """
+        dialog = SongSearchResultDialog(self)
+        dialog.set_search_results(songs, provider=self._pending_provider)
+
+        def on_dialog_finished(result: int) -> None:
+            """对话框关闭回调"""
+            if result == QDialog.DialogCode.Accepted:
+                self._continue_fetch(dialog.selected_song_id)
+            else:
+                # 用户取消选择
+                self.get_lyric_btn.setEnabled(True)
+                self.batch_get_lyric_btn.setEnabled(True)
+
+        dialog.finished.connect(on_dialog_finished)
+        dialog.show()
 
     def _show_search_dialog(
         self,
@@ -1089,7 +1179,7 @@ class MusicManagerPage(QWidget):
 
             # 多个结果时显示选择对话框
             dialog = SongSearchResultDialog(self)
-            dialog.set_search_results(songs)
+            dialog.set_search_results(songs, provider=provider)
 
             if dialog.exec():
                 return dialog.selected_song_id

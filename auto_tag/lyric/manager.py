@@ -366,6 +366,57 @@ class LyricManager:
             self.logger.error(f"[NetEase-REST] 搜索失败: {e}")
             return []
 
+    def check_lyric_exists(
+        self,
+        song_id: int | str,
+        provider: str = 'netease',
+        timeout: int = 5
+    ) -> bool:
+        """
+        轻量级检查歌曲是否有歌词（不下载歌词内容）
+
+        使用 REST API 快速检测歌词是否存在，用于搜索结果列表的预览。
+
+        Args:
+            song_id: 歌曲 ID
+            provider: 提供商名称
+            timeout: 请求超时（秒）
+
+        Returns:
+            bool: 是否有歌词
+        """
+        import json
+        from urllib.request import Request, urlopen
+        from urllib.parse import urlencode
+        from urllib.error import URLError, HTTPError
+
+        if provider != 'netease':
+            return False
+
+        try:
+            params = urlencode({'id': song_id, 'lv': -1, 'tv': -1, 'kv': -1})
+            url = f'https://music.163.com/api/song/lyric?{params}'
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://music.163.com/',
+            }
+            req = Request(url, headers=headers)
+
+            with urlopen(req, timeout=timeout) as resp:
+                raw_data = resp.read().decode('utf-8')
+
+            data = json.loads(raw_data)
+            lrc_data = data.get('lrc', {})
+            lyric = lrc_data.get('lyric', '') if isinstance(lrc_data, dict) else ''
+            has_lyric = bool(lyric and len(lyric.strip()) > 10)
+
+            return has_lyric
+
+        except (URLError, HTTPError):
+            return False
+        except Exception:
+            return False
+
     def fetch_lyric_by_id(
         self,
         song_id: int | str,
@@ -374,6 +425,8 @@ class LyricManager:
     ) -> dict[str, Any] | None:
         """
         根据歌曲 ID 获取歌词
+
+        优先使用 pymusiclibrary，失败时自动回退到 REST API。
 
         Args:
             song_id: 歌曲 ID
@@ -386,15 +439,45 @@ class LyricManager:
         Returns:
             dict | None: 歌词数据字典
         """
+        # 先尝试使用 pymusiclibrary
+        result = self._fetch_lyric_by_id_pymusiclibrary(song_id, provider, lyric_mode)
+        if result is not None:
+            return result
+
+        # pymusiclibrary 失败时，使用 REST API 备用方案
+        if provider == 'netease':
+            self.logger.info(f"[FetchLyric] pymusiclibrary 获取失败，尝试 REST API 备用方案 (ID: {song_id})")
+            return self._fetch_lyric_by_id_netease_rest(song_id, lyric_mode)
+
+        self.logger.error(f"[FetchLyric] 所有方式均获取歌词失败 (ID: {song_id}), 提供商: {provider}")
+        return None
+
+    def _fetch_lyric_by_id_pymusiclibrary(
+        self,
+        song_id: int | str,
+        provider: str,
+        lyric_mode: str
+    ) -> dict[str, Any] | None:
+        """
+        使用 pymusiclibrary 获取歌词
+
+        Args:
+            song_id: 歌曲 ID
+            provider: 提供商名称
+            lyric_mode: 歌词模式
+
+        Returns:
+            dict | None: 歌词数据字典，失败返回 None
+        """
         try:
             # 根据提供商获取对应的 API 客户端
             if provider == 'netease':
                 api = self._get_netease_api()
             else:
                 api = self._get_kugou_api()
-            
+
             if api is None:
-                self.logger.error(f"无法初始化 {provider} API")
+                self.logger.debug(f"[FetchLyric] pymusiclibrary {provider} API 不可用")
                 return None
 
             # 获取歌词
@@ -414,18 +497,15 @@ class LyricManager:
                 tlyric_data = body.get('tlyric', {})
                 lrc_lyric = lrc_data.get('lyric', '') if isinstance(lrc_data, dict) else ''
                 tlyric_lyric = tlyric_data.get('lyric', '') if isinstance(tlyric_data, dict) else ''
-                
+
                 # 根据歌词模式返回不同的内容
                 if lyric_mode == 'original':
-                    # 仅返回原始歌词
                     synced_lyrics = lrc_lyric
                     plain_lyrics = ''
                 elif lyric_mode == 'merged':
-                    # 合并原始歌词和翻译歌词（一句原始+一句翻译交替排列）
                     synced_lyrics = self._merge_lyrics_with_translation(lrc_lyric, tlyric_lyric)
-                    plain_lyrics = tlyric_lyric  # 保留纯翻译歌词
+                    plain_lyrics = tlyric_lyric
                 elif lyric_mode == 'translation':
-                    # 仅返回翻译歌词
                     synced_lyrics = tlyric_lyric
                     plain_lyrics = ''
             else:
@@ -434,7 +514,6 @@ class LyricManager:
             if not (synced_lyrics or plain_lyrics):
                 return None
 
-            # 构建返回数据
             result = {
                 'synced_lyrics': synced_lyrics,
                 'plain_lyrics': plain_lyrics,
@@ -445,14 +524,86 @@ class LyricManager:
                 'duration': 0
             }
 
-            self.logger.info(f"成功获取歌词 (ID: {song_id}), 提供商: {provider}")
+            self.logger.info(f"[FetchLyric] pymusiclibrary 成功获取歌词 (ID: {song_id})")
             return result
 
-        except ImportError as e:
-            self.logger.error(f"导入 MusicLibrary 库失败: {e}")
+        except Exception as e:
+            self.logger.debug(f"[FetchLyric] pymusiclibrary 获取歌词失败 (ID: {song_id}): {e}")
+            return None
+
+    def _fetch_lyric_by_id_netease_rest(
+        self,
+        song_id: int | str,
+        lyric_mode: str = 'merged'
+    ) -> dict[str, Any] | None:
+        """
+        使用 REST API 获取网易云歌词（备用方案）
+
+        Args:
+            song_id: 歌曲 ID
+            lyric_mode: 歌词模式
+
+        Returns:
+            dict | None: 歌词数据字典，失败返回 None
+        """
+        import json
+        from urllib.request import Request, urlopen
+        from urllib.parse import urlencode
+        from urllib.error import URLError, HTTPError
+
+        try:
+            params = urlencode({'id': song_id, 'lv': -1, 'tv': -1, 'kv': -1})
+            url = f'https://music.163.com/api/song/lyric?{params}'
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://music.163.com/',
+            }
+            req = Request(url, headers=headers)
+
+            with urlopen(req, timeout=10) as resp:
+                raw_data = resp.read().decode('utf-8')
+
+            data = json.loads(raw_data)
+            lrc_data = data.get('lrc', {})
+            tlyric_data = data.get('tlyric', {})
+
+            lrc_lyric = lrc_data.get('lyric', '') if isinstance(lrc_data, dict) else ''
+            tlyric_lyric = tlyric_data.get('lyric', '') if isinstance(tlyric_data, dict) else ''
+
+            synced_lyrics = ''
+            plain_lyrics = ''
+
+            if lyric_mode == 'original':
+                synced_lyrics = lrc_lyric
+                plain_lyrics = ''
+            elif lyric_mode == 'merged':
+                synced_lyrics = self._merge_lyrics_with_translation(lrc_lyric, tlyric_lyric)
+                plain_lyrics = tlyric_lyric
+            elif lyric_mode == 'translation':
+                synced_lyrics = tlyric_lyric
+                plain_lyrics = ''
+
+            if not (synced_lyrics or plain_lyrics):
+                return None
+
+            result = {
+                'synced_lyrics': synced_lyrics,
+                'plain_lyrics': plain_lyrics,
+                'provider': 'netease',
+                'track_name': '',
+                'artist_name': '',
+                'album_name': '',
+                'duration': 0
+            }
+
+            self.logger.info(f"[FetchLyric] REST API 成功获取歌词 (ID: {song_id})")
+            return result
+
+        except (URLError, HTTPError) as e:
+            self.logger.error(f"[FetchLyric] REST API 歌词请求失败 (ID: {song_id}): {e}")
             return None
         except Exception as e:
-            self.logger.error(f"获取歌词失败 (ID: {song_id}), 错误: {e}")
+            self.logger.error(f"[FetchLyric] REST API 获取歌词失败 (ID: {song_id}): {e}")
             return None
 
     def _fetch_lyrics_from_music_api(

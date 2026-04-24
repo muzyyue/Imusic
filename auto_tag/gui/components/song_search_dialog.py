@@ -20,6 +20,7 @@ from PySide6.QtCore import (
     QPropertyAnimation,
     QEasingCurve,
     QRect,
+    QThread,
 )
 from PySide6.QtWidgets import (
     QTableWidget,
@@ -47,6 +48,49 @@ from qfluentwidgets import (
 )
 
 from auto_tag.gui.i18n import tr
+
+
+class LyricCheckWorker(QThread):
+    """
+    异步检查歌词是否存在的后台线程
+
+    逐行检查每首歌是否有歌词，并通过信号通知 UI 更新。
+    """
+
+    lyric_status_updated = Signal(int, bool)  # 行号, 是否有歌词
+
+    def __init__(self, songs: list[dict[str, Any]], provider: str = 'netease', parent=None) -> None:
+        """
+        初始化歌词检查线程
+
+        Args:
+            songs: 搜索结果歌曲列表
+            provider: 歌词提供商
+            parent: 父对象
+        """
+        super().__init__(parent)
+        self._songs = songs
+        self._provider = provider
+        self._cancelled = False
+
+    def run(self) -> None:
+        """执行歌词检查任务"""
+        from auto_tag.lyric.manager import LyricManager
+
+        manager = LyricManager()
+
+        for row, song in enumerate(self._songs):
+            if self._cancelled:
+                break
+
+            song_id = song.get('id')
+            if song_id:
+                has_lyric = manager.check_lyric_exists(song_id, self._provider)
+                self.lyric_status_updated.emit(row, has_lyric)
+
+    def cancel(self) -> None:
+        """取消检查"""
+        self._cancelled = True
 
 
 class SongSearchResultDialog(MessageBoxBase):
@@ -88,7 +132,9 @@ class SongSearchResultDialog(MessageBoxBase):
         self._songs: list[dict[str, Any]] = []
         self._selected_song: Optional[dict[str, Any]] = None
         self._keyword: str = ""
+        self._provider: str = "netease"
         self._animation_group = None
+        self._lyric_check_worker: Optional[LyricCheckWorker] = None
 
         # 创建 UI 组件
         self._create_components()
@@ -152,12 +198,13 @@ class SongSearchResultDialog(MessageBoxBase):
             QTableWidget: 配置完成的表格组件，具有现代化的视觉效果
         """
         table = QTableWidget()
-        table.setColumnCount(5)
+        table.setColumnCount(6)
         table.setHorizontalHeaderLabels([
             tr("song_name"),
             tr("artist"),
             tr("album"),
             tr("duration"),
+            tr("lyrics"),
             tr("id")
         ])
 
@@ -172,7 +219,7 @@ class SongSearchResultDialog(MessageBoxBase):
         # 启用鼠标追踪以支持悬停效果
         table.setMouseTracking(True)
 
-        # 设置列宽模式（优化比例：歌名40% | 艺术25% | 专辑25% | 时长10%）
+        # 设置列宽模式（优化比例：歌名40% | 艺术25% | 专辑25% | 时长10% | 歌词5%）
         header = table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -180,7 +227,9 @@ class SongSearchResultDialog(MessageBoxBase):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         header.resizeSection(3, 70)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
-        header.resizeSection(4, 80)
+        header.resizeSection(4, 60)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(5, 80)
 
         # 设置表头样式
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -188,7 +237,7 @@ class SongSearchResultDialog(MessageBoxBase):
         header.setStretchLastSection(True)
 
         # 隐藏 ID 列（用于内部使用）
-        table.setColumnHidden(4, True)
+        table.setColumnHidden(5, True)
 
         # 设置行高（舒适的阅读高度）
         table.verticalHeader().setDefaultSectionSize(40)
@@ -590,7 +639,8 @@ class SongSearchResultDialog(MessageBoxBase):
     def set_search_results(
         self,
         songs: list[dict[str, Any]],
-        keyword: str = ""
+        keyword: str = "",
+        provider: str = "netease"
     ) -> None:
         """
         设置搜索结果数据
@@ -603,9 +653,11 @@ class SongSearchResultDialog(MessageBoxBase):
                 - album: 专辑名称
                 - duration: 时长（秒）
             keyword (str): 搜索关键词
+            provider (str): 歌词提供商
         """
         self._songs = songs
         self._keyword = keyword
+        self._provider = provider
 
         # 更新标签文本（使用更友好的格式）
         if keyword:
@@ -656,14 +708,67 @@ class SongSearchResultDialog(MessageBoxBase):
             duration_item.setForeground(QColor(100, 100, 100))
             self.song_table.setItem(row, 3, duration_item)
 
+            # 歌词状态（初始为加载中 ⏳）
+            lyric_item = QTableWidgetItem("⏳")
+            lyric_item.setTextAlignment(
+                Qt.AlignmentFlag.AlignCenter |
+                Qt.AlignmentFlag.AlignVCenter
+            )
+            lyric_item.setForeground(QColor(150, 150, 150))
+            self.song_table.setItem(row, 4, lyric_item)
+
             # ID（隐藏，内部使用）
             id_item = QTableWidgetItem(str(song.get('id', '')))
-            self.song_table.setItem(row, 4, id_item)
+            self.song_table.setItem(row, 5, id_item)
 
         # 默认选中第一行（CSS 样式会自动处理选中效果）
         if len(songs) > 0:
             self.song_table.selectRow(0)
             self._selected_song = songs[0]
+
+        # 启动异步歌词检查
+        self._start_lyric_check()
+
+    def _start_lyric_check(self) -> None:
+        """
+        启动异步歌词检查线程
+
+        在后台逐行检查每首歌是否有歌词，并通过信号更新表格。
+        """
+        if not self._songs:
+            return
+
+        # 清理旧的 worker
+        if self._lyric_check_worker is not None:
+            self._lyric_check_worker.terminate()
+            self._lyric_check_worker.wait()
+
+        self._lyric_check_worker = LyricCheckWorker(
+            songs=self._songs,
+            provider=self._provider,
+            parent=self,
+        )
+        self._lyric_check_worker.lyric_status_updated.connect(self._on_lyric_status_updated)
+        self._lyric_check_worker.start()
+
+    def _on_lyric_status_updated(self, row: int, has_lyric: bool) -> None:
+        """
+        歌词检查结果回调
+
+        根据结果更新表格中的歌词列图标。
+
+        Args:
+            row: 表格行号
+            has_lyric: 是否有歌词
+        """
+        lyric_item = self.song_table.item(row, 4)
+        if lyric_item:
+            if has_lyric:
+                lyric_item.setText("✅")
+                lyric_item.setToolTip("有歌词")
+            else:
+                lyric_item.setText("❌")
+                lyric_item.setToolTip("无歌词")
 
     def _on_selection_changed(
         self,
