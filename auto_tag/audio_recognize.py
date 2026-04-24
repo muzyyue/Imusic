@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -26,6 +27,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from urllib.parse import urlencode
 
+import aiohttp
 import eyed3
 import soundfile as sf
 from mutagen import File
@@ -36,6 +38,10 @@ from shazamio import Shazam
 from tqdm.asyncio import tqdm
 
 from auto_tag.utils import find_deepest_metadata_key, sanitize, is_file_in_use_error
+
+# Acoustid API Key（免费额度：100 次/天）
+ACOUSTID_API_KEY = "cSpUJKpD"
+ACOUSTID_LOOKUP_URL = "https://api.acoustid.org/v2/lookup"
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -1334,6 +1340,158 @@ async def multi_source_search(
     return all_results
 
 
+async def recognize_with_acoustid(file_path: str, trace: bool = False) -> dict | None:
+    """
+    使用 Acoustid 进行音频识别（备选方案）
+
+    Acoustid 是基于 Chromaprint 音频指纹的开源音乐识别服务。
+    当 Shazam 识别失败时，可以尝试使用此方案。
+
+    Args:
+        file_path: 音频文件路径
+        trace: 是否输出调试信息
+
+    Returns:
+        dict | None: 识别结果字典（与 Shazam 格式兼容），失败时返回 None
+    """
+    try:
+        # 检查 ffmpeg 是否可用
+        try:
+            subprocess.run(
+                ["ffmpeg", "-version"],
+                capture_output=True,
+                timeout=5,
+                check=True
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            if trace:
+                print("[Acoustid] ffmpeg not available, skipping Acoustid recognition")
+            logger.info("[Acoustid] ffmpeg not available, skipping")
+            return None
+
+        # 使用 ffmpeg 生成 Chromaprint 音频指纹（原始二进制格式）
+        cmd = [
+            "ffmpeg",
+            "-i", file_path,
+            "-f", "chromaprint",
+            "-fp_format", "0",  # 原始二进制格式
+            "-"
+        ]
+
+        if trace:
+            print(f"[Acoustid] Generating fingerprint for: {os.path.basename(file_path)}")
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=30,
+            check=True
+        )
+        
+        # 将二进制指纹编码为 base64
+        fingerprint = base64.b64encode(result.stdout).decode('ascii')
+        
+        # 提取时长（从音频文件信息中获取）
+        probe_cmd = [
+            "ffprobe",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_format",
+            file_path
+        ]
+        
+        probe_result = subprocess.run(
+            probe_cmd,
+            capture_output=True,
+            timeout=10,
+            check=True
+        )
+        
+        probe_data = json.loads(probe_result.stdout.decode('utf-8'))
+        duration = int(float(probe_data.get('format', {}).get('duration', 0)))
+        
+        if duration == 0:
+            duration = 10  # 默认值
+
+        if trace:
+            print(f"[Acoustid] Fingerprint generated: duration={duration}s, fp_len={len(fingerprint)}")
+
+        # 调用 Acoustid 查找接口（使用 POST 方法）
+        # Acoustid API 要求使用 application/x-www-form-urlencoded 格式
+        form_data = aiohttp.FormData()
+        form_data.add_field('client', ACOUSTID_API_KEY)
+        form_data.add_field('fingerprint', fingerprint)
+        form_data.add_field('duration', str(duration))
+        form_data.add_field('meta', 'recordings releasegroups')
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ACOUSTID_LOOKUP_URL,
+                data=form_data,
+                headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status != 200:
+                    if trace:
+                        print(f"[Acoustid] API request failed: status={response.status}")
+                    logger.warning(f"[Acoustid] API request failed: status={response.status}")
+                    return None
+
+                data = await response.json()
+                
+                if trace:
+                    print(f"[Acoustid] API response: {json.dumps(data, ensure_ascii=False)[:500]}")
+
+                if data.get("status") != "ok" or not data.get("results"):
+                    if trace:
+                        print("[Acoustid] No matching results")
+                    logger.info("[Acoustid] No matching results")
+                    return None
+
+                # 解析第一个匹配结果
+                result_data = data["results"][0]
+                recordings = result_data.get("recordings", [])
+                
+                if not recordings:
+                    if trace:
+                        print("[Acoustid] No recordings in result")
+                    return None
+
+                recording = recordings[0]
+                releasegroups = result_data.get("releasegroups", [])
+                album_name = releasegroups[0].get("title", "") if releasegroups else ""
+
+                # 返回与 Shazam 格式兼容的结果
+                acoustid_result = {
+                    "track": {
+                        "title": recording.get("title", "Unknown Title"),
+                        "subtitle": recording.get("artists", [{}])[0].get("name", "Unknown Artist"),
+                        "images": {
+                            "coverart": ""  # Acoustid 不提供封面
+                        },
+                        "sections": [],
+                    },
+                    "source": "acoustid",
+                    "acoustid_id": result_data.get("id", ""),
+                }
+
+                if trace:
+                    print(f"[Acoustid] Success: {acoustid_result['track']['title']} - {acoustid_result['track']['subtitle']}")
+
+                return acoustid_result
+
+    except subprocess.TimeoutExpired:
+        logger.error("[Acoustid] ffmpeg timeout")
+        if trace:
+            print("[Acoustid] ffmpeg timeout")
+        return None
+    except Exception as e:
+        logger.error(f"[Acoustid] Recognition failed: {e}", exc_info=True)
+        if trace:
+            print(f"[Acoustid] Error: {e}")
+        return None
+
+
 async def find_and_recognize_audio_files(
     folder_path: str,
     *,
@@ -1585,10 +1743,37 @@ async def recognize_and_rename_file(
 
     if not out or "track" not in out:
         if trace:
-            print(f"Shazam failed: {file_path}, attempting fallback search...")
+            print(f"Shazam failed: {file_path}, attempting fallback strategies...")
 
-        # 只有当文件名像歌曲名时，才使用文件名作为关键词搜索
-        # 如果文件名不像歌曲名，Shazam 已失败则无法获得有效信息
+        # 备选方案 1：当文件名不像歌曲名时，尝试使用 Acoustid 音频识别
+        if not filename_is_song_like:
+            logger.info(f"[Fallback] Trying Acoustid audio recognition: {file_path}")
+            try:
+                acoustid_result = await recognize_with_acoustid(file_path, trace=trace)
+                if acoustid_result and "track" in acoustid_result:
+                    if trace:
+                        print(f"[Acoustid] Success! Found: {acoustid_result['track']['title']} - {acoustid_result['track']['subtitle']}")
+                    
+                    # 使用 Acoustid 识别结果
+                    track = acoustid_result["track"]
+                    s_title = sanitize(track.get("title", "Unknown Title"), trace)
+                    s_artist = sanitize(track.get("subtitle", "Unknown Artist"), trace)
+                    s_album = sanitize(find_deepest_metadata_key(track, "Album") or "Unknown Album", trace)
+
+                    return {
+                        "file_path": file_path,
+                        "new_file_path": file_path,
+                        "title": s_title,
+                        "author": s_artist,
+                        "album": s_album,
+                        "cover_link": track.get("images", {}).get("coverart", ""),
+                        "search_results": [],
+                        "source": "acoustid",
+                    }
+            except Exception as acoustid_error:
+                logger.error(f"[Acoustid] Fallback failed: {acoustid_error}", exc_info=True)
+
+        # 备选方案 2：当文件名像歌曲名时，使用文件名作为关键词搜索
         if filename_is_song_like:
             fallback_keyword = _build_search_keyword_from_filename(file_path)
 

@@ -1,5 +1,36 @@
 # 项目变更历史
 
+## v0.4.39 (2026-04-24)
+- **chore(build): 📦 优化 PyInstaller 打包配置 - 目录模式 + 体积优化**
+  - **问题**：原单文件模式 (`--onefile`) 导致启动慢（每次需解压到临时目录）、体积大（700+ MB）
+  - **修复方案**：
+    1. **切换为目录模式 (`--onedir`)**：
+       - 启动速度显著提升（无需解压过程）
+       - 依赖库清晰可见，便于调试和排查问题
+       - 更新单个文件时无需重新打包整个 exe
+    2. **创建精细化 .spec 文件** (`build_tools/mp3ShazamAutoTag.spec`)：
+       - 排除不需要的 Qt 模块（WebEngine、3D、Charts、Database 驱动等）
+       - 仅保留 GUI 必需的核心模块（QtCore、QtGui、QtWidgets、QtNetwork）
+       - 正确收集数据文件（i18n 语言文件、图标资源）
+       - 使用 `collect_data_files()` 收集 qfluentwidgets 资源
+    3. **优化体积**：
+       - 从 703 MB 优化到 240 MB（减少约 66%）
+       - 排除测试/开发工具（pytest、pip、setuptools 等）
+       - 启用 UPX 压缩
+  - **效果**：
+    - ✅ 启动速度提升约 3-5 倍（无需解压）
+    - ✅ 体积减少约 460 MB
+    - ✅ GUI 正常运行，所有功能可用
+    - ✅ 依赖结构清晰，便于维护
+  - **涉及文件**：
+    - `build_tools/build_exe.py` - 修改为目录模式，优化隐藏导入和排除配置
+    - `build_tools/mp3ShazamAutoTag.spec` - 新建精细化打包规格文件
+    - `.gitignore` - 更新构建产物忽略规则
+  - **打包结果**：
+    - `dist/mp3ShazamAutoTag/mp3ShazamAutoTag.exe` (72.68 MB)
+    - `dist/mp3ShazamAutoTag/_internal/` (167.81 MB)
+    - 总计：~240 MB
+
 ## v0.4.38 (2026-04-24)
 - **feat(core): 🔍 优化文件名识别策略 - 不像歌曲名时优先 Shazam 音频识别**
   - **问题**：随机 ID 类文件名（如 `32671414_da3-1-30216.mp3`）被直接用作文本搜索关键词，导致搜索结果不准确

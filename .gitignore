@@ -17,3 +17,6 @@ dist/
 netease_api_test_report.json
 tests/test_netease_api.py
 
+# 保留构建工具中的 spec 文件
+!build_tools/*.spec
+
