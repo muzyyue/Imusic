@@ -11,5 +11,6 @@ GUI 工作线程模块
 
 from auto_tag.gui.workers.recognize_worker import RecognizeWorker
 from auto_tag.gui.workers.lyric_worker import LyricWorker, LyricEmbedWorker
+from auto_tag.gui.workers.song_search_worker import SongSearchWorker
 
-__all__ = ["RecognizeWorker", "LyricWorker", "LyricEmbedWorker"]
+__all__ = ["RecognizeWorker", "LyricWorker", "LyricEmbedWorker", "SongSearchWorker"]

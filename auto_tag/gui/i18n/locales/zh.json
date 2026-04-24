@@ -140,6 +140,7 @@
   "source_netease": "网易云音乐",
   "source_kugou": "酷狗音乐",
   "searching": "搜索中",
+  "searching_please_wait": "正在搜索，请稍候...",
   "search_complete": "搜索完成",
   "search_failed": "搜索失败",
   "searching_netease": "正在搜索网易云音乐...",
@@ -171,5 +172,8 @@
   "enter_keyword_to_search": "输入关键词重新搜索...",
   "search_again": "重新搜索",
   "smart_tip_try_chinese": "未找到精确匹配？尝试使用中文歌名搜索（如：酣梦于彼岸深红）",
-  "no_results_for_keyword": "未找到相关结果，请尝试其他关键词"
+  "no_results_for_keyword": "未找到相关结果，请尝试其他关键词",
+  "refresh_file_list": "刷新文件列表",
+  "select_directory_first": "请先选择目录",
+  "refresh_song_search": "刷新搜索"
 }

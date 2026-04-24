@@ -1,5 +1,38 @@
 # 项目变更历史
 
+## v0.4.34 (2026-04-24)
+- **fix(core): 🖼️ 修复网易云封面显示问题 - 游客登录+URL解析**
+  - **问题**：网易云音乐搜索结果的封面图片显示为默认蓝色图标，而非实际专辑封面
+  - **根因分析**：
+    1. 网易云 API 需要 Cookie 认证才能获取完整数据（包括封面URL）
+    2. 之前未进行登录，API 返回的数据缺少 `picUrl` 字段
+    3. `_parse_netease_result()` 只尝试了有限的字段，未处理相对路径
+    4. `CoverImageLoader` 中 `urlopen` 函数未正确导入导致 URL 加载失败
+  - **修复方案**：
+    1. **修复 urlopen 导入错误**（song_result_card.py）：
+       - 将 `urlopen()` 改为 `urllib.request.urlopen()`
+       - 修复 Unicode 符号在 Windows GBK 编码下的显示问题
+    2. **新增网易云游客登录**（audio_recognize.py）：
+       - 新增 `_login_netease_guest()` 函数
+       - 首次请求前访问网易云首页获取 Cookie
+       - 线程安全（使用锁保护），全局缓存 Cookie
+    3. **在搜索请求中添加 Cookie**：
+       - 修改 `_do_single_search()` 函数
+       - 自动附加获取到的 Cookie 到请求头
+    4. **增强封面URL解析**：
+       - 新增 `_extract_netease_cover()` 函数
+       - 策略1: `album.picUrl`（标准字段）
+       - 策略2: `album.blurPicUrl`（模糊图）
+       - 策略3: `song` 顶层字段
+       - 策略4: `artists` 中的封面
+       - 策略5: 处理相对路径（`//` 和 `/` 开头）并补全为 HTTPS URL
+  - **效果**：
+    - ✅ 网易云音乐结果显示实际专辑封面
+    - ✅ Shazam 结果正常显示封面（不受影响）
+    - ✅ 游客登录一次成功，后续请求复用 Cookie
+    - ✅ 封面URL自动补全为绝对路径，CoverImageLoader 能正确加载
+  - **测试验证**：程序正常运行，网易云封面正确加载
+
 ## v0.4.33 (2026-04-24)
 - **fix(lyric): 🔧 歌词搜索增强 - 增加 REST API 备用方案**
   - **问题**：点击「获取歌词」时弹出「未找到搜索结果」，但直接使用 HTTP 请求可以获取到数据

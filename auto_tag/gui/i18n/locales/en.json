@@ -137,6 +137,7 @@
   "source_netease": "NetEase Cloud Music",
   "source_kugou": "KuGou Music",
   "searching": "Searching",
+  "searching_please_wait": "Searching, please wait...",
   "search_complete": "Search Complete",
   "search_failed": "Search Failed",
   "searching_netease": "Searching NetEase Cloud Music...",
@@ -168,5 +169,8 @@
   "enter_keyword_to_search": "Enter keyword to search again...",
   "search_again": "Search Again",
   "smart_tip_try_chinese": "No exact match? Try searching with Chinese name",
-  "no_results_for_keyword": "No results found, try different keywords"
+  "no_results_for_keyword": "No results found, try different keywords",
+  "refresh_file_list": "Refresh File List",
+  "select_directory_first": "Please select a directory first",
+  "refresh_song_search": "Refresh Search"
 }

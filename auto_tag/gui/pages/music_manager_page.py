@@ -57,7 +57,7 @@ if TYPE_CHECKING:
 
 from auto_tag.converter.metadata_manager import MetadataManager
 from auto_tag.gui.i18n import tr
-from auto_tag.gui.workers import LyricWorker, LyricEmbedWorker
+from auto_tag.gui.workers import LyricWorker, LyricEmbedWorker, SongSearchWorker
 from auto_tag.gui.components import CoverPreviewDialog, SongSearchResultDialog
 from auto_tag.lyric import LyricManager
 
@@ -100,6 +100,7 @@ class MusicManagerPage(QWidget):
         # 工作线程
         self.lyric_worker: LyricWorker | None = None
         self.embed_worker: LyricEmbedWorker | None = None
+        self.search_worker: SongSearchWorker | None = None
 
         # 歌词数据缓存
         self.current_lyrics: dict | None = None
@@ -110,6 +111,10 @@ class MusicManagerPage(QWidget):
 
         # 预览对话框实例（延迟创建）
         self._preview_dialog: CoverPreviewDialog | None = None
+
+        # 搜索相关状态（用于异步搜索后继续歌词获取）
+        self._pending_file_paths: list[str] = []
+        self._pending_provider: str = ""
 
         # 构建 UI
         self._setup_ui()
@@ -910,27 +915,134 @@ class MusicManagerPage(QWidget):
 
         # 对于网易云和酷狗，需要先选择歌曲
         if provider in ['netease', 'kugou'] and len(file_paths) > 0:
-            # 使用第一个文件进行搜索（批量处理时使用相同的选择）
-            selected_song_id = self._show_search_dialog(file_paths[0], provider)
+            # 使用异步搜索 + 加载动画，避免阻塞 UI
+            self._pending_file_paths = file_paths
+            self._pending_provider = provider
+            self._start_search_and_show_dialog(file_paths[0], provider)
+            return
 
-            if selected_song_id is None:
-                # 用户取消选择，恢复按钮状态
+        # 其他提供商直接获取歌词
+        self.lyric_worker = LyricWorker(
+            file_paths=file_paths,
+            provider=provider
+        )
+
+        # 连接信号
+        self.lyric_worker.progress_updated.connect(self._on_lyric_progress)
+        self.lyric_worker.lyric_fetched.connect(self._on_lyric_fetched)
+        self.lyric_worker.finished_all.connect(self._on_lyric_finished)
+        self.lyric_worker.error_occurred.connect(self._on_lyric_error)
+
+        # 启动线程
+        self.lyric_worker.start()
+
+    def _start_search_and_show_dialog(
+        self,
+        file_path: str,
+        provider: str,
+    ) -> None:
+        """
+        启动后台搜索并显示加载动画
+
+        在后台线程中执行搜索，同时显示模态加载对话框，
+        搜索完成后弹出搜索结果选择对话框。
+
+        Args:
+            file_path: 音频文件路径
+            provider: 歌词提供商名称
+        """
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
+        from PySide6.QtCore import Qt
+        from qfluentwidgets import IndeterminateProgressBar
+
+        # 创建加载对话框
+        loading_dialog = QDialog(self)
+        loading_dialog.setWindowTitle(tr("searching"))
+        loading_dialog.setModal(True)
+        loading_dialog.setFixedSize(280, 120)
+
+        layout = QVBoxLayout(loading_dialog)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        loading_label = QLabel(tr("searching_please_wait"))
+        loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(loading_label)
+
+        progress_bar = IndeterminateProgressBar()
+        layout.addWidget(progress_bar)
+
+        # 创建搜索工作线程
+        self.search_worker = SongSearchWorker(
+            file_path=file_path,
+            provider=provider,
+        )
+
+        def on_search_finished(songs: list[dict]) -> None:
+            """搜索完成回调：关闭加载对话框，显示结果"""
+            loading_dialog.accept()
+
+            if not songs:
+                MessageBox(
+                    tr("no_search_results"),
+                    tr("search_failed"),
+                    self
+                ).exec()
                 self.get_lyric_btn.setEnabled(True)
                 self.batch_get_lyric_btn.setEnabled(True)
                 return
 
-            # 创建工作线程，传入选中的歌曲 ID
-            self.lyric_worker = LyricWorker(
-                file_paths=file_paths,
-                provider=provider,
-                song_id=selected_song_id
-            )
-        else:
-            # 其他提供商直接获取歌词
-            self.lyric_worker = LyricWorker(
-                file_paths=file_paths,
-                provider=provider
-            )
+            # 如果只有一个结果，直接返回
+            if len(songs) == 1:
+                self._continue_fetch(songs[0].get('id'))
+                return
+
+            # 多个结果时显示选择对话框
+            dialog = SongSearchResultDialog(self)
+            dialog.set_search_results(songs)
+
+            if dialog.exec():
+                self._continue_fetch(dialog.selected_song_id)
+            else:
+                # 用户取消选择
+                self.get_lyric_btn.setEnabled(True)
+                self.batch_get_lyric_btn.setEnabled(True)
+
+        def on_search_error(error_msg: str) -> None:
+            """搜索错误回调"""
+            loading_dialog.accept()
+            MessageBox(
+                tr("search_error"),
+                error_msg,
+                self
+            ).exec()
+            self.get_lyric_btn.setEnabled(True)
+            self.batch_get_lyric_btn.setEnabled(True)
+
+        self.search_worker.search_finished.connect(on_search_finished)
+        self.search_worker.search_error.connect(on_search_error)
+
+        # 启动搜索线程并显示加载对话框
+        self.search_worker.start()
+        loading_dialog.exec()
+
+    def _continue_fetch(self, selected_song_id: int | None) -> None:
+        """
+        继续歌词获取流程（用户选择歌曲后调用）
+
+        Args:
+            selected_song_id: 选中的歌曲 ID
+        """
+        if selected_song_id is None:
+            self.get_lyric_btn.setEnabled(True)
+            self.batch_get_lyric_btn.setEnabled(True)
+            return
+
+        # 创建工作线程，传入选中的歌曲 ID
+        self.lyric_worker = LyricWorker(
+            file_paths=self._pending_file_paths,
+            provider=self._pending_provider,
+            song_id=selected_song_id
+        )
 
         # 连接信号
         self.lyric_worker.progress_updated.connect(self._on_lyric_progress)
@@ -947,7 +1059,10 @@ class MusicManagerPage(QWidget):
         provider: str
     ) -> int | None:
         """
-        显示搜索结果选择对话框
+        显示搜索结果选择对话框（已弃用，保留兼容性）
+
+        注意：此方法会在主线程同步阻塞约 15 秒，
+        请使用 _start_search_and_show_dialog() 替代。
 
         Args:
             file_path (str): 音频文件路径
