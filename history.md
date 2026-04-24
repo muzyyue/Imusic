@@ -1,5 +1,174 @@
 # 项目变更历史
 
+## v0.4.33 (2026-04-24)
+- **fix(lyric): 🔧 歌词搜索增强 - 增加 REST API 备用方案**
+  - **问题**：点击「获取歌词」时弹出「未找到搜索结果」，但直接使用 HTTP 请求可以获取到数据
+  - **根因分析**：
+    - `LyricManager.search_songs()` 依赖 pymusiclibrary 原生 C 库进行搜索
+    - pymusiclibrary 在 Windows 上存在稳定性问题（QuickJS 引擎 access violation）
+    - API 返回数据格式可能与 `_parse_search_result()` 期望的结构不匹配
+    - 导致搜索返回空列表，GUI 显示「未找到搜索结果」
+  - **修复方案**：
+    1. **增加 REST API 备用路径**：当 pymusiclibrary 不可用、返回空或异常时，自动回退到 `_search_netease_rest_api()`
+    2. **四层降级策略**：
+       - API 不可用 → 直接使用 REST API
+       - API 无返回 → REST API fallback
+       - 解析结果为空 → REST API fallback
+       - API 异常 → REST API fallback
+    3. **保持向后兼容**：优先使用 pymusiclibrary（认证完善），失败时才回退
+  - **效果**：
+    - ✅ 日文/中文等多语言歌曲搜索更可靠
+    - ✅ 不依赖 pymusiclibrary 原生库稳定性
+    - ✅ 直接使用已验证的网易云 REST API（与用户直接请求相同）
+
+## v0.4.32 (2026-04-23)
+- **fix(core): 🖼️ 优化封面图片获取逻辑** - 确保使用搜索结果中的在线封面
+  - **问题**：网易云音乐等平台的封面图片显示为默认图标（蓝色背景）
+  - **根因分析**：
+    - `_parse_netease_result()` 只尝试 `album.picUrl` 和 `album.blurPicUrl`
+    - 但 API 返回的数据可能不包含这些字段，或字段名为空
+    - 导致 `cover_link=''`，CoverImageWidget 无法加载在线封面
+  - **修复方案**：
+    1. **增强 `_parse_netease_result()` 多策略封面获取**：
+       - 策略1: `album.picUrl`（标准字段）
+       - 策略2: `album.blurPicUrl`（模糊图）
+       - 策略3: `song.picUrl` / `song.albumPic` / `song.coverImgUrl`（顶层字段）
+       - 策略4: 使用 song_id 构造 API URL（兜底方案）
+    2. **优化 CoverImageLoader 加载逻辑**：
+       - 添加详细调试日志（便于排查问题）
+       - 增加 User-Agent 头（避免被反爬）
+       - 超时时间从 5s 增加到 10s
+    3. **保持优先级**：URL 封面 > MP3 内嵌封面 > 默认图标
+  - **效果**：
+    - ✅ Shazam 结果显示实际封面
+    - ✅ 网易云音乐结果显示实际封面（如果有）
+    - ✅ 所有平台结果统一使用在线封面优先策略
+  - **测试验证**：21 个测试全部通过
+
+## v0.4.31 (2026-04-23)
+- **feat(gui): 🎨 音乐封面图片展示功能** - 在搜索结果中显示实际封面图片
+  - **新增组件**：
+    - **CoverImageWidget** - 封面图片展示组件
+      - 支持异步加载（不阻塞主界面）
+      - 双策略加载：优先从 URL 下载，备选从 MP3 文件提取内嵌封面
+      - 圆角显示（8px），符合现代 UI 设计规范
+      - 加载状态动画（显示 "..."）
+      - 失败降级：加载失败时显示默认音乐图标
+      - 点击预览：点击封面打开 CoverPreviewDialog 显示大图
+    - **CoverImageLoader** - 异步加载线程
+      - 使用 QThread 实现非阻塞下载/提取
+      - 支持 URL 超时处理（5秒）
+      - 支持eyed3 提取MP3内嵌封面
+  - **集成到 PlatformResultWidget**：
+    - 替换原来的静态平台图标为动态封面图片
+    - 封面尺寸：48x48 像素（可配置）
+    - 保持原有布局结构不变
+    - 新增 file_path 参数传递给子组件
+  - **用户体验提升**：
+    - ✅ 直观展示歌曲封面，便于识别
+    - ✅ 点击封面可预览大图
+    - ✅ 自动适配深浅色主题
+    - ✅ 性能优化：异步加载 + 图片缓存
+  - **测试验证**：
+    - 13 个封面预览测试全部通过
+    - 39 个核心测试全部通过
+
+## v0.4.30 (2026-04-23)
+- **fix(core): 🌐 保留多语言原始字符** - 解决标签写入时日语/中文等被转成拼音的问题
+  - **根因（通过详细 Debug 日志确认）**：
+    - `sanitize()` 函数使用 `unidecode()` 将所有非 ASCII 字符转换为罗马音
+    - 例如：`'花に亡霊'` → `'Hua Niwang Ling'`，`'ヨルシカ'` → `'Yorushika'`
+    - 导致标签写入的是拼音/罗马音，而非用户选择的原始语言文本
+  - **核心修复**：
+    - **分离文件名和标签的处理逻辑**：
+      - 文件名：继续使用 `sanitize()` + `unidecode()` 确保跨平台兼容性
+      - 标签（Title/Artist/Album）：使用**原始语言字符**，不经过 unidecode 转换
+    - 修改位置（home_page.py `_on_apply()`）：
+      - TAG-ONLY 模式：`update_mp3_tags(src, title, artist, album)` ← 原始值
+      - RENAME+TAG 模式：`update_mp3_tags(target_path, title, artist, album)` ← 原始值
+      - 文件名生成：仍使用 `s_title = sanitize(title)` ← sanitize 后的值
+  - **效果**：
+    - ✅ MP3/OGG 标签保留原始语言（日语、中文、韩语等）
+    - ✅ 文件名仍为 ASCII 兼容格式（避免编码问题）
+    - ✅ 用户选择什么语言，标签就写入什么语言
+  - **验证方式**：
+    - Debug 日志现在显示两行：
+      - `Sanitized (for filename): s_title='...'` （用于文件名）
+      - `Original (for tags): title='...'` （用于标签）
+
+## v0.4.29 (2026-04-23)
+- **fix(gui): 🎯 终极修复** - 解决"点击应用后歌曲信息未改变"问题
+  - **根因（通过 Debug Info 确认）**：
+    - 用户选择网易云音乐结果时，`card.selected_platform_index` 始终为 `0`（Shazam）
+    - 导致 `get_selected_result()` 返回的是 Shazam 结果，而非用户选中的结果
+    - **根本原因**：`PlatformResultWidget.mousePressEvent()` 只更新了自己的视觉状态，
+      但**没有通知父组件 `SongResultCard` 更新 `selected_platform_index`**
+  - **核心修复**：
+    1. **PlatformResultWidget 增强**：
+       - 新增 `index` 属性（记录在父组件中的位置）
+       - 新增 `_on_selected_callback` 回调机制
+       - 新增 `set_selection_callback()` 方法
+       - 修改 `mousePressEvent()`：点击时调用回调通知父组件
+    2. **SongResultCard 增强**：
+       - 新增 `_on_platform_selected()` 回调处理方法
+       - 创建 PlatformResultWidget 时传入 index 并设置回调
+       - 维护 `_platform_widgets` 列表以便管理
+       - 点击某个平台结果时：自动更新索引 + 取消其他结果的选中状态
+  - **修复效果**：
+    - ✅ 用户点击任何平台结果 → selected_platform_index 正确更新
+    - ✅ get_selected_result() 返回用户真正选择的搜索结果
+    - ✅ _on_apply() 使用正确的元数据写入标签/重命名文件
+    - ✅ 80 个核心测试全部通过
+
+## v0.4.28 (2026-04-23)
+- fix(gui): **彻底修复** - 解决应用后文件信息仍未改变的终极问题
+  - **真正的根因**：`_on_apply()` 使用的文件路径与实际文件位置不同步
+    - RecognizeWorker 以 `modify=False`（预览模式）运行时返回原始 `file_path`
+    - 如果文件之前已被重命名过（如从 `xxx.mp3` → `Title - Artist - Album.mp3`），
+      GUI 中存储的 `entry["file_path"]` 仍指向旧的、不存在的路径
+    - 导致 `os.path.exists(src)` 返回 False，后续所有操作静默失败
+  - **核心修复** - 实现多策略路径查找算法：
+    - 策略 1: 使用 `entry["file_path"]`（原始路径）
+    - 策略 2: 使用 `entry["new_file_path"]`（重命名后的计算路径）
+    - 策略 3: 使用 `card.file_path`（SongResultCard 组件存储的路径）
+    - 所有策略失败时：明确报错提示用户"文件未找到"，不再静默跳过
+  - **增强健壮性**：
+    - 每次路径查找都记录详细日志（通过哪个策略找到文件）
+    - 错误消息包含尝试过的所有路径信息，便于调试
+    - 保持向后兼容：对未重命名的文件无任何影响
+  - **验证结果**：
+    - 创建诊断脚本验证标签写入功能本身正常（PASS）
+    - 模拟完整 GUI 应用流程（PASS）
+    - 80 个核心测试全部通过
+    - 修复后可正确处理：已重命名的文件、路径变化的情况
+
+## v0.4.27 (2026-04-23)
+- fix(core): **关键修复** - 解决点击"应用"后文件信息未改变的问题
+  - **根因分析**：`update_mp3_tags()` 函数在 eyed3.load() 返回 None 时静默返回，不抛出异常
+    导致标签写入失败但用户看不到任何错误提示，误以为操作成功
+  - **修复 `update_mp3_tags()`**：
+    - 移除静默返回逻辑（`if not audio: return`）
+    - 当文件不存在时抛出 `FileNotFoundError`
+    - 当文件无法加载时抛出 `ValueError` 并附带详细错误信息
+    - 当标签保存失败时捕获异常并抛出 `RuntimeError`
+    - 添加详细的日志输出，便于调试和问题定位
+  - **修复 `update_mp3_cover_art()`**：
+    - 添加文件存在性检查
+    - 增强 eyed3 加载失败的错误处理
+    - 添加完整的日志输出和异常链
+  - **修复 `update_ogg_tags()`**：
+    - 添加文件存在性检查
+    - 增强多格式尝试（Vorbis/Opus/Generic）的日志输出
+    - 封面下载失败时仅警告而非致命错误（非阻断）
+    - 标签保存失败时抛出明确的 `RuntimeError`
+  - **增强 `_on_apply()` 方法**（home_page.py）：
+    - 添加完整的调试日志系统（处理前/中/后状态追踪）
+    - 新增元数据有效性验证（title/artist/album 不能同时为空）
+    - 添加文件存在性检查（避免对不存在的文件执行操作）
+    - 统计成功/失败数量并在最终日志中报告
+    - 改进错误消息格式（显示文件名而非完整路径）
+  - **测试验证**：81 个核心测试全部通过，确认修复未破坏现有功能
+
 ## v0.4.26 (2026-04-20)
 - feat(ui): 优化窗口尺寸并添加手动调整大小功能
   - 窗口尺寸从 1600×480 调整为 1200×580（更适中，高度不超过屏幕 70%）

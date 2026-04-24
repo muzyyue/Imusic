@@ -213,19 +213,36 @@ class LyricManager:
             # 使用 pymusiclibrary 原生库进行搜索（已包含认证信息，最可靠）
             api = self._get_kugou_api() if provider == 'kugou' else self._get_netease_api()
             if api is None:
-                self.logger.error(f"无法初始化 {provider} API")
-                return []
+                self.logger.warning(f"[Search] {provider} API 不可用，尝试 REST API 备用方案")
+                # pymusiclibrary 不可用时，直接使用 REST API 搜索
+                songs = self._search_netease_rest_api(keyword)
+                self.logger.info(f"搜索完成(REST): {keyword}, 找到 {len(songs)} 首歌曲")
+                return songs
 
-            search_result = api.search(keyword)
+            try:
+                search_result = api.search(keyword)
 
-            if not search_result or not hasattr(search_result, 'body'):
-                self.logger.warning(f"搜索歌曲失败: {keyword}")
-                return []
+                if not search_result or not hasattr(search_result, 'body'):
+                    self.logger.warning(f"[Search] {provider} API 搜索无返回，尝试 REST API 备用方案")
+                    songs = self._search_netease_rest_api(keyword)
+                    self.logger.info(f"搜索完成(REST fallback): {keyword}, 找到 {len(songs)} 首歌曲")
+                    return songs
 
-            songs = self._parse_search_result(search_result.body, provider)
-            self.logger.info(f"搜索完成: {keyword}, 找到 {len(songs)} 首歌曲")
+                songs = self._parse_search_result(search_result.body, provider)
+                self.logger.info(f"搜索完成: {keyword}, 找到 {len(songs)} 首歌曲")
 
-            return songs
+                # 如果 pymusiclibrary 解析后结果为空，尝试 REST API 备用方案
+                if not songs and provider == 'netease':
+                    self.logger.warning(f"[Search] pymusiclibrary 未返回结果，尝试 REST API 备用方案")
+                    songs = self._search_netease_rest_api(keyword)
+                    self.logger.info(f"搜索完成(REST fallback): {keyword}, 找到 {len(songs)} 首歌曲")
+
+                return songs
+            except Exception as e:
+                self.logger.error(f"[Search] pymusiclibrary 搜索异常: {e}，尝试 REST API 备用方案")
+                songs = self._search_netease_rest_api(keyword)
+                self.logger.info(f"搜索完成(REST fallback): {keyword}, 找到 {len(songs)} 首歌曲")
+                return songs
 
         except ImportError as e:
             self.logger.error(f"导入 MusicLibrary 库失败: {e}")
