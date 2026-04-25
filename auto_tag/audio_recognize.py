@@ -434,18 +434,18 @@ def _parse_netease_result(song: dict) -> SearchResult:
 
 def _parse_qqmusic_result(song: dict) -> SearchResult:
     """
-    解析 QQ 音乐 API 返回的歌曲数据
+    解析 QQ 音乐官方 API 返回的歌曲数据
 
-    QQ 音乐 API 返回的数据结构：
-    - songid: 歌曲数字 ID
-    - songmid: 歌曲字符串 ID
-    - songname: 歌曲名称
-    - singer: 歌手列表（每个元素包含 id 和 name）
-    - albumname: 专辑名称
-    - albumid: 专辑数字 ID
-    - albummid: 专辑字符串 ID（用于构建封面 URL）
+    QQ 音乐官方 API (c.y.qq.com) 返回的数据结构：
+    - id: 歌曲数字 ID（原 songid）
+    - mid: 歌曲字符串 ID（原 songmid）
+    - name: 歌曲名称（原 songname）
+    - singer: 歌手列表（每个元素包含 id、mid 和 name）
+    - album: 专辑对象（包含 id、mid、name）- 注意是嵌套对象！
     - interval: 歌曲时长（秒）
-    - label: 发行商
+
+    注意：与旧版公共代理 API (api.qq.jsososo.com) 的字段名不同！
+    旧版使用扁平字段（songname, albumname），新版使用嵌套结构。
 
     Args:
         song: QQ 音乐返回的歌曲字典
@@ -453,7 +453,7 @@ def _parse_qqmusic_result(song: dict) -> SearchResult:
     Returns:
         SearchResult: 解析后的搜索结果，source 标记为 'qqmusic'
     """
-    title = song.get("songname", "Unknown Title")
+    title = song.get("name", "Unknown Title")
 
     # 提取歌手信息（支持多位歌手，用 " / " 连接）
     singers = song.get("singer", [])
@@ -462,8 +462,14 @@ def _parse_qqmusic_result(song: dict) -> SearchResult:
     else:
         artist = "Unknown Artist"
 
-    album = song.get("albumname", "Unknown Album")
-    song_id = str(song.get("songid", ""))
+    # 提取专辑信息（新接口使用嵌套的 album 对象）
+    album_info = song.get("album", {})
+    if isinstance(album_info, dict):
+        album = album_info.get("name", "Unknown Album")
+    else:
+        album = "Unknown Album"
+
+    song_id = str(song.get("id", ""))
 
     # 时长（秒），需要转换为整数
     try:
@@ -471,8 +477,11 @@ def _parse_qqmusic_result(song: dict) -> SearchResult:
     except (ValueError, TypeError):
         duration = 0
 
-    # 使用 albummid 构建封面 URL
-    albummid = song.get("albummid", "")
+    # 使用 album.mid 构建封面 URL
+    if isinstance(album_info, dict):
+        albummid = album_info.get("mid", "")
+    else:
+        albummid = ""
     if albummid:
         cover_link = f"https://y.gtimg.cn/music/photo_new/T002R500x500M000{albummid}.jpg"
     else:
@@ -1253,15 +1262,28 @@ def _do_qqmusic_search(keyword: str, limit: int = 5) -> list[SearchResult]:
     """
     执行 QQ 音乐搜索的同步 HTTP 请求
 
-    使用 http.client 发起 GET 请求到 QQ 音乐搜索 API，
-    解析返回的 JSON 数据并转换为 SearchResult 列表。
+    使用 QQ 音乐统一网关接口 (u.y.qq.com/cgi-bin/musicu.fcg)，
+    通过 POST 请求发送 JSON 格式的搜索参数。
 
-    API 接口: GET http://api.qq.jsososo.com/search
-    参数:
-    - key: 搜索关键词
-    - pageNo: 页码（默认1）
-    - pageSize: 结果数量
-    - t: 搜索类型（0=单曲）
+    API 接口: POST https://u.y.qq.com/cgi-bin/musicu.fcg
+    请求体格式:
+    {
+        "comm": {"ct": 24, "cv": 1000000},
+        "search": {
+            "method": "DoSearchForQQMusicLite",
+            "module": "music.search.SearchCgiService",
+            "param": {
+                "query": "搜索关键词",
+                "page_num": 1,
+                "num_per_page": 数量,
+                "search_type": 0  # 0=单曲
+            }
+        }
+    }
+
+    响应数据结构:
+    - search.data.body.item_song[]: 歌曲列表
+    - 每首歌包含：name, id, mid, singer[], album{}, interval
 
     Args:
         keyword: 搜索关键词
@@ -1275,29 +1297,38 @@ def _do_qqmusic_search(keyword: str, limit: int = 5) -> list[SearchResult]:
     try:
         logger.info(f"[QQMusic] Searching: {keyword} (limit={limit})")
 
-        # 构建查询参数
-        params = urlencode({
-            'key': keyword,
-            'pageNo': 1,
-            'pageSize': limit,
-            't': 0,  # 0=单曲
-        })
-        path = f'/search?{params}'
+        # 构建请求体（QQ 音乐统一网关 JSON 格式）
+        request_body = json.dumps({
+            "comm": {
+                "ct": 24,
+                "cv": 1000000,
+            },
+            "search": {
+                "method": "DoSearchForQQMusicLite",
+                "module": "music.search.SearchCgiService",
+                "param": {
+                    "query": keyword,
+                    "page_num": 1,
+                    "num_per_page": limit,
+                    "search_type": 0,  # 0=单曲
+                }
+            }
+        }, ensure_ascii=False).encode('utf-8')
 
-        # 使用 HTTP 连接（非 HTTPS）
-        conn = http.client.HTTPConnection(
-            'api.qq.jsososo.com',
+        # 使用 HTTPS 连接到统一网关
+        conn = http.client.HTTPSConnection(
+            'u.y.qq.com',
             timeout=10,
         )
 
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Referer': 'https://y.qq.com/',
-            'Accept': '*/*',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
         }
 
-        conn.request('GET', path, headers=headers)
+        conn.request('POST', '/cgi-bin/musicu.fcg', body=request_body, headers=headers)
         response = conn.getresponse()
         status = response.status
         raw_data = response.read().decode('utf-8')
@@ -1312,14 +1343,16 @@ def _do_qqmusic_search(keyword: str, limit: int = 5) -> list[SearchResult]:
         data = json.loads(raw_data)
 
         # 检查 API 返回状态码
-        if not data or data.get('result') != 100:
+        if not data or data.get('code') != 0:
             error_msg = data.get('msg', 'Unknown error') if data else 'Empty response'
-            logger.warning(f"[QQMusic] API error for '{keyword}': {error_msg}")
+            logger.warning(f"[QQMusic] API error for '{keyword}': {error_msg} (code={data.get('code') if data else 'N/A'})")
             return []
 
-        # 提取歌曲列表
-        result_data = data.get('data', {})
-        songs = result_data.get('list', [])
+        # 提取歌曲列表（统一网关路径：search.data.body.item_song）
+        search_obj = data.get('search', {})
+        data_obj = search_obj.get('data', {})
+        body = data_obj.get('body', {})
+        songs = body.get('item_song', [])
 
         if not songs:
             logger.warning(f"[QQMusic] Empty results for '{keyword}'")

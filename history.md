@@ -1,5 +1,14 @@
 # 项目变更历史
 
+## v0.4.51 (2026-04-25)
+- fix(qqmusic): 修复 QQ 音乐搜索功能 - 从废弃公共代理迁移到官方统一网关接口
+  - 将 API 端点从 `http://api.qq.jsososo.com`（DNS 失败）改为 `https://u.y.qq.com/cgi-bin/musicu.fcg`
+  - 请求方式从 GET 改为 POST（JSON 格式请求体）
+  - 更新响应数据路径：`search.data.body.item_song[]`
+  - 更新字段映射：songname→name, songid→id, albumname→album.name（嵌套对象）
+  - 保持 SearchResult 数据结构和 [QQMusic] 日志前缀不变
+  - 涉及文件: `auto_tag/audio_recognize.py`, `tests/debug_qq_music.py`
+
 ## v0.4.50 (2026-04-25)
 - fix(build): 修复 UPX 排除配置导致嵌入 Python 解释器启动失败
   - 将 upx_exclude 中的 `python313.dll` 更正为 `python312.dll`（匹配实际 Python 3.12 运行时）
