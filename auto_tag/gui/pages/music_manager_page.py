@@ -402,7 +402,7 @@ class MusicManagerPage(QWidget):
         from auto_tag.lyric import list_providers
         self._provider_list = list_providers()  # 保存提供商列表用于后续查询
         for idx, provider_name in enumerate(self._provider_list):
-            self.provider_combo.addItem(tr(provider_name))
+            self.provider_combo.addItem(tr(f'lyrics.providers.{provider_name}'))
         # 默认选中网易云音乐
         if 'netease' in self._provider_list:
             default_index = self._provider_list.index('netease')
@@ -1475,4 +1475,4 @@ class MusicManagerPage(QWidget):
         self._provider_list = list_providers()
         for idx, provider_name in enumerate(self._provider_list):
             if idx < self.provider_combo.count():
-                self.provider_combo.setItemText(idx, tr(provider_name))
+                self.provider_combo.setItemText(idx, tr(f'lyrics.providers.{provider_name}'))

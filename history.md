@@ -1,5 +1,10 @@
 # 项目变更历史
 
+## v0.4.48 (2026-04-25)
+- fix(i18n): 修复音乐管理页面歌词提供商下拉框未翻译的问题
+  - 将 `tr(provider_name)` 改为 `tr(f'lyrics.providers.{provider_name}')` 匹配嵌套翻译键路径
+  - 涉及文件: `music_manager_page.py`
+
 ## v0.4.47 (2026-04-25)
 - feat(settings): 搜索源支持多选 - ComboBox 单选改为 CheckBox 多选（保持原有布局结构）
   - UI层: 搜索源行从 ComboBox 改为 CheckBox 水平多选，保持左右行布局不变

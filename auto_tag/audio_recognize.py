@@ -1396,6 +1396,7 @@ async def multi_source_search(
     shazam_result: dict | None = None,
     limit: int = 5,
     sources: list[str] | None = None,
+    include_radio: bool = True,
 ) -> list[SearchResult]:
     """
     多数据源并发搜索音乐信息
@@ -1408,6 +1409,7 @@ async def multi_source_search(
         shazam_result: 已有的 Shazam 识别结果（如果有）
         limit: 每个平台返回的最大结果数
         sources: 要搜索的源列表，默认 ["shazam", "netease"]
+        include_radio: 是否包含电台/声音内容（仅 netease 生效），默认 True
 
     Returns:
         list[SearchResult]: 所有平台的搜索结果，按置信度降序排列
@@ -1438,7 +1440,7 @@ async def multi_source_search(
     if "netease" in sources:
         logger.info("[MultiSource] Using pure REST API for NetEase")
         search_tasks.append(asyncio.create_task(_search_netease_rest(
-            keyword, limit, include_radio=config.include_radio
+            keyword, limit, include_radio=include_radio
         )))
     else:
         logger.info("[MultiSource] NetEase not in sources, skipping")
@@ -1919,6 +1921,7 @@ async def recognize_and_rename_file(
                         shazam_result=None,
                         limit=5,
                         sources=config.search_sources,
+                        include_radio=config.include_radio,
                     )
 
                     if fallback_results:
@@ -1972,6 +1975,7 @@ async def recognize_and_rename_file(
         shazam_result=out,
         limit=3,
         sources=config.search_sources,
+        include_radio=config.include_radio,
     )
 
     # 4) Build final name (if renaming)
