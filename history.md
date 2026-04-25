@@ -1,5 +1,11 @@
 # 项目变更历史
 
+## v0.4.49 (2026-04-25)
+- chore(build): 执行单目录打包（PyInstaller onedir 模式）
+  - 使用 build_tools/Imusic.spec 打包配置
+  - 输出目录模式可执行文件到 dist/Imusic/
+  - 涉及文件: `build_tools/Imusic.spec`, `pyproject.toml`
+
 ## v0.4.48 (2026-04-25)
 - fix(i18n): 修复音乐管理页面歌词提供商下拉框未翻译的问题
   - 将 `tr(provider_name)` 改为 `tr(f'lyrics.providers.{provider_name}')` 匹配嵌套翻译键路径

@@ -432,6 +432,67 @@ def _parse_netease_result(song: dict) -> SearchResult:
     )
 
 
+def _parse_qqmusic_result(song: dict) -> SearchResult:
+    """
+    解析 QQ 音乐 API 返回的歌曲数据
+
+    QQ 音乐 API 返回的数据结构：
+    - songid: 歌曲数字 ID
+    - songmid: 歌曲字符串 ID
+    - songname: 歌曲名称
+    - singer: 歌手列表（每个元素包含 id 和 name）
+    - albumname: 专辑名称
+    - albumid: 专辑数字 ID
+    - albummid: 专辑字符串 ID（用于构建封面 URL）
+    - interval: 歌曲时长（秒）
+    - label: 发行商
+
+    Args:
+        song: QQ 音乐返回的歌曲字典
+
+    Returns:
+        SearchResult: 解析后的搜索结果，source 标记为 'qqmusic'
+    """
+    title = song.get("songname", "Unknown Title")
+
+    # 提取歌手信息（支持多位歌手，用 " / " 连接）
+    singers = song.get("singer", [])
+    if singers and isinstance(singers, list):
+        artist = " / ".join([s.get("name", "Unknown") for s in singers if s.get("name")])
+    else:
+        artist = "Unknown Artist"
+
+    album = song.get("albumname", "Unknown Album")
+    song_id = str(song.get("songid", ""))
+
+    # 时长（秒），需要转换为整数
+    try:
+        duration = int(song.get("interval", 0))
+    except (ValueError, TypeError):
+        duration = 0
+
+    # 使用 albummid 构建封面 URL
+    albummid = song.get("albummid", "")
+    if albummid:
+        cover_link = f"https://y.gtimg.cn/music/photo_new/T002R500x500M000{albummid}.jpg"
+    else:
+        cover_link = ""
+
+    logger.debug(f"[QQMusic] Parsed result: {title} - {artist} (ID: {song_id}, Duration: {duration}s)")
+
+    return SearchResult(
+        source="qqmusic",
+        title=title,
+        artist=artist,
+        album=album,
+        cover_link=cover_link,
+        song_id=song_id,
+        duration=duration,
+        confidence=0.9,
+        raw_data=song,
+    )
+
+
 def _parse_netease_radio_result(radio: dict) -> SearchResult:
     """
     解析网易云音乐 API 返回的电台/声音数据（type=1009）
@@ -1188,6 +1249,97 @@ def _do_radio_search(keyword: str, limit: int) -> list[SearchResult]:
     return _do_single_search(keyword, limit, search_type=1009)
 
 
+def _do_qqmusic_search(keyword: str, limit: int = 5) -> list[SearchResult]:
+    """
+    执行 QQ 音乐搜索的同步 HTTP 请求
+
+    使用 http.client 发起 GET 请求到 QQ 音乐搜索 API，
+    解析返回的 JSON 数据并转换为 SearchResult 列表。
+
+    API 接口: GET http://api.qq.jsososo.com/search
+    参数:
+    - key: 搜索关键词
+    - pageNo: 页码（默认1）
+    - pageSize: 结果数量
+    - t: 搜索类型（0=单曲）
+
+    Args:
+        keyword: 搜索关键词
+        limit: 返回结果数量限制（默认5）
+
+    Returns:
+        list[SearchResult]: QQ 音乐搜索结果列表，失败返回空列表
+    """
+    import http.client
+
+    try:
+        logger.info(f"[QQMusic] Searching: {keyword} (limit={limit})")
+
+        # 构建查询参数
+        params = urlencode({
+            'key': keyword,
+            'pageNo': 1,
+            'pageSize': limit,
+            't': 0,  # 0=单曲
+        })
+        path = f'/search?{params}'
+
+        # 使用 HTTP 连接（非 HTTPS）
+        conn = http.client.HTTPConnection(
+            'api.qq.jsososo.com',
+            timeout=10,
+        )
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://y.qq.com/',
+            'Accept': '*/*',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        }
+
+        conn.request('GET', path, headers=headers)
+        response = conn.getresponse()
+        status = response.status
+        raw_data = response.read().decode('utf-8')
+        conn.close()
+
+        # 检查 HTTP 状态码
+        if status != 200:
+            logger.warning(f"[QQMusic] HTTP {status} for '{keyword}'")
+            return []
+
+        # 解析 JSON 响应
+        data = json.loads(raw_data)
+
+        # 检查 API 返回状态码
+        if not data or data.get('result') != 100:
+            error_msg = data.get('msg', 'Unknown error') if data else 'Empty response'
+            logger.warning(f"[QQMusic] API error for '{keyword}': {error_msg}")
+            return []
+
+        # 提取歌曲列表
+        result_data = data.get('data', {})
+        songs = result_data.get('list', [])
+
+        if not songs:
+            logger.warning(f"[QQMusic] Empty results for '{keyword}'")
+            return []
+
+        logger.info(f"[QQMusic] Found {len(songs)} songs for '{keyword}'")
+
+        # 解析每个歌曲结果
+        parsed = [_parse_qqmusic_result(song) for song in songs[:limit]]
+        logger.info(f"[QQMusic] Parsed {len(parsed)} results")
+        return parsed
+
+    except json.JSONDecodeError as e:
+        logger.error(f"[QQMusic] JSON decode error: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"[QQMusic] Search error: {e}", exc_info=True)
+        return []
+
+
 def _parse_kugou_result(song: dict) -> SearchResult:
     """
     解析酷狗音乐 API 返回的歌曲数据
@@ -1391,6 +1543,66 @@ async def _search_kugou(keyword: str, limit: int = 5) -> list[SearchResult]:
         return []
 
 
+async def _search_qqmusic(keyword: str, limit: int = 5, max_retries: int = 3) -> list[SearchResult]:
+    """
+    异步搜索 QQ 音乐（REST API 模式）
+
+    使用 http.client 直接发起 HTTP 请求到 QQ 音乐搜索 API，
+    通过 asyncio.run_in_executor 包装同步函数实现异步调用。
+    简化版实现：无缓存和限流机制（首次集成）。
+
+    API 接口: GET http://api.qq.jsososo.com/search?key=关键词&pageNo=1&pageSize=N&t=0
+
+    Args:
+        keyword: 搜索关键词
+        limit: 返回结果数量上限（默认5）
+        max_retries: 最大重试次数（默认3）
+
+    Returns:
+        list[SearchResult]: QQ 音乐搜索结果列表，失败返回空列表
+
+    Example:
+        >>> results = await _search_qqmusic("周杰伦 晴天", limit=10)
+        >>> for r in results:
+        ...     print(f"{r.title} - {r.artist}")
+    """
+    try:
+        def _do_search() -> list[SearchResult]:
+            """执行同步搜索并返回结果"""
+            return _do_qqmusic_search(keyword, limit)
+
+        # 首选方案：使用 run_in_executor（推荐方式）
+        loop = asyncio.get_running_loop()
+        results = await loop.run_in_executor(None, _do_search)
+
+        if results:
+            logger.info(f"[QQMusic] Found {len(results)} results for '{keyword}'")
+        else:
+            logger.warning(f"[QQMusic] No results for '{keyword}'")
+
+        return results
+
+    except RuntimeError:
+        # 备选方案：当没有运行中的事件循环时使用 ThreadPoolExecutor
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_do_qqmusic_search, keyword, limit)
+            try:
+                results = future.result(timeout=30)
+                if results:
+                    logger.info(f"[QQMusic] Found {len(results)} results for '{keyword}' (ThreadPoolExecutor)")
+                else:
+                    logger.warning(f"[QQMusic] No results for '{keyword}' (ThreadPoolExecutor)")
+                return results
+            except Exception as e:
+                logger.error(f"[QQMusic] ThreadPoolExecutor error: {e}", exc_info=True)
+                return []
+
+    except Exception as e:
+        logger.error(f"[QQMusic] Async search error: {e}", exc_info=True)
+        return []
+
+
 async def multi_source_search(
     keyword: str,
     shazam_result: dict | None = None,
@@ -1444,6 +1656,11 @@ async def multi_source_search(
         )))
     else:
         logger.info("[MultiSource] NetEase not in sources, skipping")
+
+    # QQ音乐搜索（REST API）
+    if "qqmusic" in sources:
+        logger.info("[MultiSource] Using REST API for QQ Music")
+        search_tasks.append(asyncio.create_task(_search_qqmusic(keyword, limit)))
 
     # 酷狗暂时禁用（REST API 不可用，原生库不稳定）
     if "kugou" in sources:
