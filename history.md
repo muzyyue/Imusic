@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.4.50 (2026-04-25)
+- fix(build): 修复 UPX 排除配置导致嵌入 Python 解释器启动失败
+  - 将 upx_exclude 中的 `python313.dll` 更正为 `python312.dll`（匹配实际 Python 3.12 运行时）
+  - 同步更新 EXE 和 COLLECT 两处的 UPX 排除列表
+  - 涉及文件: `build_tools/Imusic.spec`
+- chore(build): 执行单目录模式打包（PyInstaller --onedir）
+  - 输出目录结构：dist/Imusic/Imusic.exe + _internal/ 依赖文件夹
+
 ## v0.4.49 (2026-04-25)
 - chore(build): 执行单目录打包（PyInstaller onedir 模式）
   - 使用 build_tools/Imusic.spec 打包配置

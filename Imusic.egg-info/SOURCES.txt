@@ -59,6 +59,7 @@ tests/test_lyric_manager.py
 tests/test_music_manager_page.py
 tests/test_nested_i18n.py
 tests/test_netease_rest_api.py
+tests/test_qq_music_api.py
 tests/test_radio_simple.py
 tests/test_recognize.py
 tests/test_rest_api_search.py

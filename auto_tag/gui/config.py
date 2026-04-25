@@ -87,7 +87,8 @@ class AppConfig:
     VALID_SEARCH_SOURCES: tuple[str, ...] = (
         "shazam",
         "netease",
-        "kugou"
+        "kugou",
+        "qqmusic"  # 新增：QQ音乐
     )
     
     # 网易云搜索类型映射表（type值 -> 中文名）

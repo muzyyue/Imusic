@@ -150,7 +150,8 @@
     "sources": {
       "shazam": "Shazam (Default)",
       "netease": "NetEase Cloud Music",
-      "kugou": "KuGou Music (Experimental)"
+      "kugou": "KuGou Music (Experimental)",
+      "qqmusic": "QQ Music"
     },
     "themes": {
       "light": "Light Mode",

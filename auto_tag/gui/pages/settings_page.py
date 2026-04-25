@@ -158,7 +158,7 @@ class SettingsPage(QWidget):
 
         # 右侧水平排列 CheckBox（多选），间距 16px
         self._source_checkboxes: dict[str, CheckBox] = {}
-        source_order = ["shazam", "netease", "kugou"]
+        source_order = ["shazam", "netease", "kugou", "qqmusic"]
         for i, source_key in enumerate(source_order):
             cb = CheckBox(tr(f"settings_page.sources.{source_key}"))
             self._source_checkboxes[source_key] = cb
@@ -413,7 +413,7 @@ class SettingsPage(QWidget):
         self._theme_combo.setCurrentIndex(theme_idx)
 
         # 更新搜索源 CheckBox 文本并恢复选中状态
-        source_order = ["shazam", "netease", "kugou"]
+        source_order = ["shazam", "netease", "kugou", "qqmusic"]
         for source_key in source_order:
             cb = self._source_checkboxes[source_key]
             cb.setText(tr(f"settings_page.sources.{source_key}"))

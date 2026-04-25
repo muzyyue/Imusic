@@ -252,8 +252,8 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    # UPX 会损坏 python313.dll 导致 "Failed to start embedded python interpreter!"
-    upx_exclude=['python313.dll', 'libcrypto-3.dll', 'libssl-3.dll'],
+    # UPX 会损坏 python312.dll 导致 "Failed to start embedded python interpreter!"
+    upx_exclude=['python312.dll', 'libcrypto-3.dll', 'libssl-3.dll'],
     runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
@@ -270,6 +270,6 @@ coll = COLLECT(
     strip=False,
     upx=True,
     # COLLECT 中的 UPX 同样排除关键 DLL
-    upx_exclude=['python313.dll', 'libcrypto-3.dll', 'libssl-3.dll'],
+    upx_exclude=['python312.dll', 'libcrypto-3.dll', 'libssl-3.dll'],
     name='Imusic',
 )
