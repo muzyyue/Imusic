@@ -97,11 +97,11 @@ class SettingsPage(QWidget):
         self._layout.addWidget(self._title_label)
 
         # 常规设置分组标题
-        general_section = SubtitleLabel(tr("settings_page.general_section"))
+        self._general_section = SubtitleLabel(tr("settings_page.general_section"))
         font_general = QFont()
         font_general.setPointSize(14)
-        general_section.setFont(font_general)
-        self._layout.addWidget(general_section)
+        self._general_section.setFont(font_general)
+        self._layout.addWidget(self._general_section)
 
         # 语言设置
         language_layout = QHBoxLayout()
@@ -146,9 +146,9 @@ class SettingsPage(QWidget):
         self._layout.addLayout(theme_layout)
 
         # ===== 新增：搜索设置分组 =====
-        search_section = SubtitleLabel(tr("settings_page.search_settings_section"))
-        search_section.setFont(font_general)
-        self._layout.addWidget(search_section)
+        self._search_section = SubtitleLabel(tr("settings_page.search_settings_section"))
+        self._search_section.setFont(font_general)
+        self._layout.addWidget(self._search_section)
 
         # 搜索源多选（保持与"语言"/"主题"相同的左右行布局）
         source_layout = QHBoxLayout()
@@ -176,8 +176,9 @@ class SettingsPage(QWidget):
         self._netease_type_combo.setMinimumWidth(300)
         
         # 添加网易云支持的搜索类型选项
-        for type_value, type_name in AppConfig.NETEASE_SEARCH_TYPES.items():
-            self._netease_type_combo.addItem(type_name, userData=type_value)
+        for type_value, _type_name in AppConfig.NETEASE_SEARCH_TYPES.items():
+            translated_name = tr(f"settings_page.netease_types.{type_value}")
+            self._netease_type_combo.addItem(translated_name, userData=type_value)
         
         # 设置当前类型
         current_type_index = list(AppConfig.NETEASE_SEARCH_TYPES.keys()).index(
@@ -380,6 +381,8 @@ class SettingsPage(QWidget):
 
         # 更新标题和分组标题
         self._title_label.setText(tr("settings_page.title"))
+        self._general_section.setText(tr("settings_page.general_section"))
+        self._search_section.setText(tr("settings_page.search_settings_section"))
 
         # 更新常规设置标签
         self._language_label.setText(tr("settings_page.language_label"))
@@ -421,8 +424,9 @@ class SettingsPage(QWidget):
         
         # 清空并重新填充网易云搜索类型下拉框
         self._netease_type_combo.clear()
-        for type_value, type_name in AppConfig.NETEASE_SEARCH_TYPES.items():
-            self._netease_type_combo.addItem(type_name, userData=type_value)
+        for type_value, _type_name in AppConfig.NETEASE_SEARCH_TYPES.items():
+            translated_name = tr(f"settings_page.netease_types.{type_value}")
+            self._netease_type_combo.addItem(translated_name, userData=type_value)
         self._netease_type_combo.setCurrentIndex(netease_type_idx)
         
         # 恢复电台开关状态

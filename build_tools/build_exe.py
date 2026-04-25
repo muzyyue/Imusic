@@ -96,21 +96,21 @@ def print_build_summary(dist_path, project_root):
         project_root: 项目根目录路径
     """
     dist_imusic = os.path.join(dist_path, 'Imusic')
-    
+
     if not os.path.exists(dist_imusic):
         print("\n⚠ Warning: Build output directory not found!")
         return
-    
+
     total_size = get_dist_size(dist_imusic)
     file_count = sum(len(files) for _, _, files in os.walk(dist_imusic))
-    
+
     print("\n" + "=" * 60)
-    print("📦 BUILD SUMMARY")
+    print("📦 BUILD SUMMARY (PyInstaller)")
     print("=" * 60)
     print(f"  Output directory: {dist_imusic}")
     print(f"  Total files: {file_count}")
     print(f"  Total size: {format_size(total_size)}")
-    
+
     # 列出最大的10个文件
     print("\n  📊 Top 10 largest files:")
     file_sizes = []
@@ -119,12 +119,12 @@ def print_build_summary(dist_path, project_root):
             filepath = os.path.join(dirpath, filename)
             if not os.path.islink(filepath):
                 file_sizes.append((filepath, os.path.getsize(filepath)))
-    
+
     file_sizes.sort(key=lambda x: x[1], reverse=True)
     for filepath, size in file_sizes[:10]:
         rel_path = os.path.relpath(filepath, dist_imusic)
         print(f"    {format_size(size):>10}  {rel_path}")
-    
+
     print("=" * 60)
     print("✅ Build complete!")
     print(f"   📦 Distributable: {dist_imusic}/")
@@ -144,7 +144,7 @@ def main():
     6. 输出打包总结
     """
     # 解析命令行参数
-    parser = argparse.ArgumentParser(description='Build Imusic executable')
+    parser = argparse.ArgumentParser(description='Build Imusic executable with PyInstaller')
     parser.add_argument(
         '--force-rebuild',
         action='store_true',
@@ -156,28 +156,49 @@ def main():
         help='Skip running tests before building'
     )
     args = parser.parse_args()
-    
+
     # 该脚本位于 <project_root>/build_tools/
     build_tools_dir = os.path.abspath(os.path.dirname(__file__))
     project_root = os.path.abspath(os.path.join(build_tools_dir, os.pardir))
 
     print("=" * 60)
-    print("🚀 Imusic Build Script")
+    print("🚀 Imusic Build Script (PyInstaller)")
     print("=" * 60)
     print(f"Project root detected at:\n  {project_root}")
     print(f"Force rebuild: {'Yes' if args.force_rebuild else 'No'}")
     print(f"Skip tests: {'Yes' if args.skip_tests else 'No'}")
 
-    # 1) (Re)create virtual environment under project_root/venv
+    # 检测是否正在使用 venv 中的 Python（避免自己删除自己的问题）
     venv_dir = os.path.join(project_root, "venv")
-    
+    current_python_in_venv = sys.executable.startswith(venv_dir)
+
     if os.path.isdir(venv_dir) and not args.force_rebuild:
         print("\n✓ Virtual environment exists, reusing it")
         print("  (Use --force-rebuild to recreate)")
     else:
         if os.path.isdir(venv_dir):
-            print("\n🗑 Removing existing venv/ (force rebuild)")
-            shutil.rmtree(venv_dir)
+            if current_python_in_venv:
+                print("\n❌ Error: Cannot delete virtual environment while running from within it!")
+                print(f"   Current Python: {sys.executable}")
+                print(f"   Target venv: {venv_dir}")
+                print("\n🔧 Solution: Run the script using system Python instead:")
+                if os.name == "nt":
+                    import shutil as sh_util
+                    system_python = sh_util.which("python") or "python"
+                    print(f"   {system_python} build_tools/build_exe.py --force-rebuild --skip-tests")
+                else:
+                    print("   /usr/bin/python3 build_tools/build_exe.py --force-rebuild --skip-tests")
+                print("\n   Or manually delete the venv folder first, then retry.")
+                sys.exit(1)
+            else:
+                print("\n🗑 Removing existing venv/ (force rebuild)")
+                try:
+                    shutil.rmtree(venv_dir)
+                except PermissionError as e:
+                    print(f"\n⚠ Failed to delete venv: {e}")
+                    print("   Some files may be locked by other processes.")
+                    print("   Please close any terminals/IDEs using this venv and try again.")
+                    sys.exit(1)
         print("\n📦 Creating new virtual environment...")
         run([sys.executable, "-m", "venv", venv_dir])
 
@@ -209,7 +230,7 @@ def main():
         else:
             print("\n⏭ Skipping tests (--skip-tests specified)")
 
-        # 4) Build executable using .spec file (目录模式：启动更快，体积优化)
+        # 4) Build executable using PyInstaller spec file (目录模式：启动更快，体积优化)
         print("\n🔨 Building executable...")
         spec_file = os.path.join(build_tools_dir, "Imusic.spec")
         pyinstaller_args = [
@@ -225,7 +246,7 @@ def main():
         # 5) Print build summary
         dist_path = os.path.join(project_root, "dist")
         print_build_summary(dist_path, project_root)
-        
+
     finally:
         os.chdir(cwd_before)
 

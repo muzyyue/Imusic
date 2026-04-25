@@ -1100,6 +1100,7 @@ class HomePage(QWidget):
         self.uncheck_all_btn.setText(tr("uncheck_all"))
         self.apply_btn.setText(tr("apply"))
         self.apply_plex_btn.setText(tr("apply_plex"))
+        self.clear_data_btn.setText(tr("clear_data"))
         self.refresh_files_btn.setToolTip(tr("refresh_file_list"))
 
         # 刷新所有卡片的平台名称

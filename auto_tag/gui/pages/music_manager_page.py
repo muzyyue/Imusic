@@ -1426,6 +1426,7 @@ class MusicManagerPage(QWidget):
         self.browse_btn.setText(tr("converter.browse"))
         self.check_all_btn.setText(tr("converter.check_all"))
         self.uncheck_all_btn.setText(tr("converter.uncheck_all"))
+        self.clear_data_btn.setText(tr("search.clear_data"))
 
         self.file_table.setHorizontalHeaderLabels([
             tr("music_manager.check"), tr("music_manager.file_name"), tr("music_manager.format"), tr("music_manager.size")

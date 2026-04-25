@@ -267,6 +267,10 @@ class ConverterPage(QWidget):
         self.stop_btn.setEnabled(False)
         btn_layout.addWidget(self.stop_btn)
 
+        self.clear_data_btn = PushButton(FIF.DELETE, tr("clear_data"))
+        self.clear_data_btn.clicked.connect(self._on_clear_data)
+        btn_layout.addWidget(self.clear_data_btn)
+
         layout.addLayout(btn_layout)
 
     def _setup_format_filter_ui(self, parent_layout: QVBoxLayout) -> None:
@@ -983,6 +987,63 @@ class ConverterPage(QWidget):
             if item:
                 item.setCheckState(Qt.CheckState.Unchecked)
 
+    def _on_clear_data(self) -> None:
+        """
+        清除数据按钮点击处理
+
+        清除文件列表和表格数据，释放资源。
+        如果正在转换则先停止任务，并显示确认对话框。
+        """
+        from PySide6.QtWidgets import QMessageBox
+
+        # 检查是否有数据需要清除
+        if not self.files and self.file_table.rowCount() == 0:
+            return
+
+        # 如果正在转换，先停止
+        if self.worker and self.worker.isRunning():
+            reply = QMessageBox.question(
+                self,
+                tr("confirm_stop_conversion"),
+                tr("confirm_stop_conversion_desc"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            self.worker.stop()
+            self.worker.wait()
+
+        # 显示确认对话框
+        reply = QMessageBox.question(
+            self,
+            tr("confirm_clear_data"),
+            tr("confirm_clear_data_desc"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # 清空文件列表
+        self.files.clear()
+
+        # 清空表格
+        self.file_table.setRowCount(0)
+
+        # 重置进度条
+        self.progress_bar.setValue(0)
+
+        # 更新状态标签
+        self.status_label.setText(tr("conversion_in_progress"))
+
+        # 重置按钮状态
+        self.start_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+
     def refresh_texts(self) -> None:
         """
         刷新页面文本
@@ -1016,6 +1077,7 @@ class ConverterPage(QWidget):
         self.uncheck_all_btn.setText(tr("uncheck_all"))
         self.start_btn.setText(tr("start_conversion"))
         self.stop_btn.setText(tr("stop_conversion"))
+        self.clear_data_btn.setText(tr("clear_data"))
 
         # 更新格式过滤区域的文本
         if self.filter_title_label:
@@ -1116,3 +1178,5 @@ class ConverterPage(QWidget):
         当用户切换深色/浅色主题时，更新列表控件样式。
         """
         self._apply_list_theme()
+
+

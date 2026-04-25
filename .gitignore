@@ -17,7 +17,18 @@ dist/
 netease_api_test_report.json
 tests/test_netease_api.py
 
-# 保留构建工具中的 spec 文件
+# PyInstaller 构建产物（当前使用的打包工具）
 !build_tools/*.spec
+
+# Nuitka 构建产物（已回退到 PyInstaller，保留规则以备将来迁移）
+*.build/
+*.dist/
+*.onefile-build/
+nuitka-build/
+compilation-report.html
+*.manifest
+*.exp
+*.lib
+*.pdb
 
 .python-version

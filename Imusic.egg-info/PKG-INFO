@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: Imusic
-Version: 0.4.51
+Version: 0.4.56
 Summary: Use shazam to rename and filled the tag of a list of mp3 files.
 Author: ling
 License: MIT License
@@ -43,6 +43,7 @@ Requires-Dist: lrxy>=0.1.0
 Provides-Extra: dev
 Requires-Dist: pytest>=6.0; extra == "dev"
 Requires-Dist: pytest-asyncio; extra == "dev"
+Requires-Dist: pyinstaller>=6.0; extra == "dev"
 Dynamic: license-file
 
 # MP3 File Recognizer and Renamer

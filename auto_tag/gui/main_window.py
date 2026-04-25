@@ -69,8 +69,9 @@ class MainWindow(FluentWindow):
         """
         初始化主窗口
 
-        创建主窗口，设置窗口属性，添加导航项，
-        并从配置文件加载主题和语言设置。
+        创建主窗口，设置窗口属性，
+        先从配置加载语言，再创建页面和导航项，
+        确保所有 tr() 调用都能获取正确的翻译。
         """
         super().__init__()
 
@@ -82,27 +83,27 @@ class MainWindow(FluentWindow):
         self.setMinimumSize(900, 500)
         self.setMaximumSize(1920, 1080)
 
+        # 先从配置加载语言，确保后续 tr() 调用使用正确的语言
+        self._load_language()
+
+        # 再加载主题
+        self._apply_theme_from_config()
+
         # 创建页面并设置 objectName（QFluentWidgets 要求）
         self.home_page = HomePage(self)
         self.home_page.setObjectName("home_page")
-        
+
         self.converter_page = ConverterPage(self)
         self.converter_page.setObjectName("converter_page")
-        
+
         self.music_manager_page = MusicManagerPage(self)
         self.music_manager_page.setObjectName("music_manager_page")
-        
+
         self.settings_page = SettingsPage(self)
         self.settings_page.setObjectName("settings_page")
 
         # 添加导航项
         self._setup_navigation()
-
-        # 从配置加载主题
-        self._apply_theme_from_config()
-
-        # 从配置加载语言
-        self._apply_language_from_config()
 
         # 连接设置页面信号
         self._connect_signals()
@@ -127,14 +128,14 @@ class MainWindow(FluentWindow):
         self.addSubInterface(
             self.converter_page,
             FIF.MUSIC,
-            tr("converter")
+            tr("navigation.converter")
         )
 
         # 添加音乐管理导航项
         self.addSubInterface(
             self.music_manager_page,
             FIF.EDIT,
-            tr("music_manager")
+            tr("navigation.music_manager")
         )
 
         # 添加设置导航项
@@ -158,13 +159,37 @@ class MainWindow(FluentWindow):
         theme = theme_map.get(config.theme, Theme.AUTO)
         setTheme(theme)
 
-    def _apply_language_from_config(self) -> None:
+    def _load_language(self) -> None:
         """
-        从配置文件应用语言设置
+        从配置文件加载语言翻译
 
-        根据配置文件中的语言设置，加载对应的语言翻译。
+        仅加载语言文件，不刷新 UI。
         """
         translator.load_language(config.language)
+
+    def _apply_language_from_config(self) -> None:
+        """
+        刷新所有页面和导航项的文本为当前语言
+
+        仅在各页面和导航项已创建后调用。
+        """
+        # 刷新导航项文本
+        nav_keys = ["home_page", "converter_page", "music_manager_page", "settings_page"]
+        tr_keys = ["home", "navigation.converter", "navigation.music_manager", "settings"]
+        for nav_key, tr_key in zip(nav_keys, tr_keys):
+            nav_item = self.navigationInterface.widget(nav_key)
+            if nav_item is not None:
+                nav_item.setText(tr(tr_key))
+
+        # 刷新各页面文本
+        if hasattr(self.home_page, 'refresh_texts'):
+            self.home_page.refresh_texts()
+        if hasattr(self.converter_page, 'refresh_texts'):
+            self.converter_page.refresh_texts()
+        if hasattr(self.music_manager_page, 'refresh_texts'):
+            self.music_manager_page.refresh_texts()
+        if hasattr(self.settings_page, 'refresh_texts'):
+            self.settings_page.refresh_texts()
 
     def _connect_signals(self) -> None:
         """
@@ -198,6 +223,14 @@ class MainWindow(FluentWindow):
         Args:
             lang (str): 新的语言代码，如 "en" 或 "zh"
         """
+        # 更新侧边栏导航项文本
+        nav_keys = ["home_page", "converter_page", "music_manager_page", "settings_page"]
+        tr_keys = ["home", "navigation.converter", "navigation.music_manager", "settings"]
+        for nav_key, tr_key in zip(nav_keys, tr_keys):
+            nav_item = self.navigationInterface.widget(nav_key)
+            if nav_item is not None:
+                nav_item.setText(tr(tr_key))
+
         # 通知各页面刷新文本
         if hasattr(self.home_page, 'refresh_texts'):
             self.home_page.refresh_texts()

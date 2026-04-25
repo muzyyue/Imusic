@@ -163,7 +163,7 @@ class SongSearchResultDialog(MessageBoxBase):
         初始化标题、标签、表格和按钮等组件实例。
         """
         # 标题区域组件
-        self.titleLabel = SubtitleLabel(tr("search_results"))
+        self.titleLabel = SubtitleLabel(tr("search.results_title"))
         self.titleLabel.setObjectName("dialogTitle")
 
         # 结果计数标签（右侧显示）
@@ -179,13 +179,13 @@ class SongSearchResultDialog(MessageBoxBase):
 
         # 创建按钮区域
         self.confirm_button = PrimaryPushButton(
-            FIF.ACCEPT, tr("select_song"), self
+            FIF.ACCEPT, tr("search.select_song"), self
         )
         self.confirm_button.setObjectName("confirmButton")
         self.confirm_button.setFixedHeight(36)
         self.confirm_button.setMinimumWidth(120)
 
-        self.cancel_button = PushButton(FIF.CANCEL, tr("cancel"), self)
+        self.cancel_button = PushButton(FIF.CANCEL, tr("search.cancel"), self)
         self.cancel_button.setObjectName("cancelButton")
         self.cancel_button.setFixedHeight(36)
         self.cancel_button.setMinimumWidth(100)
@@ -200,12 +200,12 @@ class SongSearchResultDialog(MessageBoxBase):
         table = QTableWidget()
         table.setColumnCount(6)
         table.setHorizontalHeaderLabels([
-            tr("song_name"),
-            tr("artist"),
-            tr("album"),
-            tr("duration"),
+            tr("search.song_name"),
+            tr("search.song_detail.artist"),
+            tr("search.song_detail.album"),
+            tr("search.duration"),
             tr("lyrics"),
-            tr("id")
+            tr("search.song_detail.id")
         ])
 
         # 设置表格属性
@@ -320,7 +320,43 @@ class SongSearchResultDialog(MessageBoxBase):
         else:
             self._apply_light_theme_styles()
 
-        # 表格通用样式
+    def _apply_light_theme_styles(self) -> None:
+        """
+        应用于亮色主题的特定样式
+        """
+        self.keywordLabel.setStyleSheet("""
+            BodyLabel#keywordLabel {
+                color: #00897B;
+                font-size: 13px;
+                font-weight: 500;
+                padding: 6px 12px;
+                background-color: rgba(0, 191, 165, 0.08);
+                border-radius: 16px;
+                border-left: 3px solid #00bfa5;
+            }
+        """)
+
+        self.resultCountLabel.setStyleSheet("""
+            BodyLabel#resultCount {
+                color: rgba(0, 0, 0, 0.45);
+                font-size: 14px;
+                font-weight: 600;
+                background-color: rgba(0, 191, 165, 0.1);
+                padding: 4px 12px;
+                border-radius: 12px;
+            }
+        """)
+
+        self.titleLabel.setStyleSheet("""
+            SubtitleLabel#dialogTitle {
+                font-size: 18px;
+                font-weight: 700;
+                color: rgba(0, 0, 0, 0.9);
+                letter-spacing: -0.2px;
+            }
+        """)
+
+        # 亮色主题表格样式
         self.song_table.setStyleSheet("""
             QTableWidget {
                 border: none;
@@ -336,25 +372,25 @@ class SongSearchResultDialog(MessageBoxBase):
                 padding: 10px 12px;
                 border-bottom: 1px solid rgba(0, 0, 0, 0.05);
                 border-radius: 4px;
-                margin: 1px 8px;  /* 调整 margin 确保左侧指示条可见 */
+                margin: 1px 8px;
             }
 
             QTableWidget::item:hover {
                 background-color: rgba(0, 191, 165, 0.08);
                 border-left: 3px solid #00bfa5;
-                border-radius: 0 4px 4px 0;  /* 左侧无圆角以显示指示条 */
+                border-radius: 0 4px 4px 0;
             }
 
             QTableWidget::item:selected {
-                background-color: rgba(0, 191, 165, 0.15);  /* 更柔和的选中背景 */
-                border-left: 3px solid #00bfa5;  /* 左侧主题色指示条 */
-                border-radius: 0 4px 4px 0;  /* 左侧无圆角以完整显示指示条 */
+                background-color: rgba(0, 191, 165, 0.15);
+                border-left: 3px solid #00bfa5;
+                border-radius: 0 4px 4px 0;
                 color: rgba(0, 0, 0, 0.95);
-                padding-left: 8px;  /* 缩进文字，避免与指示条重叠 */
+                padding-left: 8px;
             }
 
             QTableWidget::item:selected:hover {
-                background-color: rgba(0, 191, 165, 0.22);  /* 悬停时略深 */
+                background-color: rgba(0, 191, 165, 0.22);
             }
 
             QHeaderView::section {
@@ -392,53 +428,13 @@ class SongSearchResultDialog(MessageBoxBase):
             }
         """)
 
-        # 滚动区域样式
+        # 亮色滚动区域样式
         self.findChild(SingleDirectionScrollArea).setStyleSheet("""
             SingleDirectionScrollArea {
                 border: 1px solid rgba(0, 0, 0, 0.08);
                 border-radius: 10px;
                 background-color: rgba(255, 255, 255, 0.7);
                 padding: 4px;
-            }
-        """)
-
-        # 不对按钮设置全局 StyleSheet，保留 QFluentWidgets 默认图标渲染
-        # PrimaryPushButton 和 PushButton 的默认样式已经很好看
-        # 仅通过 setFixedHeight/setMinimumWidth 调整尺寸
-
-    def _apply_light_theme_styles(self) -> None:
-        """
-        应用于亮色主题的特定样式
-        """
-        self.keywordLabel.setStyleSheet("""
-            BodyLabel#keywordLabel {
-                color: #00897B;
-                font-size: 13px;
-                font-weight: 500;
-                padding: 6px 12px;
-                background-color: rgba(0, 191, 165, 0.08);
-                border-radius: 16px;
-                border-left: 3px solid #00bfa5;
-            }
-        """)
-
-        self.resultCountLabel.setStyleSheet("""
-            BodyLabel#resultCount {
-                color: rgba(0, 0, 0, 0.45);
-                font-size: 14px;
-                font-weight: 600;
-                background-color: rgba(0, 191, 165, 0.1);
-                padding: 4px 12px;
-                border-radius: 12px;
-            }
-        """)
-
-        self.titleLabel.setStyleSheet("""
-            SubtitleLabel#dialogTitle {
-                font-size: 18px;
-                font-weight: 700;
-                color: rgba(0, 0, 0, 0.9);
-                letter-spacing: -0.2px;
             }
         """)
 
@@ -481,47 +477,73 @@ class SongSearchResultDialog(MessageBoxBase):
         # 暗色主题下的表格特殊处理（与亮色主题保持一致的视觉效果）
         dark_table_style = """
             QTableWidget {
+                border: none;
+                border-radius: 8px;
+                background-color: rgba(30, 30, 30, 0.95);
                 alternate-background-color: rgba(255, 255, 255, 0.03);
                 selection-background-color: transparent;
                 selection-color: rgba(255, 255, 255, 0.95);
+                outline: none;
             }
 
             QTableWidget::item {
                 padding: 10px 12px;
                 border-bottom: 1px solid rgba(255, 255, 255, 0.06);
                 border-radius: 4px;
-                margin: 1px 8px;  /* 调整 margin 确保左侧指示条可见 */
+                margin: 1px 8px;
+                color: rgba(255, 255, 255, 0.87);
             }
 
             QTableWidget::item:hover {
                 background-color: rgba(77, 182, 172, 0.12);
                 border-left: 3px solid #4DB6AC;
-                border-radius: 0 4px 4px 0;  /* 左侧无圆角以显示指示条 */
+                border-radius: 0 4px 4px 0;
             }
 
             QTableWidget::item:selected {
-                background-color: rgba(77, 182, 172, 0.22);  /* 更柔和的选中背景 */
-                border-left: 3px solid #4DB6AC;  /* 左侧主题色指示条 */
-                border-radius: 0 4px 4px 0;  /* 左侧无圆角以完整显示指示条 */
+                background-color: rgba(77, 182, 172, 0.22);
+                border-left: 3px solid #4DB6AC;
+                border-radius: 0 4px 4px 0;
                 color: rgba(255, 255, 255, 0.95);
-                padding-left: 8px;  /* 缩进文字，避免与指示条重叠 */
+                padding-left: 8px;
             }
 
             QTableWidget::item:selected:hover {
-                background-color: rgba(77, 182, 172, 0.30);  /* 悬停时略深 */
+                background-color: rgba(77, 182, 172, 0.30);
             }
 
             QHeaderView::section {
-                color: rgba(255, 255, 255, 0.55);
+                background-color: rgba(45, 45, 45, 0.98);
+                color: rgba(255, 255, 255, 0.65);
+                font-size: 13px;
+                font-weight: 500;
+                padding: 10px 12px;
+                border: none;
                 border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            QScrollBar:vertical {
+                width: 8px;
+                background: rgba(30, 30, 30, 0.5);
+                border-radius: 4px;
+                margin: 0;
             }
 
             QScrollBar::handle:vertical {
                 background-color: rgba(255, 255, 255, 0.15);
+                border-radius: 4px;
+                min-height: 30px;
             }
 
             QScrollBar::handle:vertical:hover {
                 background-color: rgba(255, 255, 255, 0.25);
+            }
+
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
             }
         """
         self.song_table.setStyleSheet(dark_table_style)
@@ -531,19 +553,8 @@ class SongSearchResultDialog(MessageBoxBase):
             SingleDirectionScrollArea {
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 10px;
-                background-color: rgba(255, 255, 255, 0.03);
+                background-color: rgba(30, 30, 30, 0.98);
                 padding: 4px;
-            }
-        """)
-
-        # 暗色取消按钮
-        self.cancel_button.setStyleSheet("""
-            PushButton {
-                border-radius: 6px;
-                font-weight: 500;
-            }
-            PushButton:hover {
-                background-color: rgba(255, 255, 255, 0.06);
             }
         """)
 
@@ -663,12 +674,12 @@ class SongSearchResultDialog(MessageBoxBase):
         if keyword:
             search_icon = "🔍"
             self.keywordLabel.setText(
-                f"{search_icon}  {tr('search_keyword')}: {keyword}"
+                f"{search_icon}  {tr('search.keyword')}: {keyword}"
             )
         else:
             self.keywordLabel.hide()
 
-        count_text = f"{len(songs)} {tr('results_found')}"
+        count_text = f"{len(songs)} {tr('search.results_found')}"
         self.resultCountLabel.setText(count_text)
 
         # 填充表格数据

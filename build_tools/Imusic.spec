@@ -8,6 +8,9 @@ Imusic 的 PyInstaller 规格文件（目录模式）
 - 保留 GUI 必需的核心模块
 - 正确收集数据文件（i18n、图标等）
 - 优化体积
+
+注意：v0.4.55 曾尝试迁移至 Nuitka，但因 Nuitka 上游 bug (GCC 下载链接 404)
+      暂时回退到 PyInstaller。将来 Nuitka 稳定后可重新评估迁移。
 """
 
 import os

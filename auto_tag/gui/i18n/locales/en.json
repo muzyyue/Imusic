@@ -3,11 +3,11 @@
   "navigation": {
     "home": "Home",
     "settings": "Settings",
-    "history": "History"
+    "history": "History",
+    "converter": "Converter",
+    "music_manager": "Music Manager"
   },
   "home": "Home",
-  "converter": "Converter",
-  "music_manager": "Music Manager",
   "settings": "Settings",
   "select_directory": "Select Directory",
   "select_directory_first": "Please select a directory first",
@@ -21,6 +21,12 @@
   "check_all": "Check All",
   "uncheck_all": "Uncheck All",
   "clear_data": "Clear Data",
+  "confirm_stop_conversion": "Stop Conversion",
+  "confirm_stop_conversion_desc": "Conversion in progress. Are you sure you want to stop and clear data?",
+  "confirm_clear_data": "Confirm Clear Data",
+  "confirm_clear_data_desc": "Are you sure you want to clear all file list data? This action cannot be undone.",
+  "yes": "Yes",
+  "cancel": "Cancel",
   "search_results": "Search Results",
   "refresh_file_list": "Refresh File List",
   "no_audio_files": "No audio files found.",
@@ -152,6 +158,18 @@
       "netease": "NetEase Cloud Music",
       "kugou": "KuGou Music (Experimental)",
       "qqmusic": "QQ Music"
+    },
+    "netease_types": {
+      "1": "Song",
+      "10": "Album",
+      "100": "Artist",
+      "1000": "Playlist",
+      "1002": "User",
+      "1004": "MV",
+      "1006": "Lyrics",
+      "1009": "Radio",
+      "1014": "Video",
+      "1018": "Comprehensive"
     },
     "themes": {
       "light": "Light Mode",
@@ -298,6 +316,8 @@
   },
   "search": {
     "results_title": "Search Results",
+    "song_name": "Song Name",
+    "results_found": "results found",
     "source_platform": "Source Platform",
     "duration": "Duration",
     "confidence": "Relevance",

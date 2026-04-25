@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "Imusic"
-version = "0.4.54"
+version = "0.4.56"
 description = "Use shazam to rename and filled the tag of a list of mp3 files."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,7 +28,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=6.0",
-    "pytest-asyncio"
+    "pytest-asyncio",
+    "pyinstaller>=6.0"
 ]
 
 [project.urls]

@@ -1,5 +1,35 @@
 # 项目变更历史
 
+## v0.4.56 (2026-04-25)
+- fix(build): 回退打包工具链从 Nuitka 至 PyInstaller（Nuitka 4.0.8 上游 bug）
+  - 原因: Nuitka 依赖的 winlibs-gcc 下载链接返回 HTTP 404 (Not Found)
+  - 影响: 无法完成编译，必须回退到稳定的 PyInstaller 方案
+  - build_exe.py: 完全重写回 PyInstaller 版本（移除 Nuitka 相关代码）
+  - pyproject.toml: 版本升级至 0.4.56
+  - pyproject.toml: dev 依赖改回 pyinstaller>=6.0（移除 nuitka 和 ordered-set）
+  - .gitignore: 恢复 spec 文件保留规则（!build_tools/*.spec）
+  - .gitignore: 保留 Nuitka 构建产物忽略规则以备将来迁移
+  - Imusic.spec: 恢复为活跃配置文件（移除废弃标记）
+  - Imusic.spec: 更新文档字符串添加迁移历史说明
+  - program.md: 全面更新构建文档（8.3 节改回 PyInstaller 说明）
+  - program.md: 更新版本号和开发依赖列表
+  - program.md: 添加迁移历史记录和未来计划说明
+  - 涉及文件: `build_tools/build_exe.py`, `pyproject.toml`, `.gitignore`, `build_tools/Imusic.spec`, `program.md`
+
+## v0.4.55 (2026-04-25)
+- refactor(build): 将打包工具链从 PyInstaller 迁移至 Nuitka
+  - build_exe.py: 完全重写为 Nuitka 构建脚本，新增 C 编译器检测功能
+  - build_exe.py: 实现 Nuitka 参数生成（Qt 插件、数据文件、模块包含等）
+  - build_exe.py: 新增 --skip-compiler-check 参数（跳过编译器检测）
+  - pyproject.toml: 版本升级至 0.4.55
+  - pyproject.toml: dev 依赖添加 nuitka>=2.0 和 ordered-set
+  - .gitignore: 添加 Nuitka 构建产物忽略规则（*.build/, *.dist/ 等）
+  - .gitignore: 更新 spec 文件规则为忽略模式
+  - Imusic.spec: 标记为已废弃并归档（保留作为回退参考）
+  - program.md: 全面更新构建文档（8.3 节重写为 Nuitka 说明）
+  - program.md: 更新版本号和开发依赖列表
+  - 涉及文件: `build_tools/build_exe.py`, `pyproject.toml`, `.gitignore`, `build_tools/Imusic.spec`, `program.md`
+
 ## v0.4.54 (2026-04-25)
 - refactor(build): 根据 python-pyinstaller-onedir skill 优化打包流程
   - spec 文件: 添加 lrxy/pymusiclibrary 库的自动收集支持

@@ -12,3 +12,4 @@ lrxy>=0.1.0
 [dev]
 pytest>=6.0
 pytest-asyncio
+pyinstaller>=6.0
