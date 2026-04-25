@@ -176,14 +176,11 @@ class AppConfig:
             
             # ===== 新增：加载搜索源配置 =====
             if 'search_sources' in config_data and isinstance(config_data['search_sources'], list):
-                valid_sources = [s for s in config_data['search_sources'] if s in self.VALID_SEARCH_SOURCES]
-                self._search_sources = valid_sources if valid_sources else self.DEFAULT_SEARCH_SOURCES.copy()
+                valid = [s for s in config_data['search_sources'] if s in self.VALID_SEARCH_SOURCES]
+                self._search_sources = valid if valid else self.DEFAULT_SEARCH_SOURCES.copy()
             elif 'search_source' in config_data and isinstance(config_data['search_source'], str):
-                single_source = config_data['search_source']
-                if single_source in self.VALID_SEARCH_SOURCES:
-                    self._search_sources = [single_source]
-                else:
-                    self._search_sources = self.DEFAULT_SEARCH_SOURCES.copy()
+                source = config_data['search_source']
+                self._search_sources = [source] if source in self.VALID_SEARCH_SOURCES else self.DEFAULT_SEARCH_SOURCES.copy()
             else:
                 self._search_sources = self.DEFAULT_SEARCH_SOURCES.copy()
             
@@ -362,10 +359,10 @@ class AppConfig:
     def set_search_sources(self, sources: list[str]) -> None:
         """
         设置搜索源列表
-        
+
         Args:
             sources (list[str]): 搜索源标识符列表（shazam/netease/kugou）
-            
+
         Raises:
             ValueError: 如果列表为空或包含无效搜索源
         """

@@ -1,13 +1,13 @@
 # 项目变更历史
 
 ## v0.4.47 (2026-04-25)
-- feat(settings): 搜索源支持多选 - 将主搜索源单选改为多选模式
+- feat(settings): 搜索源支持多选 - ComboBox 单选改为 CheckBox 多选（保持原有布局结构）
+  - UI层: 搜索源行从 ComboBox 改为 CheckBox 水平多选，保持左右行布局不变
   - 配置层: search_source (str) → search_sources (list[str])，兼容旧版单字符串自动转列表
-  - UI层: 设置页 ComboBox 单选 → CheckBox 多选列表（左右行布局：标签左、控件右），与"语言"/"主题"行风格一致
-  - 搜索层: multi_source_search() 增加 sources 参数，根据选中源动态搜索
-  - 首页: 自动展示所有选中搜索源的搜索结果（已支持多平台卡片布局）
+  - 搜索层: multi_source_search() 传入 config.search_sources 列表
+  - 网易云条件选项：选中包含 netease 时显示搜索类型和电台开关
   - 修复循环导入: audio_recognize.py 中 config 模块导入改为函数内懒加载
-  - 涉及文件: `config.py`, `settings_page.py`, `audio_recognize.py`, `recognize_worker.py`, `zh.json`, `en.json`, `test_search_source_config.py`
+  - 涉及文件: `config.py`, `settings_page.py`, `audio_recognize.py`
 
 ## v0.4.46 (2026-04-25)
 - refactor(build): 将项目构建配置中的 mp3ShazamAutoTag 统一替换为 Imusic

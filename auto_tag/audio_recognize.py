@@ -1437,7 +1437,9 @@ async def multi_source_search(
     # 使用纯 REST API 搜索网易云（完全独立，不依赖 pymusiclibrary）
     if "netease" in sources:
         logger.info("[MultiSource] Using pure REST API for NetEase")
-        search_tasks.append(asyncio.create_task(_search_netease_rest(keyword, limit)))
+        search_tasks.append(asyncio.create_task(_search_netease_rest(
+            keyword, limit, include_radio=config.include_radio
+        )))
     else:
         logger.info("[MultiSource] NetEase not in sources, skipping")
 
