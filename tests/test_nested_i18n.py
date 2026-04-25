@@ -79,9 +79,7 @@ def test_nested_key_access():
         # (嵌套键路径, 期望包含的文本片段)
         ("settings_page.title", "设置"),
         ("settings_page.search_settings_section", "搜索设置"),
-        ("settings_page.search_source_label", "主搜索源"),
-        ("settings_page.netease_type_label", "网易云搜索类型"),
-        ("settings_page.include_radio_label", "电台"),
+        ("settings_page.search_source_label", "搜索源"),
         ("settings_page.sources.shazam", "Shazam"),
         ("settings_page.themes.light", "浅色"),
         

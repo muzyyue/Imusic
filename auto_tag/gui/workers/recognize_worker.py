@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QThread, Signal
 
 from auto_tag.audio_recognize import recognize_and_rename_file
+from auto_tag.gui.config import config
 
 if TYPE_CHECKING:
     from shazamio import Shazam

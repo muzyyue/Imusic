@@ -24,10 +24,10 @@
     config.set_theme("dark")
 
     # 获取搜索源
-    print(config.search_source)
+    print(config.search_sources)
 
-    # 设置搜索源为网易云音乐，类型为单曲
-    config.set_search_source("netease")
+    # 设置搜索源为网易云音乐 + Shazam
+    config.set_search_sources(["netease", "shazam"])
     config.set_netease_search_type(1)
 """
 
@@ -49,7 +49,7 @@ class AppConfig:
     Attributes:
         language (str): 语言代码，默认为 "zh"
         theme (str): 主题设置，可选值为 "light"、"dark"、"auto"，默认为 "auto"
-        search_source (str): 主搜索源，默认为 "shazam"
+        search_sources (list[str]): 启用的搜索源列表，默认为 ["shazam", "netease"]
         netease_search_type (int): 网易云搜索类型，默认为 1（单曲）
         include_radio (bool): 是否包含电台/声音内容，默认为 True
         output_format (str): 默认输出格式，默认为 "mp3"
@@ -62,11 +62,11 @@ class AppConfig:
         >>> config.set_language('en')
         >>> config.language
         'en'
-        >>> config.search_source
-        'shazam'
-        >>> config.set_search_source('netease')
-        >>> config.search_source
-        'netease'
+        >>> config.search_sources
+        ['shazam', 'netease']
+        >>> config.set_search_sources(['netease'])
+        >>> config.search_sources
+        ['netease']
     """
 
     # 主题可选值类型
@@ -79,7 +79,7 @@ class AppConfig:
     DEFAULT_QUALITY_PRESET: str = "high"
     
     # ===== 新增：搜索源配置默认值 =====
-    DEFAULT_SEARCH_SOURCE: str = "shazam"
+    DEFAULT_SEARCH_SOURCES: list[str] = ["shazam", "netease"]
     DEFAULT_NETEASE_SEARCH_TYPE: int = 1  # 单曲
     DEFAULT_INCLUDE_RADIO: bool = True
     
@@ -147,7 +147,7 @@ class AppConfig:
         self.custom_formats_manager: CustomFormatManager = CustomFormatManager()
         
         # ===== 新增：初始化搜索源配置属性 =====
-        self._search_source: str = self.DEFAULT_SEARCH_SOURCE
+        self._search_sources: list[str] = self.DEFAULT_SEARCH_SOURCES.copy()
         self._netease_search_type: int = self.DEFAULT_NETEASE_SEARCH_TYPE
         self._include_radio: bool = self.DEFAULT_INCLUDE_RADIO
 
@@ -175,12 +175,17 @@ class AppConfig:
             self._theme = config_data.get("theme", self.DEFAULT_THEME)
             
             # ===== 新增：加载搜索源配置 =====
-            if 'search_source' in config_data and isinstance(config_data['search_source'], str):
-                source = config_data['search_source']
-                if source in self.VALID_SEARCH_SOURCES:
-                    self._search_source = source
+            if 'search_sources' in config_data and isinstance(config_data['search_sources'], list):
+                valid_sources = [s for s in config_data['search_sources'] if s in self.VALID_SEARCH_SOURCES]
+                self._search_sources = valid_sources if valid_sources else self.DEFAULT_SEARCH_SOURCES.copy()
+            elif 'search_source' in config_data and isinstance(config_data['search_source'], str):
+                single_source = config_data['search_source']
+                if single_source in self.VALID_SEARCH_SOURCES:
+                    self._search_sources = [single_source]
+                else:
+                    self._search_sources = self.DEFAULT_SEARCH_SOURCES.copy()
             else:
-                self._search_source = self.DEFAULT_SEARCH_SOURCE
+                self._search_sources = self.DEFAULT_SEARCH_SOURCES.copy()
             
             if 'netease_search_type' in config_data and isinstance(config_data['netease_search_type'], int):
                 search_type = config_data['netease_search_type']
@@ -229,7 +234,7 @@ class AppConfig:
             # 配置文件损坏或读取失败，使用默认值
             self._language = self.DEFAULT_LANGUAGE
             self._theme = self.DEFAULT_THEME
-            self._search_source = self.DEFAULT_SEARCH_SOURCE
+            self._search_sources = self.DEFAULT_SEARCH_SOURCES.copy()
             self._netease_search_type = self.DEFAULT_NETEASE_SEARCH_TYPE
             self._include_radio = self.DEFAULT_INCLUDE_RADIO
             self._output_format = self.DEFAULT_OUTPUT_FORMAT
@@ -251,7 +256,7 @@ class AppConfig:
             config_data: dict = {
                 "language": self._language,
                 "theme": self._theme,
-                "search_source": self._search_source,
+                "search_sources": self._search_sources,
                 "netease_search_type": self._netease_search_type,
                 "include_radio": self._include_radio,
                 "output_format": self._output_format,
@@ -289,14 +294,14 @@ class AppConfig:
         return self._theme
     
     @property
-    def search_source(self) -> str:
+    def search_sources(self) -> list[str]:
         """
-        获取当前主搜索源
+        获取当前选中的搜索源列表
 
         Returns:
-            str: 当前搜索源标识符，如 "shazam"、"netease"、"kugou"
+            list[str]: 当前搜索源标识符列表，如 ["shazam", "netease"]
         """
-        return self._search_source
+        return self._search_sources.copy()
     
     @property
     def netease_search_type(self) -> int:
@@ -354,22 +359,24 @@ class AppConfig:
         self._theme = theme
         self.save()
     
-    def set_search_source(self, source: str) -> None:
+    def set_search_sources(self, sources: list[str]) -> None:
         """
-        设置主搜索源
+        设置搜索源列表
         
         Args:
-            source (str): 搜索源标识符（shazam/netease/kugou）
+            sources (list[str]): 搜索源标识符列表（shazam/netease/kugou）
             
         Raises:
-            ValueError: 如果搜索源不在有效列表中
+            ValueError: 如果列表为空或包含无效搜索源
         """
-        if source not in self.VALID_SEARCH_SOURCES:
-            raise ValueError(
-                f"无效的搜索源: {source}，有效值为 {self.VALID_SEARCH_SOURCES}"
-            )
-        if self._search_source != source:
-            self._search_source = source
+        if not sources:
+            raise ValueError("搜索源列表不能为空")
+        invalid = [s for s in sources if s not in self.VALID_SEARCH_SOURCES]
+        if invalid:
+            raise ValueError(f"无效的搜索源: {invalid}，有效值为 {self.VALID_SEARCH_SOURCES}")
+        new_sources = sorted(set(sources))
+        if self._search_sources != new_sources:
+            self._search_sources = new_sources
             self.save()
     
     def set_netease_search_type(self, search_type: int) -> None:

@@ -75,7 +75,7 @@ class MainWindow(FluentWindow):
         super().__init__()
 
         # 设置窗口属性（应用名称固定，不随语言切换）
-        self.setWindowTitle("MP3 Shazam Auto Tag")
+        self.setWindowTitle("Imusic")
         # 窗口尺寸：适中大小，高度不超过屏幕 70%
         self.resize(1200, 880)
         # 允许手动调整窗口大小

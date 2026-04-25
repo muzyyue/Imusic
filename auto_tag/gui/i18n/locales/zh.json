@@ -1,5 +1,5 @@
 {
-  "app_name": "MP3 Shazam AutoTag",
+  "app_name": "Imusic",
   "navigation": { "home": "首页", "settings": "设置", "history": "历史记录" },
   "home": "首页",
   "converter": "转换",
@@ -137,12 +137,8 @@
     "theme_label": "主题",
     "theme_hint": "选择应用程序外观主题",
     "search_settings_section": "搜索设置",
-    "search_source_label": "主搜索源",
-    "search_source_hint": "选择默认的音乐搜索服务提供商",
-    "netease_type_label": "网易云搜索类型",
-    "netease_type_hint": "选择网易云音乐的内容搜索类型（仅当主搜索源为网易云音乐时可用）",
-    "include_radio_label": "包含电台/声音内容",
-    "include_radio_hint": "启用后，搜索结果将同时包含DJ电台、播客等声音内容（仅限网易云音乐）",
+    "search_source_label": "搜索源",
+    "search_source_hint": "选择要使用的音乐搜索服务（可多选）",
     "sources": {
       "shazam": "Shazam (默认)",
       "netease": "网易云音乐",

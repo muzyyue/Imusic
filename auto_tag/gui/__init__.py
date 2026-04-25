@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-MP3 Shazam Auto Tag GUI 模块
+Imusic GUI 模块
 
 提供基于 QFluentWidgets 的 Fluent Design 风格用户界面。
 

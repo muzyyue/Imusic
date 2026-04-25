@@ -13,7 +13,7 @@ auto_tag.gui.i18n.translator 模块
     from auto_tag.gui.i18n import tr
 
     # 获取翻译文本
-    text = tr('app_title')  # 返回 "MP3 Shazam Auto Tag" 或 "MP3 Shazam 自动标签"
+    text = tr('app_title')  # 返回 "Imusic" 或中文翻译
 
     # 带格式化参数
     progress = tr('progress_format', done=5, total=10, remaining=30)
@@ -37,7 +37,7 @@ class Translator:
         >>> t = Translator()
         >>> t.load_language('zh')
         >>> t.get('app_title')
-        'MP3 Shazam 自动标签'
+        'Imusic'
     """
 
     __slots__ = ('_current_language', '_translations')
@@ -120,7 +120,7 @@ class Translator:
 
         Example:
             >>> translator.get('app_title')
-            'MP3 Shazam Auto Tag'
+            'Imusic'
 
             >>> translator.get('settings.page_title')  # 嵌套键
             '设置'
@@ -173,7 +173,7 @@ def tr(key: str, **kwargs) -> str:
     Example:
         >>> from auto_tag.gui.i18n import tr
         >>> tr('app_title')
-        'MP3 Shazam Auto Tag'
+        'Imusic'
         >>> tr('progress_format', done=5, total=10, remaining=30)
         '5/10, Remaining 30 s'
     """

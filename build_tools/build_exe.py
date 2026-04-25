@@ -3,7 +3,7 @@
 """
 构建脚本
 
-该脚本用于构建 MP3 Shazam Auto Tag 的可执行文件。
+该脚本用于构建 Imusic 的可执行文件。
 使用 PyInstaller + .spec 文件将应用程序打包为目录模式的可执行文件。
 
 功能：

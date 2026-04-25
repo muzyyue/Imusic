@@ -44,6 +44,7 @@ auto_tag/lyric/__init__.py
 auto_tag/lyric/manager.py
 auto_tag/lyric/provider.py
 tests/test_cache_and_rate_limit.py
+tests/test_cloudsearch_api.py
 tests/test_converter.py
 tests/test_converter_page.py
 tests/test_converter_worker.py
@@ -56,9 +57,17 @@ tests/test_lyric_embed.py
 tests/test_lyric_fetch.py
 tests/test_lyric_manager.py
 tests/test_music_manager_page.py
+tests/test_nested_i18n.py
 tests/test_netease_rest_api.py
+tests/test_radio_simple.py
 tests/test_recognize.py
 tests/test_rest_api_search.py
 tests/test_retry_mechanism.py
 tests/test_safe_search.py
+tests/test_search_source_config.py
 tests/test_settings_page.py
+tests/test_simple_sound.py
+tests/test_sound_endpoints.py
+tests/test_sound_final.py
+tests/test_sound_search_feature.py
+tests/test_sound_type_search.py

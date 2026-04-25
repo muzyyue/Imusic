@@ -1,5 +1,5 @@
 {
-  "app_name": "MP3 Shazam AutoTag",
+  "app_name": "Imusic",
   "navigation": {
     "home": "Home",
     "settings": "Settings",
@@ -141,12 +141,8 @@
     "theme_label": "Theme",
     "theme_hint": "Choose application appearance theme",
     "search_settings_section": "Search Settings",
-    "search_source_label": "Primary Search Source",
-    "search_source_hint": "Select default music search service provider",
-    "netease_type_label": "NetEase Search Type",
-    "netease_type_hint": "Choose NetEase Cloud Music content type (only available when NetEase is selected as source)",
-    "include_radio_label": "Include Radio/Sound Content",
-    "include_radio_hint": "When enabled, search results will include DJ radio programs, podcasts, and sound content (NetEase only)",
+    "search_source_label": "Search Sources",
+    "search_source_hint": "Select music search services to use (multi-select)",
     "sources": {
       "shazam": "Shazam (Default)",
       "netease": "NetEase Cloud Music",

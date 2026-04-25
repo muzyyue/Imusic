@@ -1395,31 +1395,36 @@ async def multi_source_search(
     keyword: str,
     shazam_result: dict | None = None,
     limit: int = 5,
+    sources: list[str] | None = None,
 ) -> list[SearchResult]:
     """
     多数据源并发搜索音乐信息
 
-    同时向 Shazam、网易云音乐、酷狗音乐发起查询请求，
+    根据 sources 参数选择要搜索的平台，
     将结果汇总并按置信度排序。
 
     Args:
         keyword: 搜索关键词（通常为"艺术家 歌曲名"格式）
         shazam_result: 已有的 Shazam 识别结果（如果有）
         limit: 每个平台返回的最大结果数
+        sources: 要搜索的源列表，默认 ["shazam", "netease"]
 
     Returns:
         list[SearchResult]: 所有平台的搜索结果，按置信度降序排列
 
     Example:
-        >>> results = await multi_source_search("周杰伦 晴天")
+        >>> results = await multi_source_search("周杰伦 晴天", sources=["shazam", "netease"])
         >>> for r in results:
         ...     print(f"{r.source}: {r.title} - {r.artist}")
     """
     all_results: list[SearchResult] = []
-    logger.info(f"[MultiSource] Starting search with keyword: {keyword}")
+    logger.info(f"[MultiSource] Starting search with keyword: {keyword}, sources: {sources}")
 
-    # 如果已有 Shazam 结果，直接解析
-    if shazam_result and "track" in shazam_result:
+    if sources is None:
+        sources = ["shazam", "netease"]
+
+    # 如果已有 Shazam 结果且 shazam 在源列表中，直接解析
+    if "shazam" in sources and shazam_result and "track" in shazam_result:
         try:
             shazam_result_obj = _parse_shazam_result(shazam_result["track"])
             all_results.append(shazam_result_obj)
@@ -1427,31 +1432,34 @@ async def multi_source_search(
         except Exception as e:
             logger.error(f"[MultiSource] Failed to parse Shazam result: {e}", exc_info=True)
 
+    search_tasks = []
+
     # 使用纯 REST API 搜索网易云（完全独立，不依赖 pymusiclibrary）
-    logger.info("[MultiSource] Using pure REST API for NetEase (no pymusiclibrary dependency)")
-    netease_task = asyncio.create_task(_search_netease_rest(keyword, limit))
+    if "netease" in sources:
+        logger.info("[MultiSource] Using pure REST API for NetEase")
+        search_tasks.append(asyncio.create_task(_search_netease_rest(keyword, limit)))
+    else:
+        logger.info("[MultiSource] NetEase not in sources, skipping")
 
     # 酷狗暂时禁用（REST API 不可用，原生库不稳定）
-    # TODO: 未来可以寻找酷狗的 REST API 或使用第三方服务
-    kugou_task = None
-    logger.info("[MultiSource] KuGou Music temporarily disabled (no stable REST API available)")
+    if "kugou" in sources:
+        logger.info("[MultiSource] KuGou Music temporarily disabled (no stable REST API available)")
 
-    # 等待网易云搜索完成
-    netease_results, = await asyncio.gather(
-        netease_task, return_exceptions=True
-    )
+    if not search_tasks:
+        logger.info("[MultiSource] No async search tasks to run")
+        all_results.sort(key=lambda x: x.confidence, reverse=True)
+        return all_results
 
-    # 处理异常结果
-    if isinstance(netease_results, Exception):
-        logger.error(f"[MultiSource] NetEase search exception: {netease_results}", exc_info=True)
-        netease_results = []
-    elif isinstance(netease_results, list):
-        logger.info(f"[MultiSource] NetEase returned {len(netease_results)} results")
-    else:
-        logger.warning(f"[MultiSource] NetEase returned unexpected type: {type(netease_results)}")
-        netease_results = []
+    task_results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
-    all_results.extend(netease_results)  # type: ignore[arg-type]
+    for task_result in task_results:
+        if isinstance(task_result, Exception):
+            logger.error(f"[MultiSource] Search exception: {task_result}", exc_info=True)
+        elif isinstance(task_result, list):
+            logger.info(f"[MultiSource] Source returned {len(task_result)} results")
+            all_results.extend(task_result)
+        else:
+            logger.warning(f"[MultiSource] Unexpected result type: {type(task_result)}")
 
     # 按置信度降序排序
     all_results.sort(key=lambda x: x.confidence, reverse=True)
@@ -1903,10 +1911,12 @@ async def recognize_and_rename_file(
             if fallback_keyword:
                 logger.info(f"[Fallback] Trying NetEase search with keyword: {fallback_keyword}")
                 try:
+                    from auto_tag.gui.config import config
                     fallback_results = await multi_source_search(
                         keyword=fallback_keyword,
                         shazam_result=None,
                         limit=5,
+                        sources=config.search_sources,
                     )
 
                     if fallback_results:
@@ -1952,12 +1962,14 @@ async def recognize_and_rename_file(
     s_artist = sanitize(artist, trace)
     s_album = sanitize(album, trace)
 
-    # 3.5) Multi-source search: query NetEase and KuGou concurrently
+    # 3.5) Multi-source search: query configured sources concurrently
+    from auto_tag.gui.config import config
     keyword = f"{artist} {title}"
     search_results = await multi_source_search(
         keyword=keyword,
         shazam_result=out,
         limit=3,
+        sources=config.search_sources,
     )
 
     # 4) Build final name (if renaming)
