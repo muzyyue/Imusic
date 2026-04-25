@@ -159,14 +159,14 @@ class MusicManagerPage(QWidget):
         layout.setSpacing(12)
 
         # 标题
-        self.file_list_title = SubtitleLabel(tr("file_list"))
+        self.file_list_title = SubtitleLabel(tr("music_manager.file_list"))
         layout.addWidget(self.file_list_title)
 
         # 目录选择区域
         dir_layout = QHBoxLayout()
         dir_layout.setSpacing(8)
 
-        self.browse_btn = PushButton(FIF.FOLDER, tr("browse"))
+        self.browse_btn = PushButton(FIF.FOLDER, tr("converter.browse"))
         self.browse_btn.setFixedHeight(36)
         self.browse_btn.clicked.connect(self._on_browse_directory)
         dir_layout.addWidget(self.browse_btn)
@@ -178,7 +178,7 @@ class MusicManagerPage(QWidget):
         self.file_table = TableWidget()
         self.file_table.setColumnCount(4)
         self.file_table.setHorizontalHeaderLabels([
-            tr("check"), tr("file_name"), tr("format"), tr("size")
+            tr("music_manager.check"), tr("music_manager.file_name"), tr("music_manager.format"), tr("music_manager.size")
         ])
         # 设置列宽
         self.file_table.horizontalHeader().setSectionResizeMode(
@@ -205,17 +205,17 @@ class MusicManagerPage(QWidget):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        self.check_all_btn = PushButton(tr("check_all"))
+        self.check_all_btn = PushButton(tr("converter.check_all"))
         self.check_all_btn.setFixedHeight(32)
         self.check_all_btn.clicked.connect(self._on_check_all)
         btn_layout.addWidget(self.check_all_btn)
 
-        self.uncheck_all_btn = PushButton(tr("uncheck_all"))
+        self.uncheck_all_btn = PushButton(tr("converter.uncheck_all"))
         self.uncheck_all_btn.setFixedHeight(32)
         self.uncheck_all_btn.clicked.connect(self._on_uncheck_all)
         btn_layout.addWidget(self.uncheck_all_btn)
 
-        self.clear_data_btn = PushButton(FIF.DELETE, tr("clear_data"))
+        self.clear_data_btn = PushButton(FIF.DELETE, tr("search.clear_data"))
         self.clear_data_btn.setFixedHeight(32)
         self.clear_data_btn.clicked.connect(self._on_clear_data)
         btn_layout.addWidget(self.clear_data_btn)
@@ -246,12 +246,12 @@ class MusicManagerPage(QWidget):
         # 添加标签页
         self.segmented_widget.addItem(
             routeKey="metadata",
-            text=tr("metadata_tab"),
+            text=tr("lyrics.metadata_tab"),
             onClick=lambda: self._switch_tab("metadata")
         )
         self.segmented_widget.addItem(
             routeKey="lyrics",
-            text=tr("lyrics_tab"),
+            text=tr("lyrics.lyrics_tab"),
             onClick=lambda: self._switch_tab("lyrics")
         )
         layout.addWidget(self.segmented_widget)
@@ -292,42 +292,38 @@ class MusicManagerPage(QWidget):
         form_layout.setSpacing(12)
 
         # 标题
-        self.title_label = BodyLabel(tr("title"))
+        self.title_label = BodyLabel(tr("music_manager.fields.title"))
         form_layout.addWidget(self.title_label, 0, 0)
         self.title_edit = LineEdit()
-        self.title_edit.setPlaceholderText(tr("title"))
+        self.title_edit.setPlaceholderText(tr("music_manager.fields.title"))
         self.title_edit.setFixedHeight(36)
         form_layout.addWidget(self.title_edit, 0, 1)
 
-        # 艺术家
-        self.artist_label = BodyLabel(tr("artist"))
+        self.artist_label = BodyLabel(tr("music_manager.fields.artist"))
         form_layout.addWidget(self.artist_label, 1, 0)
         self.artist_edit = LineEdit()
-        self.artist_edit.setPlaceholderText(tr("artist"))
+        self.artist_edit.setPlaceholderText(tr("music_manager.fields.artist"))
         self.artist_edit.setFixedHeight(36)
         form_layout.addWidget(self.artist_edit, 1, 1)
 
-        # 专辑
-        self.album_label = BodyLabel(tr("album"))
+        self.album_label = BodyLabel(tr("music_manager.fields.album"))
         form_layout.addWidget(self.album_label, 2, 0)
         self.album_edit = LineEdit()
-        self.album_edit.setPlaceholderText(tr("album"))
+        self.album_edit.setPlaceholderText(tr("music_manager.fields.album"))
         self.album_edit.setFixedHeight(36)
         form_layout.addWidget(self.album_edit, 2, 1)
 
-        # 年份
-        self.year_label = BodyLabel(tr("year"))
+        self.year_label = BodyLabel(tr("music_manager.fields.year"))
         form_layout.addWidget(self.year_label, 3, 0)
         self.year_edit = LineEdit()
-        self.year_edit.setPlaceholderText(tr("year"))
+        self.year_edit.setPlaceholderText(tr("music_manager.fields.year"))
         self.year_edit.setFixedHeight(36)
         form_layout.addWidget(self.year_edit, 3, 1)
 
-        # 流派
-        self.genre_label = BodyLabel(tr("genre"))
+        self.genre_label = BodyLabel(tr("music_manager.fields.genre"))
         form_layout.addWidget(self.genre_label, 4, 0)
         self.genre_edit = LineEdit()
-        self.genre_edit.setPlaceholderText(tr("genre"))
+        self.genre_edit.setPlaceholderText(tr("music_manager.fields.genre"))
         self.genre_edit.setFixedHeight(36)
         form_layout.addWidget(self.genre_edit, 4, 1)
 
@@ -337,7 +333,7 @@ class MusicManagerPage(QWidget):
         save_layout = QHBoxLayout()
         save_layout.addStretch()
 
-        self.save_metadata_btn = PushButton(FIF.SAVE, tr("save"))
+        self.save_metadata_btn = PushButton(FIF.SAVE, tr("music_manager.save"))
         self.save_metadata_btn.setFixedHeight(36)
         self.save_metadata_btn.clicked.connect(self._on_save_metadata)
         save_layout.addWidget(self.save_metadata_btn)
@@ -350,7 +346,7 @@ class MusicManagerPage(QWidget):
         cover_layout.setSpacing(12)
 
         # 封面标题
-        self.cover_title = SubtitleLabel(tr("cover"))
+        self.cover_title = SubtitleLabel(tr("music_manager.fields.cover"))
         cover_layout.addWidget(self.cover_title)
 
         # 封面显示区域
@@ -368,12 +364,12 @@ class MusicManagerPage(QWidget):
         cover_btn_layout = QHBoxLayout()
         cover_btn_layout.setSpacing(8)
 
-        self.from_file_btn = PushButton(FIF.PHOTO, tr("from_file"))
+        self.from_file_btn = PushButton(FIF.PHOTO, tr("music_manager.from_file"))
         self.from_file_btn.setFixedHeight(32)
         self.from_file_btn.clicked.connect(self._on_change_cover_from_file)
         cover_btn_layout.addWidget(self.from_file_btn)
 
-        self.from_url_btn = PushButton(FIF.LINK, tr("from_url"))
+        self.from_url_btn = PushButton(FIF.LINK, tr("music_manager.from_url"))
         self.from_url_btn.setFixedHeight(32)
         self.from_url_btn.clicked.connect(self._on_change_cover_from_url)
         cover_btn_layout.addWidget(self.from_url_btn)
@@ -398,7 +394,7 @@ class MusicManagerPage(QWidget):
         provider_layout = QHBoxLayout()
         provider_layout.setSpacing(12)
 
-        self.provider_label = BodyLabel(tr("lyric_provider"))
+        self.provider_label = BodyLabel(tr("lyrics.lyric_provider"))
         provider_layout.addWidget(self.provider_label)
 
         self.provider_combo = ComboBox()
@@ -417,11 +413,11 @@ class MusicManagerPage(QWidget):
 
         # === 歌词嵌入模式选择器 ===
         self.embed_mode_combo = ComboBox()
-        self.embed_mode_combo.addItem(tr("embed_only"))
-        self.embed_mode_combo.addItem(tr("embed_and_lrc"))
+        self.embed_mode_combo.addItem(tr("lyrics.embed_only"))
+        self.embed_mode_combo.addItem(tr("lyrics.embed_and_lrc"))
         self.embed_mode_combo.setFixedHeight(36)
         self.embed_mode_combo.setFixedWidth(180)
-        self.embed_mode_combo.setToolTip(tr("embed_only_desc") + " / " + tr("embed_and_lrc_desc"))
+        self.embed_mode_combo.setToolTip(tr("lyrics.embed_only_desc") + " / " + tr("lyrics.embed_and_lrc_desc"))
         provider_layout.addWidget(self.embed_mode_combo)
 
         provider_layout.addStretch()
@@ -434,11 +430,11 @@ class MusicManagerPage(QWidget):
         layout.addWidget(self.lyric_progress)
 
         # === 歌词预览区域 ===
-        self.lyric_title = SubtitleLabel(tr("lyrics"))
+        self.lyric_title = SubtitleLabel(tr("music_manager.fields.lyrics"))
         layout.addWidget(self.lyric_title)
 
         self.lyric_text = TextEdit()
-        self.lyric_text.setPlaceholderText(tr("no_lyrics_found"))
+        self.lyric_text.setPlaceholderText(tr("lyrics.no_lyrics_found"))
         self.lyric_text.setMinimumHeight(300)
         layout.addWidget(self.lyric_text)
 
@@ -446,22 +442,22 @@ class MusicManagerPage(QWidget):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        self.get_lyric_btn = PushButton(FIF.DOWNLOAD, tr("get_lyrics"))
+        self.get_lyric_btn = PushButton(FIF.DOWNLOAD, tr("lyrics.get_lyrics"))
         self.get_lyric_btn.setFixedHeight(36)
         self.get_lyric_btn.clicked.connect(self._on_get_lyrics)
         btn_layout.addWidget(self.get_lyric_btn)
 
-        self.embed_lyric_btn = PushButton(FIF.TAG, tr("embed_lyrics"))
+        self.embed_lyric_btn = PushButton(FIF.TAG, tr("lyrics.embed_lyrics"))
         self.embed_lyric_btn.setFixedHeight(36)
         self.embed_lyric_btn.clicked.connect(self._on_embed_lyrics)
         btn_layout.addWidget(self.embed_lyric_btn)
 
-        self.save_lyric_btn = PushButton(FIF.SAVE, tr("save_lyrics_to_file"))
+        self.save_lyric_btn = PushButton(FIF.SAVE, tr("lyrics.save_lyrics_to_file"))
         self.save_lyric_btn.setFixedHeight(36)
         self.save_lyric_btn.clicked.connect(self._on_save_lyrics)
         btn_layout.addWidget(self.save_lyric_btn)
 
-        self.batch_get_lyric_btn = PushButton(FIF.SYNC, tr("batch_get_lyrics"))
+        self.batch_get_lyric_btn = PushButton(FIF.SYNC, tr("lyrics.batch_get_lyrics"))
         self.batch_get_lyric_btn.setFixedHeight(36)
         self.batch_get_lyric_btn.clicked.connect(self._on_batch_get_lyrics)
         btn_layout.addWidget(self.batch_get_lyric_btn)
@@ -1426,59 +1422,53 @@ class MusicManagerPage(QWidget):
         当语言切换时调用此方法，更新所有 UI 文本为当前语言的翻译。
         """
         # 更新文件列表区域
-        self.file_list_title.setText(tr("file_list"))
-        self.browse_btn.setText(tr("browse"))
-        self.check_all_btn.setText(tr("check_all"))
-        self.uncheck_all_btn.setText(tr("uncheck_all"))
+        self.file_list_title.setText(tr("music_manager.file_list"))
+        self.browse_btn.setText(tr("converter.browse"))
+        self.check_all_btn.setText(tr("converter.check_all"))
+        self.uncheck_all_btn.setText(tr("converter.uncheck_all"))
 
-        # 更新表头
         self.file_table.setHorizontalHeaderLabels([
-            tr("check"), tr("file_name"), tr("format"), tr("size")
+            tr("music_manager.check"), tr("music_manager.file_name"), tr("music_manager.format"), tr("music_manager.size")
         ])
 
-        # 更新标签页
         self.segmented_widget.setItemText(
             routeKey="metadata",
-            text=tr("metadata_tab")
+            text=tr("lyrics.metadata_tab")
         )
         self.segmented_widget.setItemText(
             routeKey="lyrics",
-            text=tr("lyrics_tab")
+            text=tr("lyrics.lyrics_tab")
         )
 
-        # 更新元信息表单
-        self.title_label.setText(tr("title"))
-        self.artist_label.setText(tr("artist"))
-        self.album_label.setText(tr("album"))
-        self.year_label.setText(tr("year"))
-        self.genre_label.setText(tr("genre"))
+        self.title_label.setText(tr("music_manager.fields.title"))
+        self.artist_label.setText(tr("music_manager.fields.artist"))
+        self.album_label.setText(tr("music_manager.fields.album"))
+        self.year_label.setText(tr("music_manager.fields.year"))
+        self.genre_label.setText(tr("music_manager.fields.genre"))
 
-        self.title_edit.setPlaceholderText(tr("title"))
-        self.artist_edit.setPlaceholderText(tr("artist"))
-        self.album_edit.setPlaceholderText(tr("album"))
-        self.year_edit.setPlaceholderText(tr("year"))
-        self.genre_edit.setPlaceholderText(tr("genre"))
+        self.title_edit.setPlaceholderText(tr("music_manager.fields.title"))
+        self.artist_edit.setPlaceholderText(tr("music_manager.fields.artist"))
+        self.album_edit.setPlaceholderText(tr("music_manager.fields.album"))
+        self.year_edit.setPlaceholderText(tr("music_manager.fields.year"))
+        self.genre_edit.setPlaceholderText(tr("music_manager.fields.genre"))
 
-        self.save_metadata_btn.setText(tr("save"))
+        self.save_metadata_btn.setText(tr("music_manager.save"))
 
-        # 更新封面区域
-        self.cover_title.setText(tr("cover"))
-        self.from_file_btn.setText(tr("from_file"))
-        self.from_url_btn.setText(tr("from_url"))
+        self.cover_title.setText(tr("music_manager.fields.cover"))
+        self.from_file_btn.setText(tr("music_manager.from_file"))
+        self.from_url_btn.setText(tr("music_manager.from_url"))
 
-        # 更新歌词区域
-        self.provider_label.setText(tr("lyric_provider"))
-        self.lyric_title.setText(tr("lyrics"))
-        self.lyric_text.setPlaceholderText(tr("no_lyrics_found"))
-        self.get_lyric_btn.setText(tr("get_lyrics"))
-        self.embed_lyric_btn.setText(tr("embed_lyrics"))
-        self.save_lyric_btn.setText(tr("save_lyrics_to_file"))
-        self.batch_get_lyric_btn.setText(tr("batch_get_lyrics"))
+        self.provider_label.setText(tr("lyrics.lyric_provider"))
+        self.lyric_title.setText(tr("music_manager.fields.lyrics"))
+        self.lyric_text.setPlaceholderText(tr("lyrics.no_lyrics_found"))
+        self.get_lyric_btn.setText(tr("lyrics.get_lyrics"))
+        self.embed_lyric_btn.setText(tr("lyrics.embed_lyrics"))
+        self.save_lyric_btn.setText(tr("lyrics.save_lyrics_to_file"))
+        self.batch_get_lyric_btn.setText(tr("lyrics.batch_get_lyrics"))
 
-        # 更新歌词嵌入模式选择器
-        self.embed_mode_combo.setItemText(0, tr("embed_only"))
-        self.embed_mode_combo.setItemText(1, tr("embed_and_lrc"))
-        self.embed_mode_combo.setToolTip(tr("embed_only_desc") + " / " + tr("embed_and_lrc_desc"))
+        self.embed_mode_combo.setItemText(0, tr("lyrics.embed_only"))
+        self.embed_mode_combo.setItemText(1, tr("lyrics.embed_and_lrc"))
+        self.embed_mode_combo.setToolTip(tr("lyrics.embed_only_desc") + " / " + tr("lyrics.embed_and_lrc_desc"))
 
         # 更新提供商下拉框
         from auto_tag.lyric import list_providers

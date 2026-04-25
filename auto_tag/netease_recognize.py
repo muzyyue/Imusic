@@ -169,6 +169,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         test_file = sys.argv[1]
     else:
-        test_file = r"c:\Users\Administrator\Desktop\MyProgram\mp3ShazamAutoTag\tests\fixtures\song\32671414_da3-1-30216.mp3"
+        test_file = r"c:\Users\Administrator\Desktop\MyProgram\Imusic\tests\fixtures\song\32671414_da3-1-30216.mp3"
 
     asyncio.run(test_recognize(test_file))

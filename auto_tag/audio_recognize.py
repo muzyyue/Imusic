@@ -432,6 +432,65 @@ def _parse_netease_result(song: dict) -> SearchResult:
     )
 
 
+def _parse_netease_radio_result(radio: dict) -> SearchResult:
+    """
+    解析网易云音乐 API 返回的电台/声音数据（type=1009）
+
+    电台数据结构与歌曲不同，主要字段：
+    - id: 电台 ID
+    - name: 电台名称
+    - dj: DJ 信息字典
+    - picUrl: 封面图片 URL
+    - desc: 描述
+    - programCount: 节目数量
+    - category: 分类
+    - secondCategory: 子分类
+
+    Args:
+        radio: 网易云音乐返回的电台字典
+
+    Returns:
+        SearchResult: 解析后的搜索结果，source 标记为 'netease-radio'
+    """
+    radio_name = radio.get("name", "Unknown Radio")
+    radio_id = str(radio.get("id", ""))
+
+    # 提取 DJ/主播信息
+    dj_info = radio.get("dj", {})
+    dj_name = dj_info.get("name", "") if dj_info else ""
+    artist = dj_name if dj_name else "NetEase Radio"
+
+    # 封面图片
+    cover = radio.get("picUrl", "")
+
+    # 描述作为补充信息
+    desc = radio.get("desc", "")
+    
+    # 构建标题（包含描述信息）
+    title = f"[电台] {radio_name}"
+    if desc and len(desc) > 0:
+        title = f"{title} - {desc[:50]}"  # 截取前50字符避免过长
+
+    # 专辑字段使用分类信息
+    category = radio.get("category", "")
+    second_category = radio.get("secondCategory", "")
+    album = f"{second_category}" if second_category else (category if category else "Radio")
+
+    logger.debug(f"[NetEase-Radio] Parsed radio: {radio_name}, DJ: {dj_name}, Category: {album}")
+
+    return SearchResult(
+        source="netease-radio",
+        title=title,
+        artist=artist,
+        album=album,
+        cover_link=cover,
+        song_id=radio_id,
+        duration=0,  # 电台没有固定时长
+        confidence=0.75,  # 电台置信度略低于歌曲
+        raw_data=radio,
+    )
+
+
 def _extract_netease_cover(song: dict, album_info: dict) -> str:
     """
     从网易云音乐响应中提取封面图片URL
@@ -853,7 +912,7 @@ def _get_netease_cover_by_id(song_id: str, cookie: str | None = None) -> str:
         return ''
 
 
-async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 3) -> list[SearchResult]:
+async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 3, include_radio: bool = True) -> list[SearchResult]:
     """
     纯 REST API 搜索网易云音乐（完全独立，不依赖 pymusiclibrary）
 
@@ -865,21 +924,24 @@ async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 
     - 内置搜索结果缓存（LRU + TTL），相同关键词直接返回
     - 自适应请求间隔控制，主动避免触发频率限制
     - 指数退避重试机制，自动处理网易云 API 频率限制（HTTP 405）
+    - 支持同时搜索歌曲和电台/声音内容
 
     API 接口: GET https://music.163.com/api/search/get/web?s=关键词&type=1&limit=N
 
     Args:
         keyword: 搜索关键词
-        limit: 返回结果数量上限
+        limit: 返回结果数量上限（每种类型）
         max_retries: 最大重试次数（遇到频率限制时）
+        include_radio: 是否同时搜索电台/声音内容（type=1009）
 
     Returns:
-        list[SearchResult]: 搜索结果列表
+        list[SearchResult]: 搜索结果列表（歌曲+电台合并）
     """
     global _search_cache, _rate_limiter
 
     # Step 1: 检查缓存（命中则直接返回，无需网络请求）
-    cached_results = _search_cache.get(keyword)
+    cache_key = f"{keyword}_radio" if include_radio else keyword
+    cached_results = _search_cache.get(cache_key)
     if cached_results is not None:
         return cached_results
 
@@ -888,19 +950,34 @@ async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 
 
     import random
 
+    all_results = []
+
     for attempt in range(max_retries + 1):
         try:
             # Step 3: 记录请求时间戳
             _rate_limiter.record_request()
 
             loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(None, _do_single_search, keyword, limit)
+            
+            # 搜索普通歌曲 (type=1)
+            song_results = await loop.run_in_executor(None, _do_single_search, keyword, limit, 1)
+            all_results.extend(song_results)
+            
+            logger.info(f"[NetEase-REST] Found {len(song_results)} songs for '{keyword}'")
 
-            if result:
+            # 如果启用，同时搜索电台/声音 (type=1009)
+            if include_radio:
+                radio_results = await loop.run_in_executor(None, _do_radio_search, keyword, limit)
+                all_results.extend(radio_results)
+                logger.info(f"[NetEase-REST] Found {len(radio_results)} radios for '{keyword}'")
+
+            if all_results:
                 # Step 4a: 成功 → 写入缓存 + 恢复默认间隔
-                _search_cache.set(keyword, result)
+                _search_cache.set(cache_key, all_results)
                 _rate_limiter.on_success()
-                return result
+                
+                logger.info(f"[NetEase-REST] Total results: {len(all_results)} (songs={len(song_results)}, radios={len(radio_results) if include_radio else 0})")
+                return all_results
 
             if attempt < max_retries:
                 wait_time = (2 ** attempt) + random.uniform(0, 1)
@@ -914,13 +991,24 @@ async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 _rate_limiter.record_request()
-                future = executor.submit(_do_single_search, keyword, limit)
-                result = future.result(timeout=30)
+                
+                # 搜索普通歌曲
+                song_future = executor.submit(_do_single_search, keyword, limit, 1)
+                song_results = song_future.result(timeout=30)
+                all_results.extend(song_results)
+                
+                # 搜索电台
+                if include_radio:
+                    radio_future = executor.submit(_do_radio_search, keyword, limit)
+                    radio_results = radio_future.result(timeout=30)
+                    all_results.extend(radio_results)
 
-                if result:
-                    _search_cache.set(keyword, result)
+                if all_results:
+                    _search_cache.set(cache_key, all_results)
                     _rate_limiter.on_success()
-                    return result
+                    
+                    logger.info(f"[NetEase-REST] Total results: {len(all_results)} (songs={len(song_results)}, radios={len(radio_results) if include_radio else 0})")
+                    return all_results
 
                 if attempt < max_retries:
                     wait_time = (2 ** attempt) + random.uniform(0, 1)
@@ -939,13 +1027,14 @@ async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 
     return []
 
 
-def _do_single_search(keyword: str, limit: int) -> list[SearchResult]:
+def _do_single_search(keyword: str, limit: int, search_type: int = 1) -> list[SearchResult]:
     """
     执行单次 REST API 搜索请求
 
     Args:
         keyword: 搜索关键词
         limit: 结果数量限制
+        search_type: 搜索类型（1=歌曲, 1009=电台/DJ节目）
 
     Returns:
         list[SearchResult]: 搜索结果列表，失败返回空列表
@@ -954,11 +1043,11 @@ def _do_single_search(keyword: str, limit: int) -> list[SearchResult]:
     import http.client
 
     try:
-        logger.info(f"[NetEase-REST] Searching: {keyword}")
+        logger.info(f"[NetEase-REST] Searching: {keyword} (type={search_type})")
 
         params = urlencode({
             's': keyword,
-            'type': 1,
+            'type': search_type,
             'offset': 0,
             'total': 'true',
             'limit': limit
@@ -1025,44 +1114,78 @@ def _do_single_search(keyword: str, limit: int) -> list[SearchResult]:
             )
             return []
 
-        songs = data['result'].get('songs', [])
-        if not songs:
-            logger.warning(f"[NetEase-REST] Empty songs for '{keyword}'")
-            return []
+        result_data = data['result']
 
-        logger.info(f"[NetEase-REST] Found {len(songs)} songs for '{keyword}'")
-        parsed = [_parse_netease_result(song) for song in songs[:limit]]
-        
-        # 通过歌曲详情接口获取封面URL（搜索接口不返回封面）
-        if parsed:
-            if _netease_cookie:
-                logger.info("[NetEase-REST] Using cookie for cover fetch")
+        # 根据搜索类型解析不同的结果格式
+        if search_type == 1009:
+            # 电台/DJ 节目类型
+            radios = result_data.get('djRadios', [])
+            if not radios:
+                logger.warning(f"[NetEase-REST] Empty radios for '{keyword}'")
+                return []
+
+            logger.info(f"[NetEase-REST] Found {len(radios)} radios for '{keyword}'")
+            parsed = [_parse_netease_radio_result(radio) for radio in radios[:limit]]
             
-            # 为每个结果获取封面URL
-            for i, result in enumerate(parsed):
-                cover_url = _get_netease_cover_by_id(result.song_id, _netease_cookie)
-                if cover_url:
-                    logger.debug(f"[NetEase-REST] Got cover for result {i}: {cover_url[:80]}...")
-                    # 更新该结果的封面
-                    parsed[i] = SearchResult(
-                        source=result.source,
-                        title=result.title,
-                        artist=result.artist,
-                        album=result.album,
-                        cover_link=cover_url,
-                        song_id=result.song_id,
-                        duration=result.duration,
-                        confidence=result.confidence,
-                        raw_data=result.raw_data,
-                    )
-                else:
-                    logger.warning(f"[NetEase-REST] Failed to get cover for result {i}")
-        
-        return parsed
+            # 电台不需要额外获取封面（已有 picUrl 字段）
+            return parsed
+            
+        else:
+            # 默认歌曲类型 (type=1)
+            songs = result_data.get('songs', [])
+            if not songs:
+                logger.warning(f"[NetEase-REST] Empty songs for '{keyword}'")
+                return []
+
+            logger.info(f"[NetEase-REST] Found {len(songs)} songs for '{keyword}'")
+            parsed = [_parse_netease_result(song) for song in songs[:limit]]
+            
+            # 通过歌曲详情接口获取封面URL（搜索接口不返回封面）
+            if parsed:
+                if _netease_cookie:
+                    logger.info("[NetEase-REST] Using cookie for cover fetch")
+                
+                # 为每个结果获取封面URL
+                for i, result in enumerate(parsed):
+                    cover_url = _get_netease_cover_by_id(result.song_id, _netease_cookie)
+                    if cover_url:
+                        logger.debug(f"[NetEase-REST] Got cover for result {i}: {cover_url[:80]}...")
+                        # 更新该结果的封面
+                        parsed[i] = SearchResult(
+                            source=result.source,
+                            title=result.title,
+                            artist=result.artist,
+                            album=result.album,
+                            cover_link=cover_url,
+                            song_id=result.song_id,
+                            duration=result.duration,
+                            confidence=result.confidence,
+                            raw_data=result.raw_data,
+                        )
+                    else:
+                        logger.warning(f"[NetEase-REST] Failed to get cover for result {i}")
+            
+            return parsed
 
     except Exception as e:
         logger.error(f"[NetEase-REST] Error: {e}", exc_info=True)
         return []
+
+
+def _do_radio_search(keyword: str, limit: int) -> list[SearchResult]:
+    """
+    搜索网易云音乐电台/声音内容（type=1009）
+
+    专门用于搜索 DJ 电台、播客、声音等非音乐类内容。
+
+    Args:
+        keyword: 搜索关键词
+        limit: 结果数量限制
+
+    Returns:
+        list[SearchResult]: 电台搜索结果列表
+    """
+    return _do_single_search(keyword, limit, search_type=1009)
 
 
 def _parse_kugou_result(song: dict) -> SearchResult:

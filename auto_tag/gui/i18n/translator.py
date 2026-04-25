@@ -102,37 +102,55 @@ class Translator:
 
     def get(self, key: str, **kwargs) -> str:
         """
-        获取翻译文本，支持格式化参数。
+        获取翻译文本，支持格式化参数和嵌套键。
 
-        如果翻译键不存在，返回键名本身作为 fallback。
+        支持两种键格式：
+        - 扁平键: 'app_title' （向后兼容）
+        - 嵌套键: 'settings.page_title' （推荐，更清晰）
+
+        如果翻译键不存在或值不是字符串，返回键名本身作为 fallback。
         如果提供了格式化参数，使用 str.format() 进行替换。
 
         Args:
-            key: 翻译键名
+            key: 翻译键名（支持点号分隔的嵌套路径）
             **kwargs: 格式化参数，用于替换文本中的占位符
 
         Returns:
-            str: 翻译后的文本，或键名本身（如果不存在）
+            str: 翻译后的文本，或键名本身（如果不存在或非字符串）
 
         Example:
             >>> translator.get('app_title')
             'MP3 Shazam Auto Tag'
 
+            >>> translator.get('settings.page_title')  # 嵌套键
+            '设置'
+
             >>> translator.get('progress_format', done=5, total=10, remaining=30)
             '5/10, Remaining 30 s'
         """
-        # 获取翻译文本，不存在则返回键名
-        text = self._translations.get(key, key)
+        value = None
 
-        # 如果有格式化参数，进行替换
+        if '.' in key:
+            parts = key.split('.')
+            value = self._translations
+            for part in parts:
+                if isinstance(value, dict) and part in value:
+                    value = value[part]
+                else:
+                    return key
+        else:
+            value = self._translations.get(key, key)
+
+        if not isinstance(value, str):
+            return key
+
         if kwargs:
             try:
-                return text.format(**kwargs)
+                return value.format(**kwargs)
             except (KeyError, ValueError):
-                # 格式化失败时返回原始文本
-                return text
+                return value
 
-        return text
+        return value
 
 
 # 全局翻译器单例

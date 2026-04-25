@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-mp3ShazamAutoTag 的 PyInstaller 规格文件（目录模式）
+Imusic 的 PyInstaller 规格文件（目录模式）
 
 该文件精细控制打包过程，包括：
 - 使用目录模式（--onedir），启动更快，依赖清晰
@@ -247,7 +247,7 @@ exe = EXE(
     a.scripts,
     a.binaries,
     [],
-    name='mp3ShazamAutoTag',
+    name='Imusic',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -271,5 +271,5 @@ coll = COLLECT(
     upx=True,
     # COLLECT 中的 UPX 同样排除关键 DLL
     upx_exclude=['python313.dll', 'libcrypto-3.dll', 'libssl-3.dll'],
-    name='mp3ShazamAutoTag',
+    name='Imusic',
 )

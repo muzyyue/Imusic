@@ -87,7 +87,7 @@ def main():
         #    - Excludes unnecessary Qt modules (WebEngine, 3D, Charts, etc.)
         #    - Collects data files (i18n, assets, qfluentwidgets, eyed3)
         #    - Includes all required dependencies (packaging, deprecation, etc.)
-        spec_file = os.path.join(build_tools_dir, "mp3ShazamAutoTag.spec")
+        spec_file = os.path.join(build_tools_dir, "Imusic.spec")
         pyinstaller_args = [
             python,
             "-m",
@@ -101,7 +101,7 @@ def main():
         print(
             "\n✅ Build complete! Check the `dist/` directory under your project root."
         )
-        print("   📦 Distributable: dist/mp3ShazamAutoTag/")
+        print("   📦 Distributable: dist/Imusic/")
     finally:
         os.chdir(cwd_before)
 

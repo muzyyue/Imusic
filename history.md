@@ -1,5 +1,12 @@
 # 项目变更历史
 
+## v0.4.46 (2026-04-25)
+- refactor(build): 将项目构建配置中的 mp3ShazamAutoTag 统一替换为 Imusic
+  - 重命名 `mp3ShazamAutoTag.spec` 为 `Imusic.spec`
+  - 更新 `build_exe.py` 中的 spec 文件引用和输出目录名
+  - 更新 `netease_recognize.py` 和 `acoustid_recognize.py` 中的测试路径
+  - 涉及文件: `Imusic.spec`, `build_exe.py`, `netease_recognize.py`, `acoustid_recognize.py`
+
 ## v0.4.45 (2026-04-25)
 - refactor(i18n): 优化国际化文件为嵌套分组结构，支持点号分隔的嵌套键访问
   - 涉及文件: `translator.py`, `zh.json`, `en.json`
