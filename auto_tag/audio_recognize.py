@@ -1354,11 +1354,23 @@ def _do_qqmusic_search(keyword: str, limit: int = 5) -> list[SearchResult]:
         body = data_obj.get('body', {})
         songs = body.get('item_song', [])
 
+        # 提取元数据信息（用于调试）
+        meta = data_obj.get('meta', {})
+        estimate_sum = meta.get('estimate_sum', 0)
+        actual_sum = meta.get('sum', 0)
+
         if not songs:
-            logger.warning(f"[QQMusic] Empty results for '{keyword}'")
+            if estimate_sum > 0:
+                logger.warning(
+                    f"[QQMusic] API returned {estimate_sum} estimated results "
+                    f"but song list is empty for '{keyword}'. "
+                    f"This may indicate API authentication or parameter issues."
+                )
+            else:
+                logger.warning(f"[QQMusic] No results found for '{keyword}'")
             return []
 
-        logger.info(f"[QQMusic] Found {len(songs)} songs for '{keyword}'")
+        logger.info(f"[QQMusic] Found {len(songs)} songs (estimated: {estimate_sum}) for '{keyword}'")
 
         # 解析每个歌曲结果
         parsed = [_parse_qqmusic_result(song) for song in songs[:limit]]

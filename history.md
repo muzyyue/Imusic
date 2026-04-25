@@ -1,5 +1,31 @@
 # 项目变更历史
 
+## v0.4.54 (2026-04-25)
+- refactor(build): 根据 python-pyinstaller-onedir skill 优化打包流程
+  - spec 文件: 添加 lrxy/pymusiclibrary 库的自动收集支持
+  - spec 文件: 启用 UPX 压缩（自动检测可用性）
+  - spec 文件: 添加资源路径验证和打包统计输出
+  - build_exe.py: 添加虚拟环境复用逻辑（--force-rebuild 控制）
+  - build_exe.py: 添加可选参数（--skip-tests 跳过测试）
+  - build_exe.py: 添加打包体积统计和 Top 10 大文件列表
+  - build_exe.py: 修复 Windows 控制台 UTF-8 编码问题
+  - 涉及文件: `build_tools/Imusic.spec`, `build_tools/build_exe.py`, `pyproject.toml`
+
+## v0.4.53 (2026-04-25)
+- fix(build): 修复单目录打包后 soundfile 模块缺失问题
+  - 在 hiddenimports 中添加 `_soundfile_data` 和 `cffi`
+  - 修复 EXE 段结构（目录模式不应在 EXE 中传递 a.binaries）
+  - 完全禁用 UPX 压缩避免 DLL 损坏
+  - 修复 "Failed to start embedded python interpreter!" 和 "No module named soundfile" 问题
+  - 涉及文件: `build_tools/Imusic.spec`
+
+## v0.4.52 (2026-04-25)
+- fix(qqmusic): 优化 QQ 音乐搜索 - 增强日志输出和空结果诊断
+  - 添加元数据信息提取（estimate_sum, actual_sum）
+  - 区分"API有结果但列表为空"和"完全无结果"两种情况
+  - 提示可能的原因：认证或参数问题
+  - 涉及文件: `auto_tag/audio_recognize.py`
+
 ## v0.4.51 (2026-04-25)
 - fix(qqmusic): 修复 QQ 音乐搜索功能 - 从废弃公共代理迁移到官方统一网关接口
   - 将 API 端点从 `http://api.qq.jsososo.com`（DNS 失败）改为 `https://u.y.qq.com/cgi-bin/musicu.fcg`
