@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.4.69 (2026-04-26)
+- feat(ci): 首次发布正式版本，启用 GitHub Actions 自动构建发布
+  - 新增 GitHub Actions workflow 自动构建 Windows 可执行文件
+  - 自动从 history.md 提取变更日志生成 Release 说明
+  - 更新 README.md 添加项目截图和功能说明
+  - 清理临时调试脚本和过期资源
+  - 涉及文件: `.github/workflows/release.yml`, `Readme.md`, `assets/`
+
 ## v0.4.68 (2026-04-26)
 - fix(ui): 修复转换器页面浅色模式背景色问题
   - 移除硬编码颜色值，使用 transparent 透明背景
