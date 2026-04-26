@@ -309,30 +309,24 @@ class ConverterPage(QWidget):
         if not hasattr(self, 'page_scroll') or not hasattr(self, 'content_widget'):
             return
 
-        if isDarkTheme():
-            bg_color = "#1e1e1e"
-        else:
-            bg_color = "#fafafa"
-
-        # 使用样式表设置背景色（参考 home_page.py 的成功实现）
-        self.page_scroll.setStyleSheet(f"""
-            QScrollArea {{
-                background-color: {bg_color};
+        # 使用透明背景，让 QFluentWidgets 自动处理主题适配
+        self.page_scroll.setStyleSheet("""
+            QScrollArea {
+                background-color: transparent;
                 border: none;
-            }}
-            QScrollArea > QWidget > QWidget {{
-                background-color: {bg_color};
-            }}
-            #converterContentWidget {{
-                background-color: {bg_color};
-            }}
+            }
+            QScrollArea > QWidget > QWidget {
+                background-color: transparent;
+            }
+            #converterContentWidget {
+                background-color: transparent;
+            }
         """)
 
-        # 同时设置转换器页面自身的背景色
-        self.setStyleSheet(f"""
-            ConverterPage {{
-                background-color: {bg_color};
-            }}
+        self.setStyleSheet("""
+            ConverterPage {
+                background-color: transparent;
+            }
         """)
 
     def _apply_scroll_area_theme(self) -> None:
@@ -1241,8 +1235,9 @@ class ConverterPage(QWidget):
         """
         主题切换回调
 
-        当用户切换深色/浅色主题时，更新列表控件样式。
+        当用户切换深色/浅色主题时，更新滚动区域和列表控件样式。
         """
+        self._apply_page_scroll_theme()
         self._apply_list_theme()
 
 

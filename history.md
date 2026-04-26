@@ -1,5 +1,12 @@
 # 项目变更历史
 
+## v0.4.68 (2026-04-26)
+- fix(ui): 修复转换器页面浅色模式背景色问题
+  - 移除硬编码颜色值，使用 transparent 透明背景
+  - 让 QFluentWidgets 自动处理深浅色主题适配
+  - _on_theme_changed() 同时调用 _apply_page_scroll_theme() 确保主题切换生效
+  - 涉及文件: `converter_page.py`
+
 ## v0.4.67 (2026-04-26)
 - fix(ui): 修复转换器页面深色模式背景色适配问题
   - 将 QPalette 方式改为 QSS 样式表方式，参考 home_page.py 的成功实现
