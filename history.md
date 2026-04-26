@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.4.65 (2026-04-26)
+- fix(ui): 修复转换器页面深色模式背景色适配问题
+  - 使用 QPalette 设置 content_widget 和页面自身的背景色，比样式表更可靠
+  - 设置 content_widget.setAutoFillBackground(True) 确保背景色正确填充
+  - 同时设置 Window 和 Base 调色板角色，确保所有子控件继承正确的背景色
+  - 保留样式表作为辅助，确保深色/浅色主题切换时背景色正确更新
+  - 涉及文件: `converter_page.py`
+
 ## v0.4.64 (2026-04-26)
 - refactor(ui): 转换器页面从局部滚动改为全页面滚动
   - 将原先仅文件列表区域的独立 ScrollArea 调整为包裹整个页面内容的统一 ScrollArea

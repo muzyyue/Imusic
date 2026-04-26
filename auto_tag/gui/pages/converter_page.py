@@ -128,8 +128,10 @@ class ConverterPage(QWidget):
         main_layout.setSpacing(0)
 
         # 创建内容容器 widget，包含所有页面元素
-        content_widget = QWidget()
-        content_layout = QVBoxLayout(content_widget)
+        self.content_widget = QWidget()
+        self.content_widget.setObjectName("converterContentWidget")
+        self.content_widget.setAutoFillBackground(True)
+        content_layout = QVBoxLayout(self.content_widget)
         content_layout.setContentsMargins(40, 30, 40, 30)
         content_layout.setSpacing(16)
 
@@ -305,17 +307,49 @@ class ConverterPage(QWidget):
 
     def _apply_page_scroll_theme(self) -> None:
         """更新页面滚动区域样式以适配当前主题"""
-        if not hasattr(self, 'page_scroll'):
+        if not hasattr(self, 'page_scroll') or not hasattr(self, 'content_widget'):
             return
+
         if isDarkTheme():
             bg_color = "#1e1e1e"
+            text_color = "#ffffff"
         else:
             bg_color = "#fafafa"
+            text_color = "#000000"
 
+        # 使用 QPalette 设置背景色（比样式表更可靠）
+        from PyQt6.QtGui import QPalette, QColor
+
+        palette = self.content_widget.palette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(bg_color))
+        palette.setColor(QPalette.ColorRole.Base, QColor(bg_color))
+        self.content_widget.setPalette(palette)
+
+        # 同时设置页面自身的调色板
+        page_palette = self.palette()
+        page_palette.setColor(QPalette.ColorRole.Window, QColor(bg_color))
+        page_palette.setColor(QPalette.ColorRole.Base, QColor(bg_color))
+        self.setPalette(page_palette)
+
+        # 设置 ScrollArea 背景色
         self.page_scroll.setStyleSheet(f"""
             ScrollArea {{
                 background-color: {bg_color};
                 border: none;
+            }}
+        """)
+
+        # 设置内容容器样式表作为辅助
+        self.content_widget.setStyleSheet(f"""
+            #converterContentWidget {{
+                background-color: {bg_color};
+            }}
+        """)
+
+        # 设置转换器页面自身的背景色
+        self.setStyleSheet(f"""
+            ConverterPage {{
+                background-color: {bg_color};
             }}
         """)
 
