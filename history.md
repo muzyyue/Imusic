@@ -1,5 +1,27 @@
 # 项目变更历史
 
+## v0.4.58 (2026-04-26)
+- feat(core): 新增音频元数据回退策略 - 无意义文件名文件的搜索增强
+  - 当音频指纹引擎（Acoustid/Shazam）全部失败，且文件名无意义时，从文件内部标签读取元数据作为搜索关键词
+  - 新增 `_read_audio_metadata_from_file()` 函数：支持 MP3 (ID3) 和 OGG (Vorbis/Opus) 格式的标签读取
+  - 新增 `_is_metadata_valid()` 函数：验证元数据是否可用于搜索（排除占位符值）
+  - 新增 `_build_keyword_from_metadata()` 函数：从元数据构建搜索关键词
+  - 优化 fallback 流程：文件名无意义 → 尝试读取文件标签 → 用标签内容搜索网易云等平台
+  - 涉及文件: `audio_recognize.py`
+
+## v0.4.57 (2026-04-26)
+- feat(settings): 设置页面搜索源拆分为「识别引擎」和「补充搜索」两行
+  - 将混在一起的5个搜索源按类型分组展示，用户可清晰区分音频指纹识别与关键词文本搜索
+  - 第一行「识别引擎」：Acoustid (Chromaprint)、Shazam（真正的音频内容识别）
+  - 第二行「补充搜索」：网易云音乐、酷狗音乐、QQ音乐（关键词文本匹配）
+  - 调整最小选中校验逻辑：确保至少保留一个识别引擎（而非任意源）
+  - settings_page.py: 拆分 CheckBox 布局为 engine_layout + supplement_layout 两行
+  - zh.json / en.json: 新增 engine_label、supplement_label 翻译键
+- fix(search): 网易云/QQ音乐搜索关键词改为仅使用歌曲名
+  - 原逻辑用 "艺术家 歌曲名" 组合搜索，对冷门/日文名艺术家匹配不准确
+  - 改为仅传歌曲名(title)作为关键词，提升网易云等平台的搜索精准度
+  - audio_recognize.py: keyword 从 f"{artist} {title}" 改为 title
+
 ## v0.4.56 (2026-04-25)
 - fix(build): 回退打包工具链从 Nuitka 至 PyInstaller（Nuitka 4.0.8 上游 bug）
   - 原因: Nuitka 依赖的 winlibs-gcc 下载链接返回 HTTP 404 (Not Found)

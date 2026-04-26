@@ -1766,27 +1766,34 @@ async def recognize_with_acoustid(file_path: str, trace: bool = False) -> dict |
             logger.info("[Acoustid] ffmpeg not available, skipping")
             return None
 
-        # 使用 ffmpeg 生成 Chromaprint 音频指纹（原始二进制格式）
-        cmd = [
-            "ffmpeg",
-            "-i", file_path,
-            "-f", "chromaprint",
-            "-fp_format", "0",  # 原始二进制格式
-            "-"
-        ]
+        # 使用 ffmpeg 生成 Chromaprint 音频指纹（默认压缩格式，Acoustid API 可直接接受）
+        # 注意：必须使用默认格式（无 -fp_format 参数），不能使用 -fp_format 0（原始二进制）
+        fd, tmp_fp = tempfile.mkstemp(suffix=".txt")
+        os.close(fd)
 
-        if trace:
-            print(f"[Acoustid] Generating fingerprint for: {os.path.basename(file_path)}")
+        try:
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", file_path,
+                "-f", "chromaprint",
+                tmp_fp,
+            ]
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=30,
-            check=True
-        )
-        
-        # 将二进制指纹编码为 base64
-        fingerprint = base64.b64encode(result.stdout).decode('ascii')
+            if trace:
+                print(f"[Acoustid] Generating fingerprint for: {os.path.basename(file_path)}")
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=120,
+                check=True
+            )
+
+            with open(tmp_fp, "r", encoding="ascii") as f:
+                fingerprint = f.read().strip()
+        finally:
+            if os.path.exists(tmp_fp):
+                os.remove(tmp_fp)
         
         # 提取时长（从音频文件信息中获取）
         probe_cmd = [
@@ -1813,18 +1820,19 @@ async def recognize_with_acoustid(file_path: str, trace: bool = False) -> dict |
         if trace:
             print(f"[Acoustid] Fingerprint generated: duration={duration}s, fp_len={len(fingerprint)}")
 
-        # 调用 Acoustid 查找接口（使用 POST 方法）
-        # Acoustid API 要求使用 application/x-www-form-urlencoded 格式
-        form_data = aiohttp.FormData()
-        form_data.add_field('client', ACOUSTID_API_KEY)
-        form_data.add_field('fingerprint', fingerprint)
-        form_data.add_field('duration', str(duration))
-        form_data.add_field('meta', 'recordings releasegroups')
+        from urllib.parse import urlencode
+
+        body = urlencode({
+            'client': ACOUSTID_API_KEY,
+            'fingerprint': fingerprint,
+            'duration': str(duration),
+            'meta': 'recordings releasegroups',
+        })
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 ACOUSTID_LOOKUP_URL,
-                data=form_data,
+                data=body,
                 headers={'Content-Type': 'application/x-www-form-urlencoded'},
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as response:
@@ -1944,6 +1952,105 @@ async def find_and_recognize_audio_files(
             ok += 1
 
     print(f"Succeeded {ok}/{len(audio_files)}.")
+
+
+def _read_audio_metadata_from_file(file_path: str) -> dict[str, str]:
+    """
+    从音频文件内部读取元数据标签
+
+    支持 MP3 (ID3) 和 OGG (Vorbis/Opus) 格式。
+    当音频指纹引擎失败且文件名无意义时，使用此函数
+    尝试从文件内部标签提取搜索关键词。
+
+    Args:
+        file_path: 音频文件路径
+
+    Returns:
+        dict: 包含 title, artist, album 的字典，空字符串表示未找到
+    """
+    metadata = {"title": "", "artist": "", "album": ""}
+    ext = os.path.splitext(file_path)[1].lower()
+
+    try:
+        if ext == ".mp3":
+            audio = eyed3.load(file_path)
+            if audio and audio.tag:
+                metadata["title"] = audio.tag.title or ""
+                metadata["artist"] = audio.tag.artist or ""
+                metadata["album"] = audio.tag.album or ""
+        else:
+            audio = None
+            try:
+                audio = OggVorbis(file_path)
+            except Exception:
+                try:
+                    audio = OggOpus(file_path)
+                except Exception:
+                    audio = File(file_path)
+
+            if audio:
+                metadata["title"] = audio.get("TITLE", [""])[0]
+                metadata["artist"] = audio.get("ARTIST", [""])[0]
+                metadata["album"] = audio.get("ALBUM", [""])[0]
+    except Exception as e:
+        logger.debug(f"[MetadataFallback] Failed to read tags from {file_path}: {e}")
+
+    return metadata
+
+
+def _is_metadata_valid(metadata: dict[str, str]) -> bool:
+    """
+    检查从文件读取的元数据是否有效（可用于搜索）
+
+    有效的元数据至少包含标题或艺术家，且不是默认的占位符值。
+
+    Args:
+        metadata: 包含 title, artist 的字典
+
+    Returns:
+        bool: 元数据是否有效
+    """
+    title = metadata.get("title", "").strip()
+    artist = metadata.get("artist", "").strip()
+
+    if not title and not artist:
+        return False
+
+    # 排除常见的占位符值
+    placeholder_values = {
+        "unknown", "unknown title", "unknown artist", "unknown album",
+        "", "n/a", "none",
+    }
+
+    title_lower = title.lower()
+    artist_lower = artist.lower()
+
+    if title_lower in placeholder_values and artist_lower in placeholder_values:
+        return False
+
+    return True
+
+
+def _build_keyword_from_metadata(metadata: dict[str, str]) -> str:
+    """
+    从元数据构建搜索关键词
+
+    Args:
+        metadata: 包含 title, artist 的字典
+
+    Returns:
+        str: 搜索关键词（格式："Artist Title" 或 "Title"）
+    """
+    title = metadata.get("title", "").strip()
+    artist = metadata.get("artist", "").strip()
+
+    if artist and title:
+        return f"{artist} {title}"
+    elif title:
+        return title
+    elif artist:
+        return artist
+    return ""
 
 
 def _is_filename_like_song_name(file_path: str) -> bool:
@@ -2096,43 +2203,73 @@ async def recognize_and_rename_file(
     # 2) 判断文件名是否像歌曲名，决定搜索策略
     filename_is_song_like = _is_filename_like_song_name(file_path)
 
-    # 如果文件名不像歌曲名，优先使用 Shazam 音频识别
-    # 如果文件名像歌曲名，可以直接使用文件名搜索
-    if not filename_is_song_like:
-        logger.info(f"[Strategy] Filename not song-like, prioritizing Shazam recognition: {file_path}")
-    else:
-        logger.info(f"[Strategy] Filename looks like song name, can use direct search: {file_path}")
+    # 3) 读取用户配置的识别引擎（从设置页面的搜索源获取）
+    try:
+        from auto_tag.gui.config import config
+        enabled_sources = config.search_sources
+    except Exception:
+        enabled_sources = ["acoustid", "shazam"]
+
+    # 分离音频指纹引擎和关键词搜索平台
+    fingerprint_engines = [s for s in enabled_sources if s in ("acoustid", "shazam")]
+    keyword_platforms = [s for s in enabled_sources if s in ("netease", "kugou", "qqmusic")]
+
+    logger.info(
+        f"[Strategy] Engines: {fingerprint_engines}, Keywords: {keyword_platforms}: {file_path}"
+    )
 
     out = None
-    for attempt in range(1, nbr_retry + 1):
-        try:
-            candidate = await shazam.recognize(input_path)
-            if candidate:
-                out = candidate
-                break
-        except Exception as exc:
-            if trace:
-                print(
-                    f"[{os.path.basename(file_path)}] attempt {attempt}: {exc}"
-                )
-        if attempt < nbr_retry:
-            await asyncio.sleep(delay)
+    recognition_source = None
 
-    # Fallback to original OGG if WAV recognition failed
-    if ext == ".ogg" and out is None and input_path != file_path:
-        for attempt in range(1, nbr_retry + 1):
+    # === 按配置顺序执行音频指纹识别引擎 ===
+    for engine in fingerprint_engines:
+        if out is not None and "track" in (out or {}):
+            break
+
+        if engine == "acoustid":
+            logger.info(f"[Engine/Acoustid] Trying audio fingerprint recognition...")
             try:
-                candidate = await shazam.recognize(file_path)
-                if candidate:
-                    out = candidate
-                    break
-            except Exception as exc:
+                acoustid_result = await recognize_with_acoustid(file_path, trace=trace)
+                if acoustid_result and "track" in acoustid_result:
+                    out = acoustid_result
+                    recognition_source = "acoustid"
+                    if trace:
+                        track = acoustid_result["track"]
+                        print(f"[Acoustid] Success! Found: {track.get('title')} - {track.get('subtitle')}")
+            except Exception as acoustid_error:
+                logger.warning(f"[Engine/Acoustid] Failed: {acoustid_error}")
                 if trace:
-                    print(
-                        f"[{os.path.basename(file_path)}] OGG fallback {attempt}: {exc}"
-                    )
-            if attempt < nbr_retry:
-                await asyncio.sleep(delay)
+                    print(f"[Acoustid] Error: {acoustid_error}")
+
+        elif engine == "shazam":
+            logger.info(f"[Engine/Shazam] Trying Shazam recognition...")
+            for attempt in range(1, nbr_retry + 1):
+                try:
+                    candidate = await shazam.recognize(input_path)
+                    if candidate:
+                        out = candidate
+                        recognition_source = "shazam"
+                        break
+                except Exception as exc:
+                    if trace:
+                        print(f"[{os.path.basename(file_path)}] Shazam attempt {attempt}: {exc}")
+                if attempt < nbr_retry:
+                    await asyncio.sleep(delay)
+
+            # Fallback to original OGG if WAV recognition failed
+            if (out is None or "track" not in (out or {})) and ext == ".ogg" and input_path != file_path:
+                for attempt in range(1, nbr_retry + 1):
+                    try:
+                        candidate = await shazam.recognize(file_path)
+                        if candidate:
+                            out = candidate
+                            recognition_source = "shazam"
+                            break
+                    except Exception as exc:
+                        if trace:
+                            print(f"[{os.path.basename(file_path)}] Shazam OGG fallback {attempt}: {exc}")
+                    if attempt < nbr_retry:
+                        await asyncio.sleep(delay)
 
     # cleanup temp WAV
     if tmp_wav and os.path.exists(tmp_wav):
@@ -2140,42 +2277,14 @@ async def recognize_and_rename_file(
 
     if not out or "track" not in out:
         if trace:
-            print(f"Shazam failed: {file_path}, attempting fallback strategies...")
+            print(f"All engines failed: {file_path}, attempting keyword fallback...")
 
-        # 备选方案 1：当文件名不像歌曲名时，尝试使用 Acoustid 音频识别
-        if not filename_is_song_like:
-            logger.info(f"[Fallback] Trying Acoustid audio recognition: {file_path}")
-            try:
-                acoustid_result = await recognize_with_acoustid(file_path, trace=trace)
-                if acoustid_result and "track" in acoustid_result:
-                    if trace:
-                        print(f"[Acoustid] Success! Found: {acoustid_result['track']['title']} - {acoustid_result['track']['subtitle']}")
-                    
-                    # 使用 Acoustid 识别结果
-                    track = acoustid_result["track"]
-                    s_title = sanitize(track.get("title", "Unknown Title"), trace)
-                    s_artist = sanitize(track.get("subtitle", "Unknown Artist"), trace)
-                    s_album = sanitize(find_deepest_metadata_key(track, "Album") or "Unknown Album", trace)
-
-                    return {
-                        "file_path": file_path,
-                        "new_file_path": file_path,
-                        "title": s_title,
-                        "author": s_artist,
-                        "album": s_album,
-                        "cover_link": track.get("images", {}).get("coverart", ""),
-                        "search_results": [],
-                        "source": "acoustid",
-                    }
-            except Exception as acoustid_error:
-                logger.error(f"[Acoustid] Fallback failed: {acoustid_error}", exc_info=True)
-
-        # 备选方案 2：当文件名像歌曲名时，使用文件名作为关键词搜索
+        # 备选方案：当文件名像歌曲名时，使用文件名作为关键词搜索
         if filename_is_song_like:
             fallback_keyword = _build_search_keyword_from_filename(file_path)
 
             if fallback_keyword:
-                logger.info(f"[Fallback] Trying NetEase search with keyword: {fallback_keyword}")
+                logger.info(f"[Fallback] Trying keyword search: {fallback_keyword}")
                 try:
                     from auto_tag.gui.config import config
                     fallback_results = await multi_source_search(
@@ -2210,7 +2319,56 @@ async def recognize_and_rename_file(
                 except Exception as fallback_error:
                     logger.error(f"[Fallback] Search failed: {fallback_error}", exc_info=True)
         else:
-            logger.warning(f"[Fallback] Filename not song-like, skipping filename-based search: {file_path}")
+            # 备选方案2：从音频文件内部标签读取元数据作为关键词搜索
+            # 适用于文件名无意义但文件本身有标签的情况
+            logger.info(f"[MetadataFallback] Trying to read metadata tags from file: {file_path}")
+            file_metadata = _read_audio_metadata_from_file(file_path)
+
+            if _is_metadata_valid(file_metadata):
+                fallback_keyword = _build_keyword_from_metadata(file_metadata)
+                logger.info(f"[MetadataFallback] Found valid metadata, searching with: '{fallback_keyword}'")
+
+                try:
+                    from auto_tag.gui.config import config
+                    fallback_results = await multi_source_search(
+                        keyword=fallback_keyword,
+                        shazam_result=None,
+                        limit=5,
+                        sources=config.search_sources,
+                        include_radio=config.include_radio,
+                    )
+
+                    if fallback_results:
+                        best_match = fallback_results[0]
+                        s_title = sanitize(best_match.title, trace)
+                        s_artist = sanitize(best_match.artist, trace)
+                        s_album = sanitize(best_match.album, trace)
+
+                        logger.info(
+                            f"[MetadataFallback] Success! Found: {best_match.title} - {best_match.artist}"
+                        )
+
+                        return {
+                            "file_path": file_path,
+                            "new_file_path": file_path,
+                            "title": s_title,
+                            "author": s_artist,
+                            "album": s_album,
+                            "cover_link": best_match.cover_link,
+                            "search_results": [sr.to_dict() for sr in fallback_results],
+                        }
+                    else:
+                        logger.warning(
+                            f"[MetadataFallback] No search results for metadata keyword: '{fallback_keyword}'"
+                        )
+                except Exception as fallback_error:
+                    logger.error(
+                        f"[MetadataFallback] Search failed: {fallback_error}", exc_info=True
+                    )
+            else:
+                logger.warning(
+                    f"[MetadataFallback] No valid metadata tags found in file: {file_path}"
+                )
 
         return {
             "file_path": file_path,
@@ -2229,9 +2387,9 @@ async def recognize_and_rename_file(
     s_artist = sanitize(artist, trace)
     s_album = sanitize(album, trace)
 
-    # 3.5) Multi-source search: query configured sources concurrently
+    # 3.5) Multi-source search: 用纯歌曲名搜索关键词平台（网易云/QQ音乐等）
     from auto_tag.gui.config import config
-    keyword = f"{artist} {title}"
+    keyword = title
     search_results = await multi_source_search(
         keyword=keyword,
         shazam_result=out,
@@ -2331,6 +2489,7 @@ async def recognize_and_rename_file(
         "album": s_album,
         "cover_link": cover,
         "search_results": [sr.to_dict() for sr in search_results],
+        "source": recognition_source or "shazam",
     }
 
 
