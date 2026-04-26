@@ -337,6 +337,7 @@ class SearchResult:
                 "acoustid": "Acoustid",
                 "shazam": "Shazam",
                 "metadata": "音频标签",
+                "filename": "文件名",
             }.get(self.fingerprint_engine, self.fingerprint_engine)
             
             # 将平台名称转换为显示名称
