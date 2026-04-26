@@ -79,16 +79,25 @@ class AppConfig:
     DEFAULT_QUALITY_PRESET: str = "high"
     
     # ===== 新增：搜索源配置默认值 =====
-    DEFAULT_SEARCH_SOURCES: list[str] = ["shazam", "netease"]
+    DEFAULT_SEARCH_SOURCES: list[str] = ["acoustid", "shazam", "netease"]
     DEFAULT_NETEASE_SEARCH_TYPE: int = 1  # 单曲
     DEFAULT_INCLUDE_RADIO: bool = True
-    
-    # 有效搜索源列表
+    DEFAULT_SEARCH_KEYWORD_MODE: str = "title_only"  # 默认仅用歌曲名搜索
+
+    # 有效搜索关键词模式
+    VALID_KEYWORD_MODES: tuple[str, ...] = ("title_only", "artist_title")
+    KEYWORD_MODE_LABELS: dict[str, str] = {
+        "title_only": "仅歌曲名",
+        "artist_title": "艺术家 + 歌曲名",
+    }
+
+    # 有效搜索源列表（包含音频指纹识别引擎 + 关键词搜索平台）
     VALID_SEARCH_SOURCES: tuple[str, ...] = (
-        "shazam",
-        "netease",
-        "kugou",
-        "qqmusic"  # 新增：QQ音乐
+        "acoustid",     # Acoustid (Chromaprint) 音频指纹识别引擎
+        "shazam",       # Shazam 音频识别引擎
+        "netease",      # 网易云音乐关键词搜索
+        "kugou",        # 酷狗音乐关键词搜索
+        "qqmusic"       # QQ音乐关键词搜索
     )
     
     # 网易云搜索类型映射表（type值 -> 中文名）
@@ -151,6 +160,7 @@ class AppConfig:
         self._search_sources: list[str] = self.DEFAULT_SEARCH_SOURCES.copy()
         self._netease_search_type: int = self.DEFAULT_NETEASE_SEARCH_TYPE
         self._include_radio: bool = self.DEFAULT_INCLUDE_RADIO
+        self._search_keyword_mode: str = self.DEFAULT_SEARCH_KEYWORD_MODE
 
         # 加载配置文件
         self._load_config()
@@ -197,6 +207,15 @@ class AppConfig:
             else:
                 self._include_radio = self.DEFAULT_INCLUDE_RADIO
             
+            if 'search_keyword_mode' in config_data and isinstance(config_data['search_keyword_mode'], str):
+                mode = config_data['search_keyword_mode']
+                if mode in self.VALID_KEYWORD_MODES:
+                    self._search_keyword_mode = mode
+                else:
+                    self._search_keyword_mode = self.DEFAULT_SEARCH_KEYWORD_MODE
+            else:
+                self._search_keyword_mode = self.DEFAULT_SEARCH_KEYWORD_MODE
+            
             self._output_format = config_data.get(
                 "output_format", self.DEFAULT_OUTPUT_FORMAT
             )
@@ -235,6 +254,7 @@ class AppConfig:
             self._search_sources = self.DEFAULT_SEARCH_SOURCES.copy()
             self._netease_search_type = self.DEFAULT_NETEASE_SEARCH_TYPE
             self._include_radio = self.DEFAULT_INCLUDE_RADIO
+            self._search_keyword_mode = self.DEFAULT_SEARCH_KEYWORD_MODE
             self._output_format = self.DEFAULT_OUTPUT_FORMAT
             self._quality_preset = self.DEFAULT_QUALITY_PRESET
             self._converter_input_formats = self.DEFAULT_CONVERTER_INPUT_FORMATS.copy()
@@ -257,6 +277,7 @@ class AppConfig:
                 "search_sources": self._search_sources,
                 "netease_search_type": self._netease_search_type,
                 "include_radio": self._include_radio,
+                "search_keyword_mode": self._search_keyword_mode,
                 "output_format": self._output_format,
                 "quality_preset": self._quality_preset,
                 "converter_input_formats": self._converter_input_formats,
@@ -405,6 +426,35 @@ class AppConfig:
         """
         if self._include_radio != include:
             self._include_radio = include
+            self.save()
+    
+    @property
+    def search_keyword_mode(self) -> str:
+        """
+        获取搜索关键词模式
+
+        Returns:
+            str: 关键词模式（"title_only" 仅歌曲名 / "artist_title" 艺术家+歌曲名）
+        """
+        return self._search_keyword_mode
+    
+    def set_search_keyword_mode(self, mode: str) -> None:
+        """
+        设置搜索关键词模式
+
+        Args:
+            mode (str): 关键词模式，"title_only" 或 "artist_title"
+
+        Raises:
+            ValueError: 模式值无效时抛出
+        """
+        if mode not in self.VALID_KEYWORD_MODES:
+            raise ValueError(
+                f"无效的搜索关键词模式: {mode}，"
+                f"有效值为 {self.VALID_KEYWORD_MODES}"
+            )
+        if self._search_keyword_mode != mode:
+            self._search_keyword_mode = mode
             self.save()
 
     @property

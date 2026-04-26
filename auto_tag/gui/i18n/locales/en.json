@@ -147,6 +147,9 @@
     "theme_label": "Theme",
     "theme_hint": "Choose application appearance theme",
     "search_settings_section": "Search Settings",
+    "engine_label": "Recognition Engines",
+    "supplement_label": "Supplementary Search",
+    "keyword_mode_label": "Search Keyword Mode",
     "search_source_label": "Primary Search Source",
     "search_source_hint": "Select default music search service provider",
     "netease_type_label": "NetEase Search Type",
@@ -154,10 +157,15 @@
     "include_radio_label": "Include Radio/Sound Content",
     "include_radio_hint": "When enabled, search results will include DJ radio programs, podcasts, and sound content (NetEase only)",
     "sources": {
-      "shazam": "Shazam (Default)",
+      "acoustid": "Acoustid (Chromaprint)",
+      "shazam": "Shazam",
       "netease": "NetEase Cloud Music",
       "kugou": "KuGou Music (Experimental)",
       "qqmusic": "QQ Music"
+    },
+    "keyword_modes": {
+      "title_only": "Title Only",
+      "artist_title": "Artist + Title"
     },
     "netease_types": {
       "1": "Song",
@@ -314,6 +322,10 @@
     "success_count": "{count} succeeded",
     "fail_count": "{count} failed"
   },
+  "source_acoustid": "Acoustid (Chromaprint)",
+  "source_shazam": "Shazam",
+  "source_netease": "NetEase Cloud Music",
+  "source_kugou": "KuGou Music",
   "search": {
     "results_title": "Search Results",
     "song_name": "Song Name",
@@ -322,6 +334,7 @@
     "duration": "Duration",
     "confidence": "Relevance",
     "sources": {
+      "acoustid": "Acoustid (Chromaprint)",
       "shazam": "Shazam",
       "netease": "NetEase Cloud Music",
       "kugou": "KuGou Music"

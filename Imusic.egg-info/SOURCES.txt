@@ -43,6 +43,8 @@ auto_tag/gui/workers/song_search_worker.py
 auto_tag/lyric/__init__.py
 auto_tag/lyric/manager.py
 auto_tag/lyric/provider.py
+tests/test_acoustid_recognize.py
+tests/test_app_flow.py
 tests/test_cache_and_rate_limit.py
 tests/test_cloudsearch_api.py
 tests/test_converter.py

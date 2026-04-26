@@ -277,3 +277,247 @@ class TestCustomFormatUI:
     def test_add_custom_format_button_text(self, converter_page):
         """测试添加按钮文本不为空"""
         assert converter_page.add_custom_format_btn.text() != ""
+
+
+class TestClearDataFunction:
+    """测试清除数据功能"""
+
+    def test_clear_data_button_exists(self, converter_page):
+        """测试清除数据按钮存在"""
+        assert hasattr(converter_page, 'clear_data_btn'), "缺少清除数据按钮"
+        assert converter_page.clear_data_btn is not None
+
+    def test_clear_data_button_text(self, converter_page):
+        """测试清除数据按钮文本不为空"""
+        assert converter_page.clear_data_btn.text() != ""
+
+    def test_clear_data_with_files(self, converter_page, tmp_path):
+        """测试有文件时清除数据功能"""
+        # 创建测试目录和文件
+        test_dir = tmp_path / "test_audio"
+        test_dir.mkdir()
+        (test_dir / "song1.mp3").touch()
+        (test_dir / "song2.flac").touch()
+
+        # 模拟浏览目录（填充文件列表）
+        converter_page.input_dir = str(test_dir)
+        converter_page.input_entry.setText(str(test_dir))
+        converter_page.files = converter_page._scan_files(str(test_dir))
+
+        # 填充表格
+        converter_page.file_table.setRowCount(0)
+        for file_path in converter_page.files:
+            row = converter_page.file_table.rowCount()
+            converter_page.file_table.insertRow(row)
+            checkbox_item = QTableWidgetItem()
+            checkbox_item.setFlags(
+                Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
+            )
+            checkbox_item.setCheckState(Qt.CheckState.Checked)
+            converter_page.file_table.setItem(row, 0, checkbox_item)
+
+            filename = Path(file_path).name
+            filename_item = QTableWidgetItem(filename)
+            filename_item.setData(Qt.ItemDataRole.UserRole, file_path)
+            converter_page.file_table.setItem(row, 1, filename_item)
+
+        # 验证文件已加载
+        assert len(converter_page.files) == 2
+        assert converter_page.file_table.rowCount() == 2
+
+        # 模拟点击清除数据按钮（跳过确认对话框）
+        with patch.object(converter_page.clear_data_btn, 'text', return_value="Clear Data"):
+            # 直接调用方法但mock掉QMessageBox
+            with patch('auto_tag.gui.pages.converter_page.QMessageBox') as mock_box:
+                mock_box.question.return_value = QMessageBox.StandardButton.Yes
+
+                converter_page._on_clear_data()
+
+        # 验证数据已清除
+        assert len(converter_page.files) == 0, "文件列表应该被清空"
+        assert converter_page.file_table.rowCount() == 0, "表格应该被清空"
+        assert converter_page.progress_bar.value() == 0, "进度条应该重置为0"
+        assert converter_page.start_btn.isEnabled(), "开始转换按钮应该启用"
+        assert not converter_page.stop_btn.isEnabled(), "停止转换按钮应该禁用"
+
+    def test_clear_data_with_empty_list(self, converter_page):
+        """测试空列表时清除数据功能"""
+        # 确保初始状态为空
+        assert len(converter_page.files) == 0
+        assert converter_page.file_table.rowCount() == 0
+
+        # 调用清除数据（应该直接返回）
+        converter_page._on_clear_data()
+
+        # 验证状态不变
+        assert len(converter_page.files) == 0
+        assert converter_page.file_table.rowCount() == 0
+
+    def test_clear_data_during_conversion(self, converter_page, tmp_path):
+        """测试转换进行中时清除数据"""
+        # 创建模拟的工作线程
+        mock_worker = MagicMock()
+        mock_worker.isRunning.return_value = True
+        converter_page.worker = mock_worker
+
+        # Mock QMessageBox.question - 第一次是停止确认（Yes），第二次是清除确认（Yes）
+        with patch('auto_tag.gui.pages.converter_page.QMessageBox') as mock_box:
+            mock_box.question.side_effect = [
+                QMessageBox.StandardButton.Yes,   # 停止确认
+                QMessageBox.StandardButton.Yes    # 清除确认
+            ]
+
+            converter_page._on_clear_data()
+
+        # 验证停止方法被调用
+        mock_worker.stop.assert_called_once()
+        mock_worker.wait.assert_called_once()
+
+    def test_clear_data_cancel_confirmation(self, converter_page, tmp_path):
+        """测试取消确认对话框"""
+        # 添加一些文件
+        test_dir = tmp_path / "test_audio"
+        test_dir.mkdir()
+        (test_dir / "song1.mp3").touch()
+
+        converter_page.files = [str(test_dir / "song1.mp3")]
+        converter_page.file_table.insertRow(0)
+
+        # Mock QMessageBox.question - 用户选择 No（取消）
+        with patch('auto_tag.gui.pages.converter_page.QMessageBox') as mock_box:
+            mock_box.question.return_value = QMessageBox.StandardButton.No  # 用户取消
+
+            converter_page._on_clear_data()
+
+        # 验证数据未被清除
+        assert len(converter_page.files) == 1, "取消后数据应保留"
+        assert converter_page.file_table.rowCount() == 1, "取消后表格应保留"
+
+
+class TestScrollAreaFunction:
+    """测试文件列表滚动功能"""
+
+    def test_scroll_area_exists(self, converter_page):
+        """测试滚动区域存在"""
+        assert hasattr(converter_page, 'file_list_scroll'), "缺少文件列表滚动区域"
+        assert converter_page.file_list_scroll is not None
+
+    def test_scroll_area_is_scrollarea(self, converter_page):
+        """测试滚动区域类型正确"""
+        from qfluentwidgets import ScrollArea
+        assert isinstance(converter_page.file_list_scroll, ScrollArea)
+
+    def test_scroll_area_has_widget(self, converter_page):
+        """测试滚动区域包含子 widget"""
+        widget = converter_page.file_list_scroll.widget()
+        assert widget is not None, "滚动区域应包含子 widget"
+
+    def test_scroll_area_resizable(self, converter_page):
+        """测试滚动区域可调整大小"""
+        scroll = converter_page.file_list_scroll
+        assert scroll.widgetResizable(), "滚动区域应启用 widgetResizable"
+
+    def test_scroll_area_minimum_height(self, converter_page):
+        """测试滚动区域最小高度"""
+        scroll = converter_page.file_list_scroll
+        assert scroll.minimumHeight() >= 400, f"滚动区域最小高度应 >= 400，当前: {scroll.minimumHeight()}"
+
+    def test_file_table_in_scroll_container(self, converter_page):
+        """测试表格在滚动容器中"""
+        scroll_container = converter_page.file_list_scroll.widget()
+        assert scroll_container is not None
+
+        # 检查表格是否在容器的布局中
+        found_table = False
+        for i in range(scroll_container.layout().count()):
+            item = scroll_container.layout().itemAt(i)
+            if item.widget() == converter_page.file_table:
+                found_table = True
+                break
+        assert found_table, "表格应在滚动容器中"
+
+    def test_buttons_in_scroll_container(self, converter_page):
+        """测试操作按钮在滚动容器中（始终可见）"""
+        scroll_container = converter_page.file_list_scroll.widget()
+        assert scroll_container is not None
+
+        # 检查所有操作按钮是否在容器中
+        buttons_to_check = [
+            converter_page.check_all_btn,
+            converter_page.uncheck_all_btn,
+            converter_page.start_btn,
+            converter_page.stop_btn,
+            converter_page.clear_data_btn
+        ]
+
+        for btn in buttons_to_check:
+            found = False
+            for i in range(scroll_container.layout().count()):
+                item = scroll_container.layout().itemAt(i)
+                if item.widget() == btn:
+                    found = True
+                    break
+                if item.layout():
+                    for j in range(item.layout().count()):
+                        layout_item = item.layout().itemAt(j)
+                        if layout_item.widget() == btn:
+                            found = True
+                            break
+            assert found, f"按钮 {btn.text()} 应在滚动容器中"
+
+    def test_scroll_area_size_policy(self, converter_page):
+        """测试滚动区域尺寸策略"""
+        scroll = converter_page.file_list_scroll
+        policy = scroll.sizePolicy()
+
+        assert policy.horizontalPolicy() == QSizePolicy.Policy.Expanding, \
+            "水平策略应为 Expanding"
+        assert policy.verticalPolicy() == QSizePolicy.Policy.Expanding, \
+            "垂直策略应为 Expanding"
+
+    def test_scroll_area_theme_method_exists(self, converter_page):
+        """测试主题样式方法存在"""
+        assert hasattr(converter_page, '_apply_scroll_area_theme'), \
+            "缺少 _apply_scroll_area_theme 方法"
+        assert callable(getattr(converter_page, '_apply_scroll_area_theme'))
+
+    def test_many_files_scrollable(self, converter_page, tmp_path):
+        """测试大量文件时滚动功能正常"""
+        # 创建多个测试文件（模拟超出可视区域的情况）
+        test_dir = tmp_path / "test_many_files"
+        test_dir.mkdir()
+
+        num_files = 20
+        for i in range(num_files):
+            (test_dir / f"song_{i}.mp3").touch()
+
+        # 填充文件列表
+        converter_page.files = [str(test_dir / f"song_{i}.mp3") for i in range(num_files)]
+        converter_page.file_table.setRowCount(0)
+
+        for file_path in converter_page.files:
+            row = converter_page.file_table.rowCount()
+            converter_page.file_table.insertRow(row)
+            checkbox_item = QTableWidgetItem()
+            checkbox_item.setFlags(
+                Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
+            )
+            checkbox_item.setCheckState(Qt.CheckState.Checked)
+            converter_page.file_table.setItem(row, 0, checkbox_item)
+
+            filename = Path(file_path).name
+            filename_item = QTableWidgetItem(filename)
+            filename_item.setData(Qt.ItemDataRole.UserRole, file_path)
+            converter_page.file_table.setItem(row, 1, filename_item)
+
+        # 验证所有文件都已添加到表格
+        assert converter_page.file_table.rowCount() == num_files, \
+            f"应添加 {num_files} 个文件"
+
+        # 验证滚动区域的垂直滚动条策略
+        scroll = converter_page.file_list_scroll
+        vertical_scrollbar = scroll.verticalScrollBar()
+
+        # 当内容超出可视区域时，滚动条应该可用
+        # 注意：实际的可视性取决于窗口大小，这里只验证组件配置正确
+        assert vertical_scrollbar is not None, "应有垂直滚动条"

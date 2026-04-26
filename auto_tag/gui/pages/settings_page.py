@@ -150,24 +150,63 @@ class SettingsPage(QWidget):
         self._search_section.setFont(font_general)
         self._layout.addWidget(self._search_section)
 
-        # 搜索源多选（保持与"语言"/"主题"相同的左右行布局）
-        source_layout = QHBoxLayout()
-        self._source_label = BodyLabel(tr("settings_page.search_source_label"))
-        source_layout.addWidget(self._source_label)
-        source_layout.addStretch()
+        # 搜索源多选 - 拆分为两行：识别引擎 + 补充搜索
+        # 第一行：音频指纹识别引擎（真正的音频识别）
+        engine_layout = QHBoxLayout()
+        self._engine_label = BodyLabel(tr("settings_page.engine_label"))
+        engine_layout.addWidget(self._engine_label)
+        engine_layout.addStretch()
 
-        # 右侧水平排列 CheckBox（多选），间距 16px
         self._source_checkboxes: dict[str, CheckBox] = {}
-        source_order = ["shazam", "netease", "kugou", "qqmusic"]
-        for i, source_key in enumerate(source_order):
+        engine_sources = ["acoustid", "shazam"]
+        for i, source_key in enumerate(engine_sources):
             cb = CheckBox(tr(f"settings_page.sources.{source_key}"))
             self._source_checkboxes[source_key] = cb
             cb.stateChanged.connect(self._on_search_sources_changed)
-            source_layout.addWidget(cb)
-            if i < len(source_order) - 1:
-                source_layout.addSpacing(16)
+            engine_layout.addWidget(cb)
+            if i < len(engine_sources) - 1:
+                engine_layout.addSpacing(16)
 
-        self._layout.addLayout(source_layout)
+        self._layout.addLayout(engine_layout)
+
+        # 第二行：关键词搜索平台（文本匹配补充）
+        supplement_layout = QHBoxLayout()
+        self._supplement_label = BodyLabel(tr("settings_page.supplement_label"))
+        supplement_layout.addWidget(self._supplement_label)
+        supplement_layout.addStretch()
+
+        supplement_sources = ["netease", "kugou", "qqmusic"]
+        for i, source_key in enumerate(supplement_sources):
+            cb = CheckBox(tr(f"settings_page.sources.{source_key}"))
+            self._source_checkboxes[source_key] = cb
+            cb.stateChanged.connect(self._on_search_sources_changed)
+            supplement_layout.addWidget(cb)
+            if i < len(supplement_sources) - 1:
+                supplement_layout.addSpacing(16)
+
+        self._layout.addLayout(supplement_layout)
+
+        # 搜索关键词模式（控制传给网易云/QQ音乐等平台的关键词格式）
+        keyword_mode_layout = QHBoxLayout()
+        self._keyword_mode_label = BodyLabel(tr("settings_page.keyword_mode_label"))
+        self._keyword_mode_combo = ComboBox()
+        self._keyword_mode_combo.setMinimumWidth(200)
+
+        for mode_value in AppConfig.VALID_KEYWORD_MODES:
+            translated_name = tr(f"settings_page.keyword_modes.{mode_value}")
+            self._keyword_mode_combo.addItem(translated_name, userData=mode_value)
+
+        current_mode_index = list(AppConfig.VALID_KEYWORD_MODES).index(
+            config.search_keyword_mode
+        ) if config.search_keyword_mode in AppConfig.VALID_KEYWORD_MODES else 0
+        self._keyword_mode_combo.setCurrentIndex(current_mode_index)
+
+        self._keyword_mode_combo.currentIndexChanged.connect(self._on_keyword_mode_changed)
+
+        keyword_mode_layout.addWidget(self._keyword_mode_label)
+        keyword_mode_layout.addStretch()
+        keyword_mode_layout.addWidget(self._keyword_mode_combo)
+        self._layout.addLayout(keyword_mode_layout)
 
         # 网易云搜索类型（条件显示）
         netease_type_layout = QHBoxLayout()
@@ -217,7 +256,7 @@ class SettingsPage(QWidget):
             cb.blockSignals(True)
             cb.setChecked(source_key in current_sources)
             cb.blockSignals(False)
-        self._ensure_at_least_one_source_checked()
+        self._ensure_at_least_one_engine_checked()
 
         # 根据初始搜索源状态更新UI可见性（任一选中源包含 netease 则显示）
         self._update_netease_options_visibility("netease" in config.search_sources)
@@ -282,7 +321,7 @@ class SettingsPage(QWidget):
         ]
 
         if not selected:
-            self._ensure_at_least_one_source_checked()
+            self._ensure_at_least_one_engine_checked()
             return
 
         try:
@@ -298,16 +337,21 @@ class SettingsPage(QWidget):
         except Exception as e:
             logger.error(f"Failed to change search sources: {e}")
 
-    def _ensure_at_least_one_source_checked(self) -> None:
+    def _ensure_at_least_one_engine_checked(self) -> None:
         """
-        确保至少有一个搜索源被选中
+        确保至少有一个音频指纹识别引擎被选中
 
-        如果所有 CheckBox 都未选中，默认勾选 Shazam
+        如果所有识别引擎 CheckBox 都未选中，默认勾选 Shazam
         """
-        has_checked = any(cb.isChecked() for cb in self._source_checkboxes.values())
-        if not has_checked:
+        engine_keys = ["acoustid", "shazam"]
+        has_engine_checked = any(
+            self._source_checkboxes[k].isChecked()
+            for k in engine_keys
+            if k in self._source_checkboxes
+        )
+        if not has_engine_checked:
             self._source_checkboxes["shazam"].setChecked(True)
-            logger.info("Ensured at least one source (shazam) is checked")
+            logger.info("Ensured at least one engine (shazam) is checked")
     
     def _on_netease_type_changed(self, index: int) -> None:
         """
@@ -346,6 +390,25 @@ class SettingsPage(QWidget):
         except Exception as e:
             logger.error(f"Failed to change radio toggle: {e}")
     
+    def _on_keyword_mode_changed(self, index: int) -> None:
+        """
+        搜索关键词模式变更回调
+        
+        Args:
+            index: 下拉框当前选中索引
+        """
+        mode_value = self._keyword_mode_combo.itemData(index)
+        
+        if mode_value is not None and isinstance(mode_value, str):
+            try:
+                config.set_search_keyword_mode(mode_value)
+                logger.info(f"Keyword mode changed to: {mode_value}")
+                
+                self.search_config_changed.emit()
+                
+            except Exception as e:
+                logger.error(f"Failed to change keyword mode: {e}")
+    
     def _update_netease_options_visibility(self, visible: bool) -> None:
         """
         更新网易云专用选项的可见性
@@ -377,6 +440,7 @@ class SettingsPage(QWidget):
         theme_idx = self._theme_combo.currentIndex()
         current_sources = config.search_sources
         netease_type_idx = self._netease_type_combo.currentIndex()
+        keyword_mode_idx = self._keyword_mode_combo.currentIndex()
         radio_checked = self._radio_switch.isChecked()
 
         # 更新标题和分组标题
@@ -389,7 +453,9 @@ class SettingsPage(QWidget):
         self._theme_label.setText(tr("settings_page.theme_label"))
 
         # 更新搜索设置标签
-        self._source_label.setText(tr("settings_page.search_source_label"))
+        self._engine_label.setText(tr("settings_page.engine_label"))
+        self._supplement_label.setText(tr("settings_page.supplement_label"))
+        self._keyword_mode_label.setText(tr("settings_page.keyword_mode_label"))
         self._netease_type_label.setText(tr("settings_page.netease_type_label"))
         self._radio_label.setText(tr("settings_page.include_radio_label"))
 
@@ -398,6 +464,7 @@ class SettingsPage(QWidget):
         self._theme_combo.blockSignals(True)
         for cb in self._source_checkboxes.values():
             cb.blockSignals(True)
+        self._keyword_mode_combo.blockSignals(True)
         self._netease_type_combo.blockSignals(True)
         self._radio_switch.blockSignals(True)
 
@@ -416,8 +483,8 @@ class SettingsPage(QWidget):
         self._theme_combo.setCurrentIndex(theme_idx)
 
         # 更新搜索源 CheckBox 文本并恢复选中状态
-        source_order = ["shazam", "netease", "kugou", "qqmusic"]
-        for source_key in source_order:
+        all_sources = ["acoustid", "shazam", "netease", "kugou", "qqmusic"]
+        for source_key in all_sources:
             cb = self._source_checkboxes[source_key]
             cb.setText(tr(f"settings_page.sources.{source_key}"))
             cb.setChecked(source_key in current_sources)
@@ -429,6 +496,13 @@ class SettingsPage(QWidget):
             self._netease_type_combo.addItem(translated_name, userData=type_value)
         self._netease_type_combo.setCurrentIndex(netease_type_idx)
         
+        # 清空并重新填充搜索关键词模式下拉框
+        self._keyword_mode_combo.clear()
+        for mode_value in AppConfig.VALID_KEYWORD_MODES:
+            translated_name = tr(f"settings_page.keyword_modes.{mode_value}")
+            self._keyword_mode_combo.addItem(translated_name, userData=mode_value)
+        self._keyword_mode_combo.setCurrentIndex(keyword_mode_idx)
+        
         # 恢复电台开关状态
         self._radio_switch.setChecked(radio_checked)
 
@@ -438,9 +512,10 @@ class SettingsPage(QWidget):
         for cb in self._source_checkboxes.values():
             cb.blockSignals(False)
         self._netease_type_combo.blockSignals(False)
+        self._keyword_mode_combo.blockSignals(False)
         self._radio_switch.blockSignals(False)
 
-        self._ensure_at_least_one_source_checked()
+        self._ensure_at_least_one_engine_checked()
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         """
@@ -459,6 +534,7 @@ class SettingsPage(QWidget):
         if event.type() == QEvent.Type.Show and obj in (
             self._language_combo,
             self._theme_combo,
+            self._keyword_mode_combo,
             self._netease_type_combo
         ):
             try:

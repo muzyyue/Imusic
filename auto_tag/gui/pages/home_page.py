@@ -62,6 +62,7 @@ logger = logging.getLogger(__name__)
 
 # 平台名称映射
 _PLATFORM_NAME_MAP = {
+    "acoustid": "source_acoustid",
     "shazam": "source_shazam",
     "netease": "source_netease",
     "kugou": "source_kugou",
@@ -646,25 +647,27 @@ class HomePage(QWidget):
             # 存储搜索结果
             self.search_results_map[file_path] = search_results
 
-            # 如果没有多平台搜索结果但 Shazam 识别成功，
-            # 将 Shazam 结果包装为搜索结果格式，确保卡片能显示信息
+            # 显示文件名（提前定义，供后续日志使用）
+            display_name = os.path.basename(file_path) if file_path else "Unknown"
+
+            # 如果没有多平台搜索结果但识别成功，
+            # 将结果包装为搜索结果格式，确保卡片能显示信息
             if not search_results and result.get("title"):
-                shazam_result = {
-                    "platform": "Shazam",
+                source = result.get("source", "shazam")
+                wrapped_result = {
+                    "platform": source.capitalize(),
                     "title": result.get("title", ""),
                     "artist": result.get("author", ""),
                     "album": result.get("album", ""),
                     "cover_url": result.get("cover_link", ""),
+                    "source": source,
                 }
-                search_results = [shazam_result]
+                search_results = [wrapped_result]
                 self.search_results_map[file_path] = search_results
-                logger.info(f"[HomePage] Wrapped Shazam result for {display_name}")
+                logger.info(f"[HomePage] Wrapped {source} result for {display_name}")
 
             # 默认选择第一个（置信度最高的）结果
             self._selected_results[file_path] = 0
-
-            # 显示文件名
-            display_name = os.path.basename(file_path) if file_path else "Unknown"
 
             # 创建歌曲卡片
             card = SongResultCard(
