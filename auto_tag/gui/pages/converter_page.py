@@ -130,7 +130,6 @@ class ConverterPage(QWidget):
         # 创建内容容器 widget，包含所有页面元素
         self.content_widget = QWidget()
         self.content_widget.setObjectName("converterContentWidget")
-        self.content_widget.setAutoFillBackground(True)
         content_layout = QVBoxLayout(self.content_widget)
         content_layout.setContentsMargins(40, 30, 40, 30)
         content_layout.setSpacing(16)
@@ -293,7 +292,7 @@ class ConverterPage(QWidget):
 
         # 使用 ScrollArea 包裹整个内容，实现全页面垂直滚动
         self.page_scroll = ScrollArea()
-        self.page_scroll.setWidget(content_widget)
+        self.page_scroll.setWidget(self.content_widget)
         self.page_scroll.setWidgetResizable(True)
         self.page_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.page_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -312,41 +311,24 @@ class ConverterPage(QWidget):
 
         if isDarkTheme():
             bg_color = "#1e1e1e"
-            text_color = "#ffffff"
         else:
             bg_color = "#fafafa"
-            text_color = "#000000"
 
-        # 使用 QPalette 设置背景色（比样式表更可靠）
-        from PyQt6.QtGui import QPalette, QColor
-
-        palette = self.content_widget.palette()
-        palette.setColor(QPalette.ColorRole.Window, QColor(bg_color))
-        palette.setColor(QPalette.ColorRole.Base, QColor(bg_color))
-        self.content_widget.setPalette(palette)
-
-        # 同时设置页面自身的调色板
-        page_palette = self.palette()
-        page_palette.setColor(QPalette.ColorRole.Window, QColor(bg_color))
-        page_palette.setColor(QPalette.ColorRole.Base, QColor(bg_color))
-        self.setPalette(page_palette)
-
-        # 设置 ScrollArea 背景色
+        # 使用样式表设置背景色（参考 home_page.py 的成功实现）
         self.page_scroll.setStyleSheet(f"""
-            ScrollArea {{
+            QScrollArea {{
                 background-color: {bg_color};
                 border: none;
             }}
-        """)
-
-        # 设置内容容器样式表作为辅助
-        self.content_widget.setStyleSheet(f"""
+            QScrollArea > QWidget > QWidget {{
+                background-color: {bg_color};
+            }}
             #converterContentWidget {{
                 background-color: {bg_color};
             }}
         """)
 
-        # 设置转换器页面自身的背景色
+        # 同时设置转换器页面自身的背景色
         self.setStyleSheet(f"""
             ConverterPage {{
                 background-color: {bg_color};

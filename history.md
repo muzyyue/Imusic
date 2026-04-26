@@ -1,5 +1,20 @@
 # 项目变更历史
 
+## v0.4.67 (2026-04-26)
+- fix(ui): 修复转换器页面深色模式背景色适配问题
+  - 将 QPalette 方式改为 QSS 样式表方式，参考 home_page.py 的成功实现
+  - 使用 QScrollArea > QWidget > QWidget 选择器处理嵌套 widget 层级
+  - 修正 QScrollArea 类名选择器（大写 Q）
+  - 移除 setAutoFillBackground(True) 和 PySide6.QtGui 导入
+  - 确保深色模式下内容区域显示 #1e1e1e 深色背景
+  - 涉及文件: `converter_page.py`
+
+## v0.4.66 (2026-04-26)
+- fix(ui): 修复转换器页面变量名错误
+  - 修复 setWidget() 调用中 content_widget → self.content_widget 的引用错误
+  - 解决 NameError: name 'content_widget' is not defined 运行时异常
+  - 涉及文件: `converter_page.py`
+
 ## v0.4.65 (2026-04-26)
 - fix(ui): 修复转换器页面深色模式背景色适配问题
   - 使用 QPalette 设置 content_widget 和页面自身的背景色，比样式表更可靠
