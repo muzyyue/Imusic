@@ -245,7 +245,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=os.path.join(project_root, 'assets', 'auto_tag.ico'),
+    icon=os.path.join(project_root, 'assets', 'imusic.ico'),
 )
 
 coll = COLLECT(
