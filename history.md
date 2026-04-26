@@ -1,5 +1,15 @@
 # 项目变更历史
 
+## v0.4.64 (2026-04-26)
+- refactor(ui): 转换器页面从局部滚动改为全页面滚动
+  - 将原先仅文件列表区域的独立 ScrollArea 调整为包裹整个页面内容的统一 ScrollArea
+  - 当页面内容（格式过滤、自定义格式、文件列表等）超出视口时，整个页面一起滚动
+  - 移除 file_list_scroll 的独立滚动容器和最小高度限制
+  - 新增 page_scroll 属性，保留 file_list_scroll 别名确保向后兼容
+  - 新增 _apply_page_scroll_theme() 方法替代原 _apply_scroll_area_theme()
+  - 操作按钮和内容区域布局结构保持不变，视觉一致性不受影响
+  - 涉及文件: `converter_page.py`
+
 ## v0.4.63 (2026-04-26)
 - feat(ui): 文件列表页面实现垂直滚动功能
   - 使用 QFluentWidgets ScrollArea 包裹文件表格和操作按钮容器

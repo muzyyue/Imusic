@@ -120,11 +120,18 @@ class ConverterPage(QWidget):
 
         创建所有界面组件并使用布局管理器组织它们，
         包括输入区域、格式设置区域、进度区域、文件列表和操作按钮。
+        整个页面使用统一的 ScrollArea 实现垂直滚动。
         """
-        # 主布局
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 30, 40, 30)
-        layout.setSpacing(16)
+        # 主布局（使用 QVBoxLayout）
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # 创建内容容器 widget，包含所有页面元素
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(40, 30, 40, 30)
+        content_layout.setSpacing(16)
 
         # === 输入区域 ===
         input_layout = QHBoxLayout()
@@ -158,7 +165,7 @@ class ConverterPage(QWidget):
         self.output_browse_btn.clicked.connect(self._on_browse_output)
         input_layout.addWidget(self.output_browse_btn)
 
-        layout.addLayout(input_layout)
+        content_layout.addLayout(input_layout)
 
         # === 格式设置区域 ===
         format_layout = QHBoxLayout()
@@ -188,13 +195,13 @@ class ConverterPage(QWidget):
 
         format_layout.addStretch()
 
-        layout.addLayout(format_layout)
+        content_layout.addLayout(format_layout)
 
         # === 文件格式过滤区域 ===
-        self._setup_format_filter_ui(layout)
+        self._setup_format_filter_ui(content_layout)
 
         # 增加文件格式过滤区域与进度条之间的垂直间隔
-        layout.addSpacing(40)
+        content_layout.addSpacing(40)
 
         # === 进度区域（文件格式过滤区域外部独立显示）===
         progress_layout = QHBoxLayout()
@@ -213,11 +220,11 @@ class ConverterPage(QWidget):
         self.status_label.setMinimumWidth(150)
         progress_layout.addWidget(self.status_label)
 
-        layout.addLayout(progress_layout)
+        content_layout.addLayout(progress_layout)
 
-        # === 文件列表（带垂直滚动）===
+        # === 文件列表 ===
         self.table_title = SubtitleLabel(tr("converter_file_list"))
-        layout.addWidget(self.table_title)
+        content_layout.addWidget(self.table_title)
 
         # 创建文件表格
         self.file_table = TableWidget()
@@ -246,8 +253,10 @@ class ConverterPage(QWidget):
         self.file_table.setColumnWidth(3, 100)
         self.file_table.setColumnWidth(4, 100)
 
-        # 隐藏表格内置的垂直滚动条，由外层 ScrollArea 统一接管
-        self.file_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # 表格最小高度，确保至少显示几行内容
+        self.file_table.setMinimumHeight(200)
+
+        content_layout.addWidget(self.file_table)
 
         # === 操作按钮区域 ===
         btn_layout = QHBoxLayout()
@@ -277,48 +286,42 @@ class ConverterPage(QWidget):
         self.clear_data_btn.clicked.connect(self._on_clear_data)
         btn_layout.addWidget(self.clear_data_btn)
 
-        # 创建容器 widget，包含表格和按钮
-        container_widget = QWidget()
-        container_layout = QVBoxLayout(container_widget)
-        container_layout.setContentsMargins(0, 0, 0, 0)
-        container_layout.setSpacing(0)
-        container_layout.addWidget(self.file_table)
-        container_layout.addLayout(btn_layout)
+        content_layout.addLayout(btn_layout)
+        content_layout.addStretch()  # 底部弹性空间，内容少时按钮靠上
 
-        # 使用 ScrollArea 包裹容器，实现垂直滚动
-        self.file_list_scroll = ScrollArea()
-        self.file_list_scroll.setWidget(container_widget)
-        self.file_list_scroll.setWidgetResizable(True)
-        self.file_list_scroll.setMinimumHeight(400)
-        self.file_list_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.file_list_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        # 适配主题的背景样式
-        self.file_list_scroll.setObjectName("fileListScroll")
-        self._apply_scroll_area_theme()
+        # 使用 ScrollArea 包裹整个内容，实现全页面垂直滚动
+        self.page_scroll = ScrollArea()
+        self.page_scroll.setWidget(content_widget)
+        self.page_scroll.setWidgetResizable(True)
+        self.page_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.page_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.page_scroll.setObjectName("converterPageScroll")
+        self._apply_page_scroll_theme()
 
-        layout.addWidget(self.file_list_scroll, stretch=1)
+        # 向后兼容：别名指向 page_scroll，确保旧测试代码仍能正常工作
+        self.file_list_scroll = self.page_scroll
 
-    def _apply_scroll_area_theme(self) -> None:
-        """更新滚动区域样式以适配当前主题"""
-        if not hasattr(self, 'file_list_scroll'):
+        main_layout.addWidget(self.page_scroll)
+
+    def _apply_page_scroll_theme(self) -> None:
+        """更新页面滚动区域样式以适配当前主题"""
+        if not hasattr(self, 'page_scroll'):
             return
         if isDarkTheme():
             bg_color = "#1e1e1e"
-            border_color = "#3d3d3d"
         else:
             bg_color = "#fafafa"
-            border_color = "#e0e0e0"
 
-        self.file_list_scroll.setStyleSheet(f"""
+        self.page_scroll.setStyleSheet(f"""
             ScrollArea {{
                 background-color: {bg_color};
-                border: 1px solid {border_color};
-                border-radius: 8px;
-            }}
-            ScrollArea > QWidget > QWidget {{
-                background-color: {bg_color};
+                border: none;
             }}
         """)
+
+    def _apply_scroll_area_theme(self) -> None:
+        """更新滚动区域样式以适配当前主题（保留兼容性）"""
+        self._apply_page_scroll_theme()
 
     def _setup_format_filter_ui(self, parent_layout: QVBoxLayout) -> None:
         """
