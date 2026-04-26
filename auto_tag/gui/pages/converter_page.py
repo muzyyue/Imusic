@@ -294,6 +294,11 @@ class ConverterPage(QWidget):
         self.page_scroll = ScrollArea()
         self.page_scroll.setWidget(self.content_widget)
         self.page_scroll.setWidgetResizable(True)
+        self.page_scroll.setMinimumHeight(400)
+        self.page_scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding
+        )
         self.page_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.page_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.page_scroll.setObjectName("converterPageScroll")
