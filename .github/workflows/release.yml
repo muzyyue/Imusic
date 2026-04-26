@@ -37,7 +37,7 @@ jobs:
 
       - name: Run tests
         run: |
-          uv run pytest tests/ -v --tb=short
+          uv run pytest tests/ -v --tb=short --capture=no
 
       - name: Build executable (onedir mode)
         run: |
