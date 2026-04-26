@@ -32,3 +32,14 @@ compilation-report.html
 *.pdb
 
 .python-version
+
+# 测试临时产物
+tests/app_flow_result*.txt
+tests/*.log
+
+# Egg info 自动生成的元数据
+Imusic.egg-info/PKG-INFO
+Imusic.egg-info/SOURCES.txt
+Imusic.egg-info/dependency_links.txt
+Imusic.egg-info/top_level.txt
+Imusic.egg-info/requires.txt
