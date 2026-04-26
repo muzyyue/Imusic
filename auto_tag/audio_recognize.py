@@ -274,6 +274,7 @@ class SearchResult:
 
     Attributes:
         source: 数据来源平台标识（"shazam"|"netease"|"kugou"）
+        fingerprint_engine: 音频指纹识别引擎来源（"acoustid"|"shazam"|"metadata"|"none"）
         title: 歌曲标题
         artist: 艺术家
         album: 专辑名
@@ -295,6 +296,7 @@ class SearchResult:
         duration: int = 0,
         confidence: float = 1.0,
         raw_data: dict | None = None,
+        fingerprint_engine: str = "none",
     ) -> None:
         """
         初始化搜索结果
@@ -309,8 +311,10 @@ class SearchResult:
             duration: 时长
             confidence: 置信度
             raw_data: 原始数据
+            fingerprint_engine: 音频指纹识别引擎来源
         """
         self.source = source
+        self.fingerprint_engine = fingerprint_engine
         self.title = title
         self.artist = artist
         self.album = album
@@ -318,17 +322,49 @@ class SearchResult:
         self.song_id = song_id
         self.duration = duration
         self.confidence = confidence
-        self.raw_data = raw_data or {}
+        self.raw_data = raw_data
+
+    def get_combined_source(self) -> str:
+        """
+        获取组合来源字符串
+        
+        Returns:
+            str: 组合来源，如 "Acoustid + 网易云音乐" 或 "Shazam + QQ音乐"
+        """
+        if self.fingerprint_engine != "none":
+            # 将引擎名称转换为显示名称
+            engine_display = {
+                "acoustid": "Acoustid",
+                "shazam": "Shazam",
+                "metadata": "音频标签",
+            }.get(self.fingerprint_engine, self.fingerprint_engine)
+            
+            # 将平台名称转换为显示名称
+            source_display = {
+                "netease": "网易云音乐",
+                "qqmusic": "QQ音乐",
+                "kugou": "酷狗音乐",
+                "shazam": "Shazam",
+            }.get(self.source, self.source)
+            
+            return f"{engine_display} + {source_display}"
+        else:
+            # 返回原始来源名称
+            source_display = {
+                "netease": "网易云音乐",
+                "qqmusic": "QQ音乐",
+                "kugou": "酷狗音乐",
+                "shazam": "Shazam",
+            }.get(self.source, self.source)
+            
+            return source_display
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        将搜索结果转换为字典格式
-
-        Returns:
-            dict: 包含所有字段信息的字典
-        """
+        """转换为字典格式"""
         return {
             "source": self.source,
+            "fingerprint_engine": self.fingerprint_engine,
+            "combined_source": self.get_combined_source(),
             "title": self.title,
             "artist": self.artist,
             "album": self.album,
@@ -336,6 +372,7 @@ class SearchResult:
             "song_id": self.song_id,
             "duration": self.duration,
             "confidence": self.confidence,
+            "raw_data": self.raw_data or {},
         }
 
 
@@ -982,7 +1019,13 @@ def _get_netease_cover_by_id(song_id: str, cookie: str | None = None) -> str:
         return ''
 
 
-async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 3, include_radio: bool = True) -> list[SearchResult]:
+async def _search_netease_rest(
+    keyword: str,
+    limit: int = 5,
+    max_retries: int = 3,
+    include_radio: bool = True,
+    fingerprint_engine: str = "none",
+) -> list[SearchResult]:
     """
     纯 REST API 搜索网易云音乐（完全独立，不依赖 pymusiclibrary）
 
@@ -1003,6 +1046,7 @@ async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 
         limit: 返回结果数量上限（每种类型）
         max_retries: 最大重试次数（遇到频率限制时）
         include_radio: 是否同时搜索电台/声音内容（type=1009）
+        fingerprint_engine: 音频指纹识别引擎来源
 
     Returns:
         list[SearchResult]: 搜索结果列表（歌曲+电台合并）
@@ -1013,6 +1057,9 @@ async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 
     cache_key = f"{keyword}_radio" if include_radio else keyword
     cached_results = _search_cache.get(cache_key)
     if cached_results is not None:
+        # 为缓存结果设置 fingerprint_engine
+        for r in cached_results:
+            r.fingerprint_engine = fingerprint_engine
         return cached_results
 
     # Step 2: 请求前等待（避免过于频繁）
@@ -1042,6 +1089,10 @@ async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 
                 logger.info(f"[NetEase-REST] Found {len(radio_results)} radios for '{keyword}'")
 
             if all_results:
+                # 为每个结果设置 fingerprint_engine
+                for r in all_results:
+                    r.fingerprint_engine = fingerprint_engine
+
                 # Step 4a: 成功 → 写入缓存 + 恢复默认间隔
                 _search_cache.set(cache_key, all_results)
                 _rate_limiter.on_success()
@@ -1074,6 +1125,10 @@ async def _search_netease_rest(keyword: str, limit: int = 5, max_retries: int = 
                     all_results.extend(radio_results)
 
                 if all_results:
+                    # 为每个结果设置 fingerprint_engine
+                    for r in all_results:
+                        r.fingerprint_engine = fingerprint_engine
+
                     _search_cache.set(cache_key, all_results)
                     _rate_limiter.on_success()
                     
@@ -1588,7 +1643,12 @@ async def _search_kugou(keyword: str, limit: int = 5) -> list[SearchResult]:
         return []
 
 
-async def _search_qqmusic(keyword: str, limit: int = 5, max_retries: int = 3) -> list[SearchResult]:
+async def _search_qqmusic(
+    keyword: str,
+    limit: int = 5,
+    max_retries: int = 3,
+    fingerprint_engine: str = "none",
+) -> list[SearchResult]:
     """
     异步搜索 QQ 音乐（REST API 模式）
 
@@ -1602,6 +1662,7 @@ async def _search_qqmusic(keyword: str, limit: int = 5, max_retries: int = 3) ->
         keyword: 搜索关键词
         limit: 返回结果数量上限（默认5）
         max_retries: 最大重试次数（默认3）
+        fingerprint_engine: 音频指纹识别引擎来源
 
     Returns:
         list[SearchResult]: QQ 音乐搜索结果列表，失败返回空列表
@@ -1614,7 +1675,11 @@ async def _search_qqmusic(keyword: str, limit: int = 5, max_retries: int = 3) ->
     try:
         def _do_search() -> list[SearchResult]:
             """执行同步搜索并返回结果"""
-            return _do_qqmusic_search(keyword, limit)
+            results = _do_qqmusic_search(keyword, limit)
+            # 为每个结果设置 fingerprint_engine
+            for r in results:
+                r.fingerprint_engine = fingerprint_engine
+            return results
 
         # 首选方案：使用 run_in_executor（推荐方式）
         loop = asyncio.get_running_loop()
@@ -1654,6 +1719,7 @@ async def multi_source_search(
     limit: int = 5,
     sources: list[str] | None = None,
     include_radio: bool = True,
+    fingerprint_engine: str = "none",
 ) -> list[SearchResult]:
     """
     多数据源并发搜索音乐信息
@@ -1667,6 +1733,7 @@ async def multi_source_search(
         limit: 每个平台返回的最大结果数
         sources: 要搜索的源列表，默认 ["shazam", "netease"]
         include_radio: 是否包含电台/声音内容（仅 netease 生效），默认 True
+        fingerprint_engine: 音频指纹识别引擎来源（"acoustid"|"shazam"|"metadata"|"none"）
 
     Returns:
         list[SearchResult]: 所有平台的搜索结果，按置信度降序排列
@@ -1677,19 +1744,26 @@ async def multi_source_search(
         ...     print(f"{r.source}: {r.title} - {r.artist}")
     """
     all_results: list[SearchResult] = []
-    logger.info(f"[MultiSource] Starting search with keyword: {keyword}, sources: {sources}")
+    logger.info(f"[MultiSource] Starting search with keyword: {keyword}, sources: {sources}, fingerprint_engine: {fingerprint_engine}")
 
     if sources is None:
         sources = ["shazam", "netease"]
 
-    # 如果已有 Shazam 结果且 shazam 在源列表中，直接解析
-    if "shazam" in sources and shazam_result and "track" in shazam_result:
+    # 如果已有指纹识别结果（Shazam 或 Acoustid），将其作为首要结果加入
+    # 注意：无论 sources 列表中是否包含该引擎，指纹结果都应优先展示
+    if shazam_result and "track" in shazam_result:
         try:
+            source = shazam_result.get("source", "shazam")
             shazam_result_obj = _parse_shazam_result(shazam_result["track"])
+            # 覆盖 source 为实际识别来源
+            shazam_result_obj.source = source
             all_results.append(shazam_result_obj)
-            logger.info(f"[MultiSource] Shazam result added: {shazam_result_obj.title} - {shazam_result_obj.artist}")
+            logger.info(
+                f"[MultiSource] Fingerprint result ({source}) added: "
+                f"{shazam_result_obj.title} - {shazam_result_obj.artist}"
+            )
         except Exception as e:
-            logger.error(f"[MultiSource] Failed to parse Shazam result: {e}", exc_info=True)
+            logger.error(f"[MultiSource] Failed to parse fingerprint result: {e}", exc_info=True)
 
     search_tasks = []
 
@@ -1697,7 +1771,7 @@ async def multi_source_search(
     if "netease" in sources:
         logger.info("[MultiSource] Using pure REST API for NetEase")
         search_tasks.append(asyncio.create_task(_search_netease_rest(
-            keyword, limit, include_radio=include_radio
+            keyword, limit, include_radio=include_radio, fingerprint_engine=fingerprint_engine
         )))
     else:
         logger.info("[MultiSource] NetEase not in sources, skipping")
@@ -1705,7 +1779,7 @@ async def multi_source_search(
     # QQ音乐搜索（REST API）
     if "qqmusic" in sources:
         logger.info("[MultiSource] Using REST API for QQ Music")
-        search_tasks.append(asyncio.create_task(_search_qqmusic(keyword, limit)))
+        search_tasks.append(asyncio.create_task(_search_qqmusic(keyword, limit, fingerprint_engine=fingerprint_engine)))
 
     # 酷狗暂时禁用（REST API 不可用，原生库不稳定）
     if "kugou" in sources:
@@ -2293,6 +2367,7 @@ async def recognize_and_rename_file(
                         limit=5,
                         sources=config.search_sources,
                         include_radio=config.include_radio,
+                        fingerprint_engine="filename",
                     )
 
                     if fallback_results:
@@ -2336,6 +2411,7 @@ async def recognize_and_rename_file(
                         limit=5,
                         sources=config.search_sources,
                         include_radio=config.include_radio,
+                        fingerprint_engine="metadata",
                     )
 
                     if fallback_results:
@@ -2387,15 +2463,19 @@ async def recognize_and_rename_file(
     s_artist = sanitize(artist, trace)
     s_album = sanitize(album, trace)
 
-    # 3.5) Multi-source search: 用纯歌曲名搜索关键词平台（网易云/QQ音乐等）
+    # 3.5) Multi-source search: 根据配置构建关键词
     from auto_tag.gui.config import config
-    keyword = title
+    if config.search_keyword_mode == "artist_title":
+        keyword = f"{artist} {title}"
+    else:
+        keyword = title
     search_results = await multi_source_search(
         keyword=keyword,
         shazam_result=out,
         limit=3,
         sources=config.search_sources,
         include_radio=config.include_radio,
+        fingerprint_engine=recognition_source or "none",
     )
 
     # 4) Build final name (if renaming)

@@ -1,5 +1,26 @@
 # 项目变更历史
 
+## v0.4.60 (2026-04-26)
+- feat(ui): 搜索结果栏显示复合来源标识
+  - 当通过音频指纹引擎（Acoustid/Shazam/音频标签）识别后再搜索网易云等平台时，显示组合来源
+  - 新增 SearchResult.fingerprint_engine 字段和 get_combined_source() 方法
+  - 新增 combined_source 字段到 SearchResult.to_dict()，返回如 "Acoustid + 网易云音乐" 的格式
+  - PlatformResultWidget 优先使用 combined_source 显示平台名称，备选传统映射
+  - 支持 fingerprint_engine 值：acoustid、shazam、metadata、filename、none
+  - audio_recognize.py: 在 _search_netease_rest、_search_qqmusic 中传递 fingerprint_engine
+  - song_result_card.py: 修改 _get_platform_display_name() 支持复合来源
+  - 涉及文件: `audio_recognize.py`, `song_result_card.py`
+
+## v0.4.59 (2026-04-26)
+- feat(settings): 设置页面新增「搜索关键词模式」选项
+  - 用户可选择传给网易云/QQ音乐等平台的关键词格式
+  - 「仅歌曲名」(title_only)：默认选项，用纯歌名搜索，对冷门/日文歌曲更精准
+  - 「艺术家 + 歌曲名」(artist_title)：传统组合搜索方式
+  - config.py: 新增 search_keyword_mode 属性及 VALID_KEYWORD_MODES 常量
+  - settings_page.py: 新增 keyword_mode ComboBox 行及回调方法
+  - audio_recognize.py: 根据 config.search_keyword_mode 动态构建 keyword
+  - zh.json / en.json: 新增 keyword_mode_label、keyword_modes 翻译键
+
 ## v0.4.58 (2026-04-26)
 - feat(core): 新增音频元数据回退策略 - 无意义文件名文件的搜索增强
   - 当音频指纹引擎（Acoustid/Shazam）全部失败，且文件名无意义时，从文件内部标签读取元数据作为搜索关键词

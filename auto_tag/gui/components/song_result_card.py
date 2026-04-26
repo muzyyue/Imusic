@@ -615,12 +615,20 @@ class PlatformResultWidget(QFrame):
         self._update_style()
 
     def _get_platform_display_name(self) -> str:
-        """获取平台显示名称"""
+        """获取平台显示名称（支持复合来源）"""
         from auto_tag.gui.i18n import tr
 
+        # 优先使用 combined_source（复合来源）
+        combined_source = self.result_data.get("combined_source", "")
+        if combined_source:
+            return combined_source
+
+        # 备选：使用传统的平台名称映射
         platform_names = {
+            "acoustid": "source_acoustid",
             "shazam": "source_shazam",
             "netease": "source_netease",
+            "qqmusic": "source_qqmusic",
             "kugou": "source_kugou",
         }
         key = platform_names.get(self.platform, self.platform)
