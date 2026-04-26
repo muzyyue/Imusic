@@ -207,7 +207,7 @@ class MainWindow(FluentWindow):
         尝试从 assets 目录加载应用图标。
         """
         try:
-            icon_path = os.path.join(_base_dir(), "assets", "auto_tag.ico")
+            icon_path = os.path.join(_base_dir(), "assets", "imusic.ico")
             if os.path.exists(icon_path):
                 self.setWindowIcon(QIcon(icon_path))
         except Exception:
