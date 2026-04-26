@@ -572,6 +572,10 @@ class MusicManagerPage(QWidget):
         # 清空表格
         self.file_table.setRowCount(0)
 
+        # 清空歌词缓存
+        self.lyrics_cache.clear()
+        self.current_lyrics = None
+
         # 清空封面缓存
         self._current_cover_data = None
 
@@ -596,7 +600,7 @@ class MusicManagerPage(QWidget):
         )
 
         # 重置歌词编辑区
-        self.lyrics_edit.clear()
+        self.lyric_text.clear()
 
         # 停止可能正在运行的工作线程
         if hasattr(self, 'lyric_worker') and self.lyric_worker and self.lyric_worker.isRunning():
@@ -620,6 +624,7 @@ class MusicManagerPage(QWidget):
         扫描目录中的音频文件
 
         遍历目录查找所有支持的音频文件，并填充到文件表格中。
+        扫描前会清理旧目录的歌词缓存，避免缓存污染。
 
         Args:
             directory (str): 要扫描的目录路径
@@ -630,6 +635,11 @@ class MusicManagerPage(QWidget):
         # 清空文件列表
         self.files.clear()
         self.file_table.setRowCount(0)
+
+        # 清理旧目录的歌词缓存，避免缓存污染
+        self.lyrics_cache.clear()
+        self.current_lyrics = None
+        self.lyric_text.clear()
 
         # 遍历目录
         for root, dirs, filenames in os.walk(directory):
@@ -748,6 +758,7 @@ class MusicManagerPage(QWidget):
         加载文件信息
 
         读取文件的元数据和封面，并显示在界面上。
+        优先从歌词缓存加载，缓存未命中时再尝试从文件嵌入式标签提取。
 
         Args:
             file_path (str): 要加载的文件路径
@@ -773,16 +784,24 @@ class MusicManagerPage(QWidget):
                 self._set_default_cover()
                 self._current_cover_data = None
 
-            # 尝试提取已有歌词
-            lyrics = self.lyric_manager.extract_lyrics(file_path)
-            if lyrics:
-                self.current_lyrics = lyrics
-                synced = lyrics.get('synced_lyrics', '')
-                plain = lyrics.get('plain_lyrics', '')
+            # 优先从缓存加载歌词（避免重复提取或重复请求）
+            if file_path in self.lyrics_cache:
+                self.current_lyrics = self.lyrics_cache[file_path]
+                synced = self.current_lyrics.get('synced_lyrics', '')
+                plain = self.current_lyrics.get('plain_lyrics', '')
                 self.lyric_text.setText(synced or plain)
             else:
-                self.current_lyrics = None
-                self.lyric_text.clear()
+                # 缓存未命中，尝试从文件嵌入式标签提取
+                lyrics = self.lyric_manager.extract_lyrics(file_path)
+                if lyrics:
+                    self.current_lyrics = lyrics
+                    self.lyrics_cache[file_path] = lyrics  # 回写缓存
+                    synced = lyrics.get('synced_lyrics', '')
+                    plain = lyrics.get('plain_lyrics', '')
+                    self.lyric_text.setText(synced or plain)
+                else:
+                    self.current_lyrics = None
+                    self.lyric_text.clear()
 
         except Exception as e:
             MessageBox(tr("errors_occurred"), str(e), self).exec()
@@ -1284,16 +1303,22 @@ class MusicManagerPage(QWidget):
         """
         单个文件歌词获取完成回调
 
+        检查文件路径是否仍在当前文件列表中，
+        防止用户切换目录后异步回调污染界面显示。
+
         Args:
             file_path (str): 文件路径
             lyrics (dict | None): 歌词数据，失败则为 None
         """
-        # 缓存歌词
+        # 缓存歌词（始终缓存，不依赖文件是否仍在列表中）
         if lyrics:
             self.lyrics_cache[file_path] = lyrics
 
-        # 如果是当前文件，显示歌词
-        if file_path == self.current_file and lyrics:
+        # 显示歌词：需同时满足 3 个条件
+        # 1. 文件路径仍在当前文件列表中（防止用户已切换目录）
+        # 2. 文件为当前选中文件
+        # 3. 歌词数据有效
+        if file_path in self.files and file_path == self.current_file and lyrics:
             self.current_lyrics = lyrics
             synced = lyrics.get('synced_lyrics', '')
             plain = lyrics.get('plain_lyrics', '')

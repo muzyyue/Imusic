@@ -29,6 +29,7 @@ from qfluentwidgets import (
     MessageBox,
     ProgressBar,
     PushButton,
+    ScrollArea,
     SubtitleLabel,
     TableWidget,
     isDarkTheme,
@@ -214,10 +215,11 @@ class ConverterPage(QWidget):
 
         layout.addLayout(progress_layout)
 
-        # === 文件列表 ===
+        # === 文件列表（带垂直滚动）===
         self.table_title = SubtitleLabel(tr("converter_file_list"))
         layout.addWidget(self.table_title)
 
+        # 创建文件表格
         self.file_table = TableWidget()
         self.file_table.setColumnCount(5)
         self.file_table.setHorizontalHeaderLabels([
@@ -243,12 +245,14 @@ class ConverterPage(QWidget):
         self.file_table.setColumnWidth(2, 80)
         self.file_table.setColumnWidth(3, 100)
         self.file_table.setColumnWidth(4, 100)
-        self.file_table.setMinimumHeight(300)
-        layout.addWidget(self.file_table)
+
+        # 隐藏表格内置的垂直滚动条，由外层 ScrollArea 统一接管
+        self.file_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         # === 操作按钮区域 ===
         btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
+        btn_layout.setSpacing(8)
+        btn_layout.setContentsMargins(0, 12, 0, 0)
 
         self.check_all_btn = PushButton(tr("check_all"))
         self.check_all_btn.clicked.connect(self._on_check_all)
@@ -257,6 +261,8 @@ class ConverterPage(QWidget):
         self.uncheck_all_btn = PushButton(tr("uncheck_all"))
         self.uncheck_all_btn.clicked.connect(self._on_uncheck_all)
         btn_layout.addWidget(self.uncheck_all_btn)
+
+        btn_layout.addStretch()
 
         self.start_btn = PushButton(FIF.PLAY, tr("start_conversion"))
         self.start_btn.clicked.connect(self._start_conversion)
@@ -271,7 +277,48 @@ class ConverterPage(QWidget):
         self.clear_data_btn.clicked.connect(self._on_clear_data)
         btn_layout.addWidget(self.clear_data_btn)
 
-        layout.addLayout(btn_layout)
+        # 创建容器 widget，包含表格和按钮
+        container_widget = QWidget()
+        container_layout = QVBoxLayout(container_widget)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+        container_layout.addWidget(self.file_table)
+        container_layout.addLayout(btn_layout)
+
+        # 使用 ScrollArea 包裹容器，实现垂直滚动
+        self.file_list_scroll = ScrollArea()
+        self.file_list_scroll.setWidget(container_widget)
+        self.file_list_scroll.setWidgetResizable(True)
+        self.file_list_scroll.setMinimumHeight(400)
+        self.file_list_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.file_list_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # 适配主题的背景样式
+        self.file_list_scroll.setObjectName("fileListScroll")
+        self._apply_scroll_area_theme()
+
+        layout.addWidget(self.file_list_scroll, stretch=1)
+
+    def _apply_scroll_area_theme(self) -> None:
+        """更新滚动区域样式以适配当前主题"""
+        if not hasattr(self, 'file_list_scroll'):
+            return
+        if isDarkTheme():
+            bg_color = "#1e1e1e"
+            border_color = "#3d3d3d"
+        else:
+            bg_color = "#fafafa"
+            border_color = "#e0e0e0"
+
+        self.file_list_scroll.setStyleSheet(f"""
+            ScrollArea {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+            }}
+            ScrollArea > QWidget > QWidget {{
+                background-color: {bg_color};
+            }}
+        """)
 
     def _setup_format_filter_ui(self, parent_layout: QVBoxLayout) -> None:
         """

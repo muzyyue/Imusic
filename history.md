@@ -1,5 +1,24 @@
 # 项目变更历史
 
+## v0.4.62 (2026-04-26)
+- fix(lyric): 修复歌词数据在切换歌曲或重新选择目录后丢失的问题
+  - _load_file_info(): 优先从 lyrics_cache 加载歌词，缓存未命中时才从文件标签提取
+  - _scan_audio_files(): 重选目录时自动清理 lyrics_cache，避免缓存污染
+  - _on_lyric_fetched(): 增加 file_path in self.files 校验，防止异步回调污染新目录界面
+  - _on_clear_data(): 同步清理 lyrics_cache，修复 self.lyrics_edit 拼写错误为 self.lyric_text
+  - 涉及文件: `music_manager_page.py`
+
+## v0.4.61 (2026-04-26)
+- feat(ui): 文件列表页面实现垂直滚动功能
+  - 使用 QFluentWidgets ScrollArea 包裹文件表格和操作按钮容器
+  - 文件表格和操作按钮始终在一起滚动，按钮固定在容器底部
+  - 操作按钮（全选/取消全选/开始转换/停止转换/清除数据）随内容一起滚动
+  - 滚动区域最小高度 400px，支持 expand 尺寸策略自动适配窗口大小
+  - 新增 _apply_scroll_area_theme() 方法，适配深色/浅色主题背景色
+  - 隐藏表格内置滚动条，由外层 ScrollArea 统一接管垂直滚动
+  - 新增 file_list_scroll 属性，方便测试和后续扩展
+  - 涉及文件: `converter_page.py`
+
 ## v0.4.60 (2026-04-26)
 - feat(ui): 搜索结果栏显示复合来源标识
   - 当通过音频指纹引擎（Acoustid/Shazam/音频标签）识别后再搜索网易云等平台时，显示组合来源
