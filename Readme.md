@@ -141,7 +141,7 @@ Imusic/
 │           └── converter_worker.py
 │
 ├── assets/                    # 静态资源
-│   ├── auto_tag.ico           # 应用图标
+│   ├── imusic.ico             # 应用图标
 │   └── main.png               # 项目截图
 │
 ├── build_tools/               # 构建工具
