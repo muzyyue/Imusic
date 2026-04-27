@@ -12,9 +12,6 @@ import sys
 import os
 import io
 
-# Fix Windows encoding
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auto_tag.audio_recognize import _search_netease_rest, _do_single_search, _do_radio_search

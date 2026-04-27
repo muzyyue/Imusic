@@ -15,7 +15,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import (
+    QApplication,
+    QSizePolicy,
+    QTableWidgetItem,
+)
 
 from auto_tag.gui.pages.converter_page import ConverterPage
 
@@ -299,6 +303,11 @@ class TestClearDataFunction:
         (test_dir / "song1.mp3").touch()
         (test_dir / "song2.flac").touch()
 
+        # 确保格式被选中（_scan_files 依赖 supported_input_formats）
+        for checkbox in converter_page.audio_format_checkboxes.values():
+            checkbox.setChecked(True)
+        converter_page._update_supported_formats()
+
         # 模拟浏览目录（填充文件列表）
         converter_page.input_dir = str(test_dir)
         converter_page.input_entry.setText(str(test_dir))
@@ -327,9 +336,8 @@ class TestClearDataFunction:
 
         # 模拟点击清除数据按钮（跳过确认对话框）
         with patch.object(converter_page.clear_data_btn, 'text', return_value="Clear Data"):
-            # 直接调用方法但mock掉QMessageBox
-            with patch('auto_tag.gui.pages.converter_page.QMessageBox') as mock_box:
-                mock_box.question.return_value = QMessageBox.StandardButton.Yes
+            with patch('PySide6.QtWidgets.QMessageBox') as mock_box:
+                mock_box.question.return_value = mock_box.StandardButton.Yes
 
                 converter_page._on_clear_data()
 
@@ -355,16 +363,23 @@ class TestClearDataFunction:
 
     def test_clear_data_during_conversion(self, converter_page, tmp_path):
         """测试转换进行中时清除数据"""
+        # 添加文件（_on_clear_data 会检查 files 是否为空）
+        test_dir = tmp_path / "test_audio_conv"
+        test_dir.mkdir()
+        (test_dir / "song1.mp3").touch()
+        converter_page.files = [str(test_dir / "song1.mp3")]
+        converter_page.file_table.insertRow(0)
+
         # 创建模拟的工作线程
         mock_worker = MagicMock()
         mock_worker.isRunning.return_value = True
         converter_page.worker = mock_worker
 
         # Mock QMessageBox.question - 第一次是停止确认（Yes），第二次是清除确认（Yes）
-        with patch('auto_tag.gui.pages.converter_page.QMessageBox') as mock_box:
+        with patch('PySide6.QtWidgets.QMessageBox') as mock_box:
             mock_box.question.side_effect = [
-                QMessageBox.StandardButton.Yes,   # 停止确认
-                QMessageBox.StandardButton.Yes    # 清除确认
+                mock_box.StandardButton.Yes,   # 停止确认
+                mock_box.StandardButton.Yes    # 清除确认
             ]
 
             converter_page._on_clear_data()
@@ -384,8 +399,8 @@ class TestClearDataFunction:
         converter_page.file_table.insertRow(0)
 
         # Mock QMessageBox.question - 用户选择 No（取消）
-        with patch('auto_tag.gui.pages.converter_page.QMessageBox') as mock_box:
-            mock_box.question.return_value = QMessageBox.StandardButton.No  # 用户取消
+        with patch('PySide6.QtWidgets.QMessageBox') as mock_box:
+            mock_box.question.return_value = mock_box.StandardButton.No  # 用户取消
 
             converter_page._on_clear_data()
 

@@ -3,9 +3,6 @@ import os
 import sys
 import logging
 
-if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8")
-
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 
 from auto_tag.audio_recognize import recognize_and_rename_file

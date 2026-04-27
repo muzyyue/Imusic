@@ -59,7 +59,7 @@ class TestMusicManagerPage:
         assert hasattr(page, 'year_edit')
         assert hasattr(page, 'genre_edit')
         assert hasattr(page, 'cover_label')
-        assert hasattr(page, 'lyric_edit')
+        assert hasattr(page, 'lyric_text')
         assert hasattr(page, 'provider_combo')
 
     def test_refresh_texts(self, qapp):
@@ -98,7 +98,8 @@ class TestMusicManagerPage:
         
         assert page.selected_files == []
 
-    def test_on_save_metadata_no_file(self, qapp):
+    @patch("auto_tag.gui.pages.music_manager_page.MessageBox")
+    def test_on_save_metadata_no_file(self, mock_msgbox, qapp):
         """
         测试保存元数据时未选择文件
         """
@@ -109,8 +110,12 @@ class TestMusicManagerPage:
         
         # 调用 _on_save_metadata 不应抛出异常
         page._on_save_metadata()
+        
+        # 验证 MessageBox 被调用（提示未选择文件）
+        mock_msgbox.assert_called_once()
 
-    def test_on_get_lyrics_no_file(self, qapp):
+    @patch("auto_tag.gui.pages.music_manager_page.MessageBox")
+    def test_on_get_lyrics_no_file(self, mock_msgbox, qapp):
         """
         测试获取歌词时未选择文件
         """
@@ -122,8 +127,12 @@ class TestMusicManagerPage:
         
         # 调用 _on_get_lyrics 不应抛出异常
         page._on_get_lyrics()
+        
+        # 验证 MessageBox 被调用（提示未选择文件）
+        mock_msgbox.assert_called_once()
 
-    def test_on_embed_lyrics_no_lyrics(self, qapp):
+    @patch("auto_tag.gui.pages.music_manager_page.MessageBox")
+    def test_on_embed_lyrics_no_lyrics(self, mock_msgbox, qapp):
         """
         测试嵌入歌词时无歌词内容
         """
@@ -134,6 +143,9 @@ class TestMusicManagerPage:
         
         # 调用 _on_embed_lyrics 不应抛出异常
         page._on_embed_lyrics()
+        
+        # 验证 MessageBox 被调用（提示无歌词）
+        mock_msgbox.assert_called()
 
 
 class TestMusicManagerPageIntegration:
@@ -144,15 +156,16 @@ class TestMusicManagerPageIntegration:
     """
 
     @patch("auto_tag.gui.pages.music_manager_page.MetadataManager")
-    def test_load_file_info(self, mock_metadata_manager, qapp):
+    @patch("auto_tag.gui.pages.music_manager_page.LyricManager")
+    def test_load_file_info(self, mock_lyric_manager, mock_metadata_manager, qapp):
         """
         测试加载文件信息
         """
         from auto_tag.gui.pages import MusicManagerPage
         
         # Mock MetadataManager
-        mock_manager = MagicMock()
-        mock_manager.read_metadata.return_value = {
+        mock_meta_mgr = MagicMock()
+        mock_meta_mgr.read_metadata.return_value = {
             'title': 'Test Song',
             'artist': 'Test Artist',
             'album': 'Test Album',
@@ -160,36 +173,59 @@ class TestMusicManagerPageIntegration:
             'genre': 'Pop',
             'cover': None
         }
-        mock_metadata_manager.return_value = mock_manager
+        mock_metadata_manager.return_value = mock_meta_mgr
+        
+        # Mock LyricManager
+        mock_lyric_mgr = MagicMock()
+        mock_lyric_mgr.extract_lyrics.return_value = None
+        mock_lyric_manager.return_value = mock_lyric_mgr
         
         page = MusicManagerPage()
-        page.metadata_manager = mock_manager
+        page.metadata_manager = mock_meta_mgr
+        page.lyric_manager = mock_lyric_mgr
         
         # 调用 _load_file_info
         page._load_file_info("/fake/path/song.mp3")
         
         # 验证元数据被读取
-        mock_manager.read_metadata.assert_called_once_with("/fake/path/song.mp3")
+        mock_meta_mgr.read_metadata.assert_called_once_with("/fake/path/song.mp3")
 
+    @patch("auto_tag.gui.pages.music_manager_page.MetadataManager")
     @patch("auto_tag.gui.pages.music_manager_page.LyricManager")
-    def test_extract_lyrics_from_file(self, mock_lyric_manager, qapp):
+    def test_extract_lyrics_from_file(self, mock_lyric_manager, mock_metadata_manager, qapp):
         """
         测试从文件提取歌词
         """
         from auto_tag.gui.pages import MusicManagerPage
         
+        # Mock MetadataManager
+        mock_meta_mgr = MagicMock()
+        mock_meta_mgr.read_metadata.return_value = {
+            'title': 'Test Song',
+            'artist': 'Test Artist',
+            'album': 'Test Album',
+            'year': '2024',
+            'genre': 'Pop',
+            'cover': None
+        }
+        mock_metadata_manager.return_value = mock_meta_mgr
+        
         # Mock LyricManager
-        mock_manager = MagicMock()
-        mock_manager.extract_lyrics.return_value = {
+        mock_lyric_mgr = MagicMock()
+        mock_lyric_mgr.extract_lyrics.return_value = {
             'plain_lyrics': 'Test lyrics',
             'synced_lyrics': '[00:00.00]Test lyrics',
             'format': 'lrc'
         }
-        mock_lyric_manager.return_value = mock_manager
+        mock_lyric_manager.return_value = mock_lyric_mgr
         
         page = MusicManagerPage()
-        page.lyric_manager = mock_manager
+        page.metadata_manager = mock_meta_mgr
+        page.lyric_manager = mock_lyric_mgr
         page.current_file = "/fake/path/song.mp3"
         
         # 调用提取歌词
         page._load_file_info("/fake/path/song.mp3")
+        
+        # 验证歌词被提取
+        mock_lyric_mgr.extract_lyrics.assert_called_once_with("/fake/path/song.mp3")

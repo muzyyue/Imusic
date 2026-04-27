@@ -9,8 +9,6 @@ import random
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-
 def encrypt_params(params: dict) -> str:
     """模拟网易云 API 的参数加密"""
     text = json.dumps(params, separators=(',', ':'))

@@ -1,0 +1,150 @@
+{
+  "result": {
+    "songs": [
+      {
+        "album": {
+          "publishTime": 1698249600000,
+          "size": 14,
+          "artist": {
+            "img1v1Url": "https://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg",
+            "musicSize": 0,
+            "albumSize": 0,
+            "img1v1": 0,
+            "name": "",
+            "alias": [],
+            "id": 0,
+            "picId": 0
+          },
+          "copyrightId": 743010,
+          "name": "雨声 (睡觉, 学习, 放松, 冥想, 工作, 白噪音)",
+          "id": 177811474,
+          "picId": 109951170193126186,
+          "mark": 0,
+          "status": 1
+        },
+        "fee": 8,
+        "duration": 282974,
+        "rtype": 0,
+        "ftype": 0,
+        "artists": [
+          {
+            "img1v1Url": "https://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg",
+            "musicSize": 0,
+            "albumSize": 0,
+            "img1v1": 0,
+            "name": "雨声",
+            "alias": [],
+            "id": 34379794,
+            "picId": 0
+          }
+        ],
+        "copyrightId": 743010,
+        "mvid": 0,
+        "name": "适合深度睡眠的雨声, 深度睡眠 助眠雨声 (白噪音 助眠)",
+        "alias": [],
+        "id": 2094433513,
+        "mark": 17179877504,
+        "status": 0
+      },
+      {
+        "album": {
+          "publishTime": 1638288000000,
+          "size": 15,
+          "artist": {
+            "img1v1Url": "https://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg",
+            "musicSize": 0,
+            "albumSize": 0,
+            "img1v1": 0,
+            "name": "",
+            "alias": [],
+            "id": 0,
+            "picId": 0
+          },
+          "copyrightId": 14028,
+          "name": "睡眠 白噪音 雨声 自然森林氛围之声",
+          "id": 136743433,
+          "picId": 109951166670696928,
+          "mark": 0,
+          "status": 1
+        },
+        "fee": 1,
+        "duration": 112625,
+        "rtype": 0,
+        "ftype": 0,
+        "artists": [
+          {
+            "img1v1Url": "https://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg",
+            "musicSize": 0,
+            "albumSize": 0,
+            "img1v1": 0,
+            "name": "白噪音 睡眠贵族音乐",
+            "alias": [],
+            "id": 50407268,
+            "picId": 0
+          }
+        ],
+        "copyrightId": 14028,
+        "mvid": 0,
+        "name": "白噪音 窗边小雨",
+        "alias": [],
+        "id": 1899100079,
+        "mark": 17716879360,
+        "status": 0
+      },
+      {
+        "album": {
+          "publishTime": 1665590400000,
+          "size": 9,
+          "artist": {
+            "img1v1Url": "https://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg",
+            "musicSize": 0,
+            "albumSize": 0,
+            "img1v1": 0,
+            "name": "",
+            "alias": [],
+            "id": 0,
+            "picId": 0
+          },
+          "copyrightId": 1416618,
+          "name": "羊水声安抚宝宝：婴儿哄睡神曲白噪音嘘声+羊水声",
+          "id": 153155378,
+          "picId": 109951167962424682,
+          "mark": 0,
+          "status": 1
+        },
+        "fee": 1,
+        "duration": 153290,
+        "rtype": 0,
+        "ftype": 0,
+        "artists": [
+          {
+            "img1v1Url": "https://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg",
+            "musicSize": 0,
+            "albumSize": 0,
+            "img1v1": 0,
+            "name": "疗愈之音",
+            "alias": [],
+            "id": 54161769,
+            "picId": 0
+          }
+        ],
+        "copyrightId": 1416618,
+        "mvid": 0,
+        "name": "子宫羊水声+嘘声白噪音 (宝宝哄睡白噪音)",
+        "alias": [],
+        "id": 1989154383,
+        "mark": 17180008448,
+        "status": 0
+      }
+    ],
+    "songCount": 74
+  },
+  "code": 200,
+  "trp": {
+    "rules": [
+      "search_tab_song::1989154383::searchAlg$isGlobalQuality$1",
+      "search_tab_song::2094433513::searchAlg$isGlobalQuality$1",
+      "search_tab_song::1899100079::searchAlg$isGlobalQuality$1"
+    ]
+  }
+}

@@ -8,9 +8,6 @@ from urllib.parse import urlencode
 
 import aiohttp
 
-if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8")
-
 ACOUSTID_API_KEY = "cSpUJKpD"
 ACOUSTID_LOOKUP_URL = "https://api.acoustid.org/v2/lookup"
 

@@ -7,9 +7,6 @@ import io
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 
-# Fix Windows encoding
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-
 keyword = "周杰伦"
 test_configs = [
     ('/api/search/get/web', 2000, 'old_api_type_2000'),

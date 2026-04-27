@@ -10,7 +10,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from auto_tag.audio_recognize import _search_netease, _search_kugou, _get_safe_netease_api, _get_safe_kugou_api
+from auto_tag.audio_recognize import _search_netease, _search_kugou
 
 
 async def test_netease_search():
