@@ -120,6 +120,7 @@ class MusicManagerPage(QWidget):
         self._pending_file_paths: list[str] = []
         self._pending_provider: str = ""
         self._loading_dialog: QDialog | None = None
+        self._batch_mode: bool = False  # 是否为批量模式（自动选择最佳匹配）
 
         # 构建 UI
         self._setup_ui()
@@ -623,8 +624,10 @@ class MusicManagerPage(QWidget):
         """
         扫描目录中的音频文件
 
-        遍历目录查找所有支持的音频文件，并填充到文件表格中。
+        遍历目录查找所有支持的音频文件，并批量填充到文件表格中。
         扫描前会清理旧目录的歌词缓存，避免缓存污染。
+
+        优化：使用 setUpdatesEnabled + setRowCount 批量更新，避免逐行插入触发重绘。
 
         Args:
             directory (str): 要扫描的目录路径
@@ -634,14 +637,14 @@ class MusicManagerPage(QWidget):
 
         # 清空文件列表
         self.files.clear()
-        self.file_table.setRowCount(0)
 
         # 清理旧目录的歌词缓存，避免缓存污染
         self.lyrics_cache.clear()
         self.current_lyrics = None
         self.lyric_text.clear()
 
-        # 遍历目录
+        # 遍历目录收集所有文件
+        audio_files = []
         for root, dirs, filenames in os.walk(directory):
             # 跳过 test 目录
             if 'test' in dirs:
@@ -651,48 +654,55 @@ class MusicManagerPage(QWidget):
                 ext = os.path.splitext(filename)[1].lower()
                 if ext in supported_formats:
                     file_path = os.path.join(root, filename)
-                    self.files.append(file_path)
+                    audio_files.append((filename, ext, file_path))
 
-                    # 添加到表格
-                    row = self.file_table.rowCount()
-                    self.file_table.insertRow(row)
+        # 批量更新表格（禁用 UI 更新以提升性能）
+        self.file_table.setUpdatesEnabled(False)
+        try:
+            self.file_table.setRowCount(0)
+            self.file_table.setRowCount(len(audio_files))
 
-                    # 勾选框列
-                    checkbox_item = QTableWidgetItem()
-                    checkbox_item.setFlags(
-                        Qt.ItemFlag.ItemIsEnabled |
-                        Qt.ItemFlag.ItemIsUserCheckable
-                    )
-                    checkbox_item.setCheckState(Qt.CheckState.Unchecked)
-                    self.file_table.setItem(row, 0, checkbox_item)
+            for row, (filename, ext, file_path) in enumerate(audio_files):
+                self.files.append(file_path)
 
-                    # 文件名列
-                    filename_item = QTableWidgetItem(filename)
-                    filename_item.setFlags(
-                        filename_item.flags() & ~Qt.ItemFlag.ItemIsEditable
-                    )
-                    filename_item.setData(Qt.ItemDataRole.UserRole, file_path)
-                    filename_item.setToolTip(file_path)
-                    self.file_table.setItem(row, 1, filename_item)
+                # 勾选框列
+                checkbox_item = QTableWidgetItem()
+                checkbox_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled |
+                    Qt.ItemFlag.ItemIsUserCheckable
+                )
+                checkbox_item.setCheckState(Qt.CheckState.Unchecked)
+                self.file_table.setItem(row, 0, checkbox_item)
 
-                    # 格式列
-                    format_item = QTableWidgetItem(ext.upper().lstrip('.'))
-                    format_item.setFlags(
-                        format_item.flags() & ~Qt.ItemFlag.ItemIsEditable
-                    )
-                    self.file_table.setItem(row, 2, format_item)
+                # 文件名列
+                filename_item = QTableWidgetItem(filename)
+                filename_item.setFlags(
+                    filename_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+                )
+                filename_item.setData(Qt.ItemDataRole.UserRole, file_path)
+                filename_item.setToolTip(file_path)
+                self.file_table.setItem(row, 1, filename_item)
 
-                    # 大小列
-                    try:
-                        size = os.path.getsize(file_path)
-                        size_str = self._format_file_size(size)
-                    except OSError:
-                        size_str = "N/A"
-                    size_item = QTableWidgetItem(size_str)
-                    size_item.setFlags(
-                        size_item.flags() & ~Qt.ItemFlag.ItemIsEditable
-                    )
-                    self.file_table.setItem(row, 3, size_item)
+                # 格式列
+                format_item = QTableWidgetItem(ext.upper().lstrip('.'))
+                format_item.setFlags(
+                    format_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+                )
+                self.file_table.setItem(row, 2, format_item)
+
+                # 大小列
+                try:
+                    size = os.path.getsize(file_path)
+                    size_str = self._format_file_size(size)
+                except OSError:
+                    size_str = "N/A"
+                size_item = QTableWidgetItem(size_str)
+                size_item.setFlags(
+                    size_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+                )
+                self.file_table.setItem(row, 3, size_item)
+        finally:
+            self.file_table.setUpdatesEnabled(True)
 
     def _format_file_size(self, size_bytes: int) -> str:
         """
@@ -989,6 +999,7 @@ class MusicManagerPage(QWidget):
         获取歌词按钮点击处理
 
         从选中的提供商获取当前文件的歌词。
+        使用单首模式，弹出搜索结果选择对话框。
         """
         if not self.current_file:
             MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
@@ -997,13 +1008,15 @@ class MusicManagerPage(QWidget):
         # 通过当前索引获取提供商名称
         current_index = self.provider_combo.currentIndex()
         provider = self._provider_list[current_index] if 0 <= current_index < len(self._provider_list) else 'netease'
-        self._start_lyric_fetch([self.current_file], provider)
+        # 单首模式：batch_mode=False（弹出选择对话框）
+        self._start_lyric_fetch([self.current_file], provider, batch_mode=False)
 
     def _on_batch_get_lyrics(self) -> None:
         """
         批量获取歌词按钮点击处理
 
         从选中的提供商批量获取所有选中文件的歌词。
+        对于网易云和酷狗音乐，自动选择匹配度最高的结果。
         """
         if not self.selected_files:
             MessageBox(tr("no_file_selected"), tr("select_files"), self).exec()
@@ -1012,18 +1025,22 @@ class MusicManagerPage(QWidget):
         # 通过当前索引获取提供商名称
         current_index = self.provider_combo.currentIndex()
         provider = self._provider_list[current_index] if 0 <= current_index < len(self._provider_list) else 'netease'
-        self._start_lyric_fetch(self.selected_files, provider)
+        # 使用 batch_mode=True 启用自动选择最佳匹配
+        self._start_lyric_fetch(self.selected_files, provider, batch_mode=True)
 
-    def _start_lyric_fetch(self, file_paths: list[str], provider: str) -> None:
+    def _start_lyric_fetch(self, file_paths: list[str], provider: str, batch_mode: bool = False) -> None:
         """
         启动歌词获取任务
 
         创建工作线程并在后台获取歌词。
-        对于网易云和酷狗音乐，先弹出搜索结果选择对话框。
+        对于网易云和酷狗音乐：
+        - 单首模式（batch_mode=False）：弹出搜索结果选择对话框
+        - 批量模式（batch_mode=True）：自动选择匹配度最高的结果
 
         Args:
             file_paths (list[str]): 要获取歌词的文件路径列表
             provider (str): 歌词提供商名称
+            batch_mode (bool): 是否为批量模式（默认 False）
         """
         # 重置进度
         self.lyric_progress.setValue(0)
@@ -1035,6 +1052,7 @@ class MusicManagerPage(QWidget):
             # 使用异步搜索 + 加载动画，避免阻塞 UI
             self._pending_file_paths = file_paths
             self._pending_provider = provider
+            self._batch_mode = batch_mode
             self._start_search_and_show_dialog(file_paths[0], provider)
             return
 
@@ -1140,7 +1158,7 @@ class MusicManagerPage(QWidget):
         cancel_btn.clicked.connect(on_cancel_clicked)
 
         def on_search_finished(songs: list[dict]) -> None:
-            """搜索完成回调：关闭加载对话框，显示结果"""
+            """搜索完成回调：关闭加载对话框，根据模式处理结果"""
             if self._loading_dialog:
                 self._loading_dialog.close()
 
@@ -1154,12 +1172,32 @@ class MusicManagerPage(QWidget):
                 self.batch_get_lyric_btn.setEnabled(True)
                 return
 
+            # 批量模式下自动选择最佳匹配结果
+            if getattr(self, '_batch_mode', False):
+                best_match = self.lyric_manager.select_best_match(
+                    songs=songs,
+                    file_path=file_path,
+                    provider=provider
+                )
+                if best_match:
+                    self.logger.info(f"[批量模式] 自动选择最佳匹配: {best_match.get('name', '')} - {best_match.get('artist', '')}")
+                    self._continue_fetch(best_match.get('id'))
+                else:
+                    MessageBox(
+                        tr("no_search_results"),
+                        tr("search_failed"),
+                        self
+                    ).show()
+                    self.get_lyric_btn.setEnabled(True)
+                    self.batch_get_lyric_btn.setEnabled(True)
+                return
+
             # 如果只有一个结果，直接进入歌词获取
             if len(songs) == 1:
                 self._continue_fetch(songs[0].get('id'))
                 return
 
-            # 多个结果时显示选择对话框
+            # 多个结果时显示选择对话框（单首模式）
             self._show_result_dialog(songs)
 
         def on_search_error(error_msg: str) -> None:

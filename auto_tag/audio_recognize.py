@@ -43,6 +43,40 @@ from auto_tag.utils import find_deepest_metadata_key, sanitize, is_file_in_use_e
 ACOUSTID_API_KEY = "cSpUJKpD"
 ACOUSTID_LOOKUP_URL = "https://api.acoustid.org/v2/lookup"
 
+# 线程局部 aiohttp Session 管理器（避免跨线程事件循环冲突）
+# 关键：aiohttp.ClientSession 绑定到特定事件循环，不能跨线程共享
+# 使用线程局部存储确保每个线程拥有独立的 session 和事件循环
+_acoustid_session_local = threading.local()
+
+
+async def _get_acoustid_session() -> aiohttp.ClientSession:
+    """
+    获取或创建当前线程的 Acoustid API aiohttp Session
+
+    使用线程局部存储（threading.local）确保每个线程拥有独立的 session，
+    避免跨线程事件循环冲突导致的 RuntimeError: Event loop is closed。
+
+    每个线程的 session 仍会复用连接池以减少 TCP 握手开销。
+
+    Returns:
+        aiohttp.ClientSession: 当前线程可用的 HTTP 会话实例
+    """
+    if not hasattr(_acoustid_session_local, 'session') or _acoustid_session_local.session is None or _acoustid_session_local.session.closed:
+        _acoustid_session_local.session = aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=5, ttl_dns_cache=300),
+            timeout=aiohttp.ClientTimeout(total=30)
+        )
+    return _acoustid_session_local.session
+
+
+async def _close_acoustid_session() -> None:
+    """
+    关闭当前线程的 aiohttp Session（用于线程退出时清理资源）
+    """
+    if hasattr(_acoustid_session_local, 'session') and _acoustid_session_local.session is not None and not _acoustid_session_local.session.closed:
+        await _acoustid_session_local.session.close()
+        _acoustid_session_local.session = None
+
 # 配置日志
 logger = logging.getLogger(__name__)
 
@@ -1819,6 +1853,9 @@ async def recognize_with_acoustid(file_path: str, trace: bool = False) -> dict |
     Acoustid 是基于 Chromaprint 音频指纹的开源音乐识别服务。
     当 Shazam 识别失败时，可以尝试使用此方案。
 
+    优化：使用 asyncio.create_subprocess_exec() 替代 subprocess.run()，
+    避免在异步函数中阻塞事件循环。
+
     Args:
         file_path: 音频文件路径
         trace: 是否输出调试信息
@@ -1827,15 +1864,17 @@ async def recognize_with_acoustid(file_path: str, trace: bool = False) -> dict |
         dict | None: 识别结果字典（与 Shazam 格式兼容），失败时返回 None
     """
     try:
-        # 检查 ffmpeg 是否可用
+        # 检查 ffmpeg 是否可用（使用非阻塞异步方式）
         try:
-            subprocess.run(
-                ["ffmpeg", "-version"],
-                capture_output=True,
-                timeout=5,
-                check=True
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-version",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            await proc.communicate()
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, "ffmpeg")
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired, OSError):
             if trace:
                 print("[Acoustid] ffmpeg not available, skipping Acoustid recognition")
             logger.info("[Acoustid] ffmpeg not available, skipping")
@@ -1857,12 +1896,16 @@ async def recognize_with_acoustid(file_path: str, trace: bool = False) -> dict |
             if trace:
                 print(f"[Acoustid] Generating fingerprint for: {os.path.basename(file_path)}")
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                timeout=120,
-                check=True
+            # 使用非阻塞异步方式执行 ffmpeg
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+            
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, cmd)
 
             with open(tmp_fp, "r", encoding="ascii") as f:
                 fingerprint = f.read().strip()
@@ -1879,14 +1922,18 @@ async def recognize_with_acoustid(file_path: str, trace: bool = False) -> dict |
             file_path
         ]
         
-        probe_result = subprocess.run(
-            probe_cmd,
-            capture_output=True,
-            timeout=10,
-            check=True
+        # 使用非阻塞异步方式执行 ffprobe
+        proc = await asyncio.create_subprocess_exec(
+            *probe_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
         
-        probe_data = json.loads(probe_result.stdout.decode('utf-8'))
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(proc.returncode, probe_cmd)
+        
+        probe_data = json.loads(stdout.decode('utf-8'))
         duration = int(float(probe_data.get('format', {}).get('duration', 0)))
         
         if duration == 0:
@@ -1904,72 +1951,79 @@ async def recognize_with_acoustid(file_path: str, trace: bool = False) -> dict |
             'meta': 'recordings releasegroups',
         })
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                ACOUSTID_LOOKUP_URL,
-                data=body,
-                headers={'Content-Type': 'application/x-www-form-urlencoded'},
-                timeout=aiohttp.ClientTimeout(total=30)
-            ) as response:
-                if response.status != 200:
-                    if trace:
-                        print(f"[Acoustid] API request failed: status={response.status}")
-                    logger.warning(f"[Acoustid] API request failed: status={response.status}")
-                    return None
-
-                data = await response.json()
-                
+        # 复用全局 aiohttp session（避免每次创建新连接的开销）
+        session = await _get_acoustid_session()
+        async with session.post(
+            ACOUSTID_LOOKUP_URL,
+            data=body,
+            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+            timeout=aiohttp.ClientTimeout(total=30)
+        ) as response:
+            if response.status != 200:
                 if trace:
-                    print(f"[Acoustid] API response: {json.dumps(data, ensure_ascii=False)[:500]}")
+                    print(f"[Acoustid] API request failed: status={response.status}")
+                logger.warning(f"[Acoustid] API request failed: status={response.status}")
+                return None
 
-                if data.get("status") != "ok" or not data.get("results"):
-                    if trace:
-                        print("[Acoustid] No matching results")
-                    logger.info("[Acoustid] No matching results")
-                    return None
+            data = await response.json()
+            
+            if trace:
+                print(f"[Acoustid] API response: {json.dumps(data, ensure_ascii=False)[:500]}")
 
-                # 解析第一个匹配结果
-                result_data = data["results"][0]
-                recordings = result_data.get("recordings", [])
-                
-                if not recordings:
-                    if trace:
-                        print("[Acoustid] No recordings in result")
-                    return None
+            if data.get("status") != "ok" or not data.get("results"):
+                if trace:
+                    print("[Acoustid] No matching results")
+                logger.info("[Acoustid] No matching results")
+                return None
 
-                recording = recordings[0]
-                releasegroups = result_data.get("releasegroups", [])
-                album_name = releasegroups[0].get("title", "") if releasegroups else ""
+            # 解析第一个匹配结果
+            result_data = data["results"][0]
+            recordings = result_data.get("recordings", [])
+            
+            if not recordings:
+                if trace:
+                    print("[Acoustid] No recordings in result")
+                return None
 
-                # 返回与 Shazam 格式兼容的结果
-                acoustid_result = {
-                    "track": {
-                        "title": recording.get("title", "Unknown Title"),
-                        "subtitle": recording.get("artists", [{}])[0].get("name", "Unknown Artist"),
-                        "images": {
-                            "coverart": ""  # Acoustid 不提供封面
-                        },
-                        "sections": [],
+            recording = recordings[0]
+            releasegroups = result_data.get("releasegroups", [])
+            album_name = releasegroups[0].get("title", "") if releasegroups else ""
+
+            # 返回与 Shazam 格式兼容的结果
+            acoustid_result = {
+                "track": {
+                    "title": recording.get("title", "Unknown Title"),
+                    "subtitle": recording.get("artists", [{}])[0].get("name", "Unknown Artist"),
+                    "images": {
+                        "coverart": ""  # Acoustid 不提供封面
                     },
-                    "source": "acoustid",
-                    "acoustid_id": result_data.get("id", ""),
-                }
+                    "sections": [],
+                },
+                "source": "acoustid",
+                "acoustid_id": result_data.get("id", ""),
+            }
 
-                if trace:
-                    print(f"[Acoustid] Success: {acoustid_result['track']['title']} - {acoustid_result['track']['subtitle']}")
+            if trace:
+                print(f"[Acoustid] Success: {acoustid_result['track']['title']} - {acoustid_result['track']['subtitle']}")
 
-                return acoustid_result
+            return acoustid_result
 
     except subprocess.TimeoutExpired:
         logger.error("[Acoustid] ffmpeg timeout")
         if trace:
             print("[Acoustid] ffmpeg timeout")
         return None
+    except asyncio.TimeoutError:
+        logger.error("[Acoustid] ffmpeg/ffprobe timeout")
+        if trace:
+            print("[Acoustid] ffmpeg/ffprobe timeout")
+        return None
     except Exception as e:
         logger.error(f"[Acoustid] Recognition failed: {e}", exc_info=True)
         if trace:
             print(f"[Acoustid] Error: {e}")
         return None
+
 
 
 async def find_and_recognize_audio_files(

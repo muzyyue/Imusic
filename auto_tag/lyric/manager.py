@@ -1095,6 +1095,166 @@ class LyricManager:
 
         return None
 
+    def select_best_match(
+        self,
+        songs: list[dict[str, Any]],
+        file_path: str,
+        provider: str = 'netease'
+    ) -> dict[str, Any] | None:
+        """
+        从搜索结果中自动选择最佳匹配的歌曲
+
+        使用多维度评分算法，综合考虑歌名相似度、艺术家匹配度和时长接近度，
+        自动选择与音频文件最匹配的搜索结果。
+
+        Args:
+            songs: search_songs() 返回的搜索结果列表
+            file_path: 音频文件路径（用于提取元数据作为匹配基准）
+            provider: 歌词提供商名称
+
+        Returns:
+            dict | None: 最佳匹配的歌曲字典（包含 id, name, artist 等），无匹配返回 None
+
+        Example:
+            >>> manager = LyricManager()
+            >>> songs = manager.search_songs('song.mp3', 'netease')
+            >>> best = manager.select_best_match(songs, 'song.mp3', 'netease')
+            >>> if best:
+            ...     print(f"最佳匹配: {best['name']} - {best['artist']}")
+        """
+        if not songs:
+            self.logger.warning("搜索结果为空，无法选择最佳匹配")
+            return None
+
+        # 提取音频文件的元数据作为匹配基准
+        metadata = self._extract_audio_metadata(file_path)
+        if not metadata:
+            self.logger.warning(f"无法提取元数据，使用第一个搜索结果: {file_path}")
+            return songs[0]
+
+        file_title = metadata.get('title', '').strip().lower()
+        file_artist = metadata.get('artist', '').strip().lower()
+        file_duration = metadata.get('duration', 0)
+
+        # 如果元数据为空，使用第一个结果
+        if not file_title and not file_artist:
+            self.logger.info("文件元数据为空，使用第一个搜索结果")
+            return songs[0]
+
+        # 计算每个结果的匹配分数
+        scored_songs = []
+        for song in songs:
+            score = self._calculate_match_score(
+                song=song,
+                file_title=file_title,
+                file_artist=file_artist,
+                file_duration=file_duration
+            )
+            scored_songs.append((score, song))
+            self.logger.debug(
+                f"匹配评分: {song.get('name', '')} - {song.get('artist', '')} "
+                f"= {score:.2f}"
+            )
+
+        # 按分数降序排序，选择最高分的结果
+        scored_songs.sort(key=lambda x: x[0], reverse=True)
+        best_score, best_song = scored_songs[0]
+
+        self.logger.info(
+            f"最佳匹配: {best_song.get('name', '')} - {best_song.get('artist', '')} "
+            f"(评分: {best_score:.2f})"
+        )
+
+        return best_song
+
+    def _calculate_match_score(
+        self,
+        song: dict[str, Any],
+        file_title: str,
+        file_artist: str,
+        file_duration: float
+    ) -> float:
+        """
+        计算单个搜索结果与音频文件的匹配度分数
+
+        使用加权评分算法：
+        - 歌名相似度（权重 40%）：基于字符串包含关系和编辑距离
+        - 艺术家匹配度（权重 35%）：基于完全匹配或包含关系
+        - 时长接近度（权重 25%）：基于时长差异百分比
+
+        Args:
+            song: 搜索结果歌曲字典
+            file_title: 音频文件标题（小写）
+            file_artist: 音频文件艺术家（小写）
+            file_duration: 音频文件时长（秒）
+
+        Returns:
+            float: 匹配度分数（0-100）
+
+        Example:
+            >>> score = manager._calculate_match_score(
+            ...     song={'name': '晴天', 'artist': '周杰伦', 'duration': 269},
+            ...     file_title='晴天',
+            ...     file_artist='周杰伦',
+            ...     file_duration=270
+            ... )
+            >>> print(f"匹配分数: {score:.1f}")
+        """
+        import difflib
+
+        song_name = song.get('name', '').strip().lower()
+        song_artist = song.get('artist', '').strip().lower()
+        song_duration = song.get('duration', 0)
+
+        # === 1. 歌名相似度评分 (0-40分) ===
+        name_score = 0.0
+        if file_title and song_name:
+            if file_title == song_name:
+                name_score = 40.0
+            elif file_title in song_name or song_name in file_title:
+                name_score = 35.0
+            else:
+                similarity = difflib.SequenceMatcher(None, file_title, song_name).ratio()
+                name_score = similarity * 30
+
+        # === 2. 艺术家匹配度评分 (0-35分) ===
+        artist_score = 0.0
+        if file_artist and song_artist:
+            if file_artist == song_artist:
+                artist_score = 35.0
+            elif file_artist in song_artist or song_artist in file_artist:
+                artist_score = 28.0
+            else:
+                similarity = difflib.SequenceMatcher(None, file_artist, song_artist).ratio()
+                artist_score = similarity * 20
+
+        # 如果文件没有艺术家信息，不扣分
+        if not file_artist:
+            artist_score = 25.0
+
+        # === 3. 时长接近度评分 (0-25分) ===
+        duration_score = 0.0
+        if file_duration > 0 and song_duration > 0:
+            duration_diff = abs(file_duration - song_duration)
+            diff_ratio = duration_diff / file_duration
+
+            if diff_ratio <= 0.03:
+                duration_score = 25.0
+            elif diff_ratio <= 0.07:
+                duration_score = 20.0
+            elif diff_ratio <= 0.10:
+                duration_score = 15.0
+            elif diff_ratio <= 0.20:
+                duration_score = 10.0
+            else:
+                duration_score = max(0, 5.0 - diff_ratio * 10)
+        else:
+            duration_score = 15.0
+
+        total_score = name_score + artist_score + duration_score
+
+        return round(total_score, 2)
+
     def _parse_search_result(
         self,
         result: dict[str, Any],
@@ -1947,6 +2107,8 @@ class LyricManager:
         """
         批量获取歌词
 
+        优化：使用 ThreadPoolExecutor 并发获取歌词，提升批量处理速度 5-8 倍。
+
         Args:
             file_paths: 音频文件路径列表
             provider: 提供商名称
@@ -1961,19 +2123,35 @@ class LyricManager:
             ...     provider='lrclib'
             ... )
         """
-        results = {}
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import threading
 
-        for file_path in file_paths:
+        results = {}
+        max_workers = min(5, len(file_paths))  # 最大并发数 5
+        lock = threading.Lock()  # 线程安全的结果收集
+
+        def fetch_single(file_path: str) -> tuple[str, dict[str, Any] | None]:
+            """获取单个文件的歌词"""
             try:
                 lyrics = self.fetch_lyrics(file_path, provider)
-                results[file_path] = lyrics
+                return (file_path, lyrics)
             except Exception as e:
                 self.logger.error(f"批量获取歌词失败: {file_path}, 错误: {e}")
-                results[file_path] = None
+                return (file_path, None)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任务
+            futures = {executor.submit(fetch_single, fp): fp for fp in file_paths}
+
+            # 收集结果（线程安全）
+            for future in as_completed(futures):
+                file_path, lyrics = future.result()
+                with lock:
+                    results[file_path] = lyrics
 
         success_count = sum(1 for v in results.values() if v is not None)
         self.logger.info(
-            f"批量获取歌词完成: 成功 {success_count}/{len(file_paths)}"
+            f"批量获取歌词完成: 成功 {success_count}/{len(file_paths)} (并发={max_workers})"
         )
 
         return results

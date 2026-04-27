@@ -150,53 +150,61 @@ class RecognizeWorker(QThread):
         shazam = Shazam()
         results: list[dict] = []
 
-        # 处理每个文件
-        for idx, file_path in enumerate(audio_files, start=1):
-            try:
-                # 调用识别函数
-                result = await recognize_and_rename_file(
-                    file_path=file_path,
-                    shazam=shazam,
-                    modify=False,  # 仅预览，不实际修改
-                    delay=10,
-                    nbr_retry=3,
-                    trace=False,
-                    output_dir=None,
-                    plex_structure=False,
-                    copy_to=self.copy_dir,
-                    tag_only=self.tag_only,
+        try:
+            # 处理每个文件
+            for idx, file_path in enumerate(audio_files, start=1):
+                try:
+                    # 调用识别函数
+                    result = await recognize_and_rename_file(
+                        file_path=file_path,
+                        shazam=shazam,
+                        modify=False,  # 仅预览，不实际修改
+                        delay=10,
+                        nbr_retry=3,
+                        trace=False,
+                        output_dir=None,
+                        plex_structure=False,
+                        copy_to=self.copy_dir,
+                        tag_only=self.tag_only,
+                    )
+                    # 标记是否可应用（无错误）
+                    result["apply"] = "error" not in result
+                except Exception as exc:
+                    # 捕获异常并构造错误结果
+                    result = {
+                        "file_path": file_path,
+                        "new_file_path": str(exc),
+                        "apply": False,
+                        "error": str(exc),
+                        "search_results": [],
+                    }
+
+                results.append(result)
+
+                # 发射单个文件处理完成信号（带详细日志）
+                search_count = len(result.get("search_results", []))
+                has_error = "error" in result
+                logger.info(
+                    f"[{os.path.basename(file_path)}] "
+                    f"title={result.get('title', 'N/A')}, "
+                    f"author={result.get('author', 'N/A')}, "
+                    f"search_results={search_count}, "
+                    f"error={has_error}"
                 )
-                # 标记是否可应用（无错误）
-                result["apply"] = "error" not in result
-            except Exception as exc:
-                # 捕获异常并构造错误结果
-                result = {
-                    "file_path": file_path,
-                    "new_file_path": str(exc),
-                    "apply": False,
-                    "error": str(exc),
-                    "search_results": [],
-                }
+                self.file_processed.emit(result)
 
-            results.append(result)
+                # 计算剩余时间
+                elapsed = time.time() - self.start_time
+                remaining = int(elapsed / idx * (total_files - idx))
 
-            # 发射单个文件处理完成信号（带详细日志）
-            search_count = len(result.get("search_results", []))
-            has_error = "error" in result
-            logger.info(
-                f"[{os.path.basename(file_path)}] "
-                f"title={result.get('title', 'N/A')}, "
-                f"author={result.get('author', 'N/A')}, "
-                f"search_results={search_count}, "
-                f"error={has_error}"
-            )
-            self.file_processed.emit(result)
-
-            # 计算剩余时间
-            elapsed = time.time() - self.start_time
-            remaining = int(elapsed / idx * (total_files - idx))
-
-            # 发射进度更新信号
-            self.progress_updated.emit(idx, total_files, remaining)
+                # 发射进度更新信号
+                self.progress_updated.emit(idx, total_files, remaining)
+        finally:
+            # 正确关闭 Shazam 的 aiohttp 会话，防止内存泄漏
+            try:
+                if hasattr(shazam, 'close'):
+                    await shazam.close()
+            except Exception as close_err:
+                logger.debug(f"[RecognizeWorker] Shazam close error: {close_err}")
 
         return results

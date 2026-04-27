@@ -802,51 +802,52 @@ class ConverterPage(QWidget):
             # 扫描文件
             self.files = self._scan_files(directory)
 
-            # 清空表格
-            self.file_table.setRowCount(0)
+            # 批量更新表格（禁用 UI 更新以提升性能）
+            self.file_table.setUpdatesEnabled(False)
+            try:
+                self.file_table.setRowCount(0)
+                self.file_table.setRowCount(len(self.files))
 
-            # 填充表格
-            for file_path in self.files:
-                row = self.file_table.rowCount()
-                self.file_table.insertRow(row)
+                for row, file_path in enumerate(self.files):
+                    # 勾选框列
+                    checkbox_item = QTableWidgetItem()
+                    checkbox_item.setFlags(
+                        Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
+                    )
+                    checkbox_item.setCheckState(Qt.CheckState.Checked)
+                    self.file_table.setItem(row, 0, checkbox_item)
 
-                # 勾选框列
-                checkbox_item = QTableWidgetItem()
-                checkbox_item.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
-                )
-                checkbox_item.setCheckState(Qt.CheckState.Checked)
-                self.file_table.setItem(row, 0, checkbox_item)
+                    # 文件名列
+                    filename = os.path.basename(file_path)
+                    filename_item = QTableWidgetItem(filename)
+                    filename_item.setFlags(filename_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    # 存储完整路径
+                    filename_item.setData(Qt.ItemDataRole.UserRole, file_path)
+                    self.file_table.setItem(row, 1, filename_item)
 
-                # 文件名列
-                filename = os.path.basename(file_path)
-                filename_item = QTableWidgetItem(filename)
-                filename_item.setFlags(filename_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                # 存储完整路径
-                filename_item.setData(Qt.ItemDataRole.UserRole, file_path)
-                self.file_table.setItem(row, 1, filename_item)
+                    # 格式列
+                    ext = os.path.splitext(file_path)[1].upper().lstrip('.')
+                    format_item = QTableWidgetItem(ext)
+                    format_item.setFlags(format_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    self.file_table.setItem(row, 2, format_item)
 
-                # 格式列
-                ext = os.path.splitext(file_path)[1].upper().lstrip('.')
-                format_item = QTableWidgetItem(ext)
-                format_item.setFlags(format_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                self.file_table.setItem(row, 2, format_item)
+                    # 大小列
+                    try:
+                        size = os.path.getsize(file_path)
+                        size_str = self._format_file_size(size)
+                    except OSError:
+                        size_str = "未知"
+                    size_item = QTableWidgetItem(size_str)
+                    size_item.setFlags(size_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    self.file_table.setItem(row, 3, size_item)
 
-                # 大小列
-                try:
-                    size = os.path.getsize(file_path)
-                    size_str = self._format_file_size(size)
-                except OSError:
-                    size_str = "未知"
-                size_item = QTableWidgetItem(size_str)
-                size_item.setFlags(size_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                self.file_table.setItem(row, 3, size_item)
-
-                # 状态列
-                status_item = QTableWidgetItem("待转换")
-                status_item.setFlags(status_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                status_item.setForeground(Qt.GlobalColor.gray)
-                self.file_table.setItem(row, 4, status_item)
+                    # 状态列
+                    status_item = QTableWidgetItem("待转换")
+                    status_item.setFlags(status_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    status_item.setForeground(Qt.GlobalColor.gray)
+                    self.file_table.setItem(row, 4, status_item)
+            finally:
+                self.file_table.setUpdatesEnabled(True)
 
             # 更新状态标签
             if self.files:

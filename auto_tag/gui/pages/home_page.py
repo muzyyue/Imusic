@@ -227,7 +227,7 @@ class HomePage(QWidget):
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         self.scroll_area.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
@@ -464,6 +464,7 @@ class HomePage(QWidget):
             try:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
+                shazam = None
                 try:
                     from shazamio import Shazam
                     from auto_tag.audio_recognize import recognize_and_rename_file
@@ -496,6 +497,13 @@ class HomePage(QWidget):
                     logger.info(f"[HomePage] Search completed for {file_path}, results={len(search_results)}")
                     self._song_refresh_result.emit(file_path, search_results)
                 finally:
+                    # 正确关闭 Shazam 的 aiohttp 会话，防止内存泄漏
+                    if shazam is not None:
+                        try:
+                            if hasattr(shazam, 'close'):
+                                loop.run_until_complete(shazam.close())
+                        except Exception as close_err:
+                            logger.debug(f"[HomePage] Shazam close error: {close_err}")
                     loop.close()
             except Exception as e:
                 logger.error(f"[HomePage] Failed to refresh search for {file_path}: {e}")

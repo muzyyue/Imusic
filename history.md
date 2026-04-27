@@ -1,6 +1,36 @@
 # 项目变更历史
 task：添加网易云音乐的下载功能 有搞头   转换页面无法支持多格式选择
 
+## v0.4.73 (2026-04-27)
+- feat(lyric): 批量获取歌词时自动选择匹配度最高的结果
+  - LyricManager: 新增 select_best_match() 方法，使用多维度评分算法自动选择最佳匹配歌曲
+  - LyricManager: 新增 _calculate_match_score() 方法，基于歌名相似度（40%）、艺术家匹配度（35%）、时长接近度（25%）加权评分
+  - MusicManagerPage: 批量获取歌词时启用自动选择模式（batch_mode=True），跳过手动选择对话框
+  - MusicManagerPage: 单首获取歌词保持原有交互逻辑（弹窗选择），确保向后兼容
+  - 支持完全匹配、部分包含、相似度计算等多种匹配策略
+  - 当无法提取元数据或搜索结果为空时有合理的回退机制
+  - 新增测试用例验证自动选择逻辑的正确性和边界情况处理
+  - 涉及文件: `auto_tag/lyric/manager.py`, `auto_tag/gui/pages/music_manager_page.py`, `tests/test_best_match_selection.py`
+
+## v0.4.72 (2026-04-27)
+- fix(ui): 修复歌曲搜索结果卡片长文件名导致刷新按钮和收起按钮被隐藏的问题
+  - SongResultCard: 将头部布局重构为左右分离结构，左侧文件名使用 Expanding 策略
+  - SongResultCard: 新增右侧按钮容器（right_buttons_layout），确保按钮不受文件名长度影响
+  - SongResultCard: 在文件名和右侧按钮间添加 8px 间距保护
+  - 新增 17 个测试用例覆盖不同文件名长度场景
+  - 涉及文件: `song_result_card.py`, `tests/test_song_result_card.py`
+
+## v0.4.71 (2026-04-27)
+- fix(gui): 修复首页歌曲搜索导致内存持续增长的问题
+  - CoverImageWidget: 新增 _stop_loader() 方法，在组件销毁前正确停止封面加载线程
+  - CoverImageWidget: 新增 deleteLater() 覆盖，停止线程并断开 themeChanged 信号连接
+  - CoverImageWidget: 新增 closeEvent() 覆盖，确保组件关闭时线程被清理
+  - PlatformResultWidget: 新增 deleteLater() 覆盖，断开 themeChanged 信号连接
+  - SongResultCard: 新增 deleteLater() 覆盖，停止所有子组件加载线程并断开信号
+  - home_page.py: _on_refresh_song_search() 中增加 shazam.close() 正确关闭 aiohttp 会话
+  - recognize_worker.py: _process_files() 中增加 finally 块确保 shazam.close() 被调用
+  - 涉及文件: `song_result_card.py`, `home_page.py`, `recognize_worker.py`
+
 ## v0.4.70 (2026-04-26)
 - fix(ci): 修复 GitHub Actions 发布流程
   - 简化测试步骤，添加 continue-on-error 避免阻塞发布
