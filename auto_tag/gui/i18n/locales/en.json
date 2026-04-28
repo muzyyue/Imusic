@@ -94,6 +94,7 @@
   "enter_image_url": "Enter Image URL",
   "lyric_embed_success": "Lyrics embedded successfully",
   "lyric_embed_failed": "Lyrics embed failed",
+  "lyric_embed_verify_failed": "Embed verification failed: file data does not match expected, write may have failed",
   "lyric_saved": "Lyrics saved",
   "searching": "Searching",
   "searching_please_wait": "Searching, please wait...",

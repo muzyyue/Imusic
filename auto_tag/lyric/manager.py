@@ -210,39 +210,35 @@ class LyricManager:
             keyword = self._build_search_keyword(title, artist)
             self.logger.info(f"[DEBUG] 搜索关键词: '{keyword}' (原始title='{title}', 原始artist='{artist}')")
 
-            # 使用 pymusiclibrary 原生库进行搜索（已包含认证信息，最可靠）
-            api = self._get_kugou_api() if provider == 'kugou' else self._get_netease_api()
-            if api is None:
-                self.logger.warning(f"[Search] {provider} API 不可用，尝试 REST API 备用方案")
-                # pymusiclibrary 不可用时，直接使用 REST API 搜索
-                songs = self._search_netease_rest_api(keyword)
-                self.logger.info(f"搜索完成(REST): {keyword}, 找到 {len(songs)} 首歌曲")
+            # === 修复：REST API 优先策略 ===
+            # 原因：pymusiclibrary 原生 C 库(QuickJS)不支持多实例/重复初始化，
+            # 在子线程中创建新实例会导致第二次及以后的搜索失败。
+            # REST API 是无状态 HTTP 请求，完全绕过此问题，且搜索能力更强。
+            
+            # 1. 首选：使用 REST API 搜索（稳定、无状态、支持模糊匹配）
+            songs = self._search_netease_rest_api(keyword)
+            if songs:
+                self.logger.info(f"搜索完成(REST-Primary): {keyword}, 找到 {len(songs)} 首歌曲")
                 return songs
 
-            try:
-                search_result = api.search(keyword)
+            # 2. 备选：仅在主线程中尝试 pymusiclibrary（使用全局单例，避免多实例问题）
+            import threading
+            if threading.current_thread().name == 'MainThread':
+                api = self._get_kugou_api() if provider == 'kugou' else self._get_netease_api()
+                if api is not None:
+                    try:
+                        search_result = api.search(keyword)
+                        if search_result and hasattr(search_result, 'body'):
+                            songs = self._parse_search_result(search_result.body, provider)
+                            if songs:
+                                self.logger.info(f"搜索完成(pymusiclibrary-Main): {keyword}, 找到 {len(songs)} 首歌曲")
+                                return songs
+                    except Exception as e:
+                        self.logger.warning(f"[Search] pymusiclibrary 主线程搜索异常: {e}")
 
-                if not search_result or not hasattr(search_result, 'body'):
-                    self.logger.warning(f"[Search] {provider} API 搜索无返回，尝试 REST API 备用方案")
-                    songs = self._search_netease_rest_api(keyword)
-                    self.logger.info(f"搜索完成(REST fallback): {keyword}, 找到 {len(songs)} 首歌曲")
-                    return songs
-
-                songs = self._parse_search_result(search_result.body, provider)
-                self.logger.info(f"搜索完成: {keyword}, 找到 {len(songs)} 首歌曲")
-
-                # 如果 pymusiclibrary 解析后结果为空，尝试 REST API 备用方案
-                if not songs and provider == 'netease':
-                    self.logger.warning(f"[Search] pymusiclibrary 未返回结果，尝试 REST API 备用方案")
-                    songs = self._search_netease_rest_api(keyword)
-                    self.logger.info(f"搜索完成(REST fallback): {keyword}, 找到 {len(songs)} 首歌曲")
-
-                return songs
-            except Exception as e:
-                self.logger.error(f"[Search] pymusiclibrary 搜索异常: {e}，尝试 REST API 备用方案")
-                songs = self._search_netease_rest_api(keyword)
-                self.logger.info(f"搜索完成(REST fallback): {keyword}, 找到 {len(songs)} 首歌曲")
-                return songs
+            # 3. 最终：REST API 已在步骤1尝试过，此处返回空结果
+            self.logger.warning(f"[Search] 所有搜索方式均未返回结果: {keyword}")
+            return []
 
         except ImportError as e:
             self.logger.error(f"导入 MusicLibrary 库失败: {e}")
@@ -426,7 +422,8 @@ class LyricManager:
         """
         根据歌曲 ID 获取歌词
 
-        优先使用 pymusiclibrary，失败时自动回退到 REST API。
+        REST API 优先策略：避免在子线程中创建多个 pymusiclibrary 实例导致冲突。
+        仅在主线程中且 REST API 失败时才尝试 pymusiclibrary。
 
         Args:
             song_id: 歌曲 ID
@@ -439,17 +436,24 @@ class LyricManager:
         Returns:
             dict | None: 歌词数据字典
         """
-        # 先尝试使用 pymusiclibrary
-        result = self._fetch_lyric_by_id_pymusiclibrary(song_id, provider, lyric_mode)
-        if result is not None:
-            return result
-
-        # pymusiclibrary 失败时，使用 REST API 备用方案
+        # === 修复：REST API 优先策略 ===
+        # 原因与 search_songs() 相同：避免子线程中 pymusiclibrary 多实例冲突
+        
+        # 1. 首选：使用 REST API 获取歌词（无状态、稳定）
         if provider == 'netease':
-            self.logger.info(f"[FetchLyric] pymusiclibrary 获取失败，尝试 REST API 备用方案 (ID: {song_id})")
-            return self._fetch_lyric_by_id_netease_rest(song_id, lyric_mode)
+            result = self._fetch_lyric_by_id_netease_rest(song_id, lyric_mode)
+            if result is not None:
+                return result
 
-        self.logger.error(f"[FetchLyric] 所有方式均获取歌词失败 (ID: {song_id}), 提供商: {provider}")
+        # 2. 备选：仅在主线程中尝试 pymusiclibrary
+        import threading
+        if threading.current_thread().name == 'MainThread':
+            result = self._fetch_lyric_by_id_pymusiclibrary(song_id, provider, lyric_mode)
+            if result is not None:
+                return result
+
+        # 3. 最终失败
+        self.logger.warning(f"[FetchLyric] 所有方式均获取歌词失败 (ID: {song_id}), 提供商: {provider}")
         return None
 
     def _fetch_lyric_by_id_pymusiclibrary(
@@ -1374,7 +1378,7 @@ class LyricManager:
         mode: str = 'embed_only'
     ) -> bool:
         """
-        使用 eyed3 将歌词嵌入到 MP3 文件
+        使用 mutagen 将歌词嵌入到 MP3 文件
 
         Args:
             file_path: MP3 文件路径
@@ -1386,60 +1390,28 @@ class LyricManager:
             bool: 成功返回 True
 
         Note:
-            - 优先使用 SYLT 帧（同步歌词帧，如果歌词包含时间戳）
-            - 同时写入 USLT 帧（无同步歌词，广泛支持）
-            - 同时写入 TXXX 帧，description 设为 'UNSYNCEDLYRICS'（iTunes 兼容）
-            - 仅在 mode='embed_and_lrc' 时生成独立 .lrc 文件（网易云音乐需要）
-            - **关键修复**：显式使用 ID3v2.3 版本保存（Windows Media Player 兼容性）
-            - **关键修复**：USLT 帧 description 设为 'Lyrics'（非空值，播放器识别需要）
+            - 使用 mutagen.mp3 + mutagen.id3.USLT 帧写入歌词
+            - 写入前先删除所有已有的 USLT 帧，避免旧数据残留
+            - mutagen 的 API 比 eyed3 更可靠，不存在帧追加/替换歧义
         """
-        audio = eyed3.load(file_path)
-        if audio is None:
-            self.logger.error(f"无法加载 MP3 文件: {file_path}")
-            return False
-
-        if audio.tag is None:
-            audio.initTag(version=(2, 3, 0))
-
-        tag = audio.tag
-        lyrics_embedded = False
-
-        has_timestamps = '[' in lyrics and ']' in lyrics
-
-        if has_timestamps:
-            try:
-                self._embed_synced_lyrics_frame(tag, lyrics)
-                lyrics_embedded = True
-            except Exception as e:
-                self.logger.warning(f"SYLT 帧嵌入失败: {e}")
-
         try:
-            self._embed_unsynced_lyrics_frame(tag, lyrics)
-            lyrics_embedded = True
-        except Exception as e:
-            self.logger.error(f"USLT 帧嵌入失败: {e}")
-            return False
+            from mutagen.mp3 import MP3
+            from mutagen.id3 import USLT, ID3NoHeaderError
 
-        try:
-            tag.user_text_frames.set(lyrics, description='UNSYNCEDLYRICS')
-        except Exception as e:
-            self.logger.debug(f"TXXX 帧写入失败: {e}")
+            audio = MP3(file_path)
+            if audio.tags is None:
+                audio.add_tags()
 
-        # 关键修复：显式保存为 ID3v2.3 版本，确保 Windows Media Player 等播放器兼容
-        try:
-            tag.save(version=eyed3.id3.ID3_V2_3)
-            self.logger.debug(f"歌词已保存为 ID3v2.3: {file_path}")
-        except Exception as e:
-            self.logger.error(f"ID3v2.3 保存失败: {e}")
-            # fallback：尝试标准保存
-            try:
-                tag.save()
-            except Exception as e2:
-                self.logger.error(f"标准保存也失败: {e2}")
-                return False
+            keys_to_remove = [k for k in audio.tags.keys() if k.startswith('USLT:')]
+            for k in keys_to_remove:
+                del audio.tags[k]
 
-        if not lyrics_embedded:
-            self.logger.error("所有歌词帧都未能成功嵌入")
+            audio.tags.add(USLT(encoding=3, lang='eng', desc='Lyrics', text=lyrics))
+            audio.save()
+            self.logger.info(f"成功嵌入歌词到 MP3 (mutagen): {file_path}")
+
+        except Exception as e:
+            self.logger.error(f"mutagen 嵌入歌词失败: {file_path}, 错误: {e}", exc_info=True)
             return False
 
         if mode == 'embed_and_lrc':
@@ -1448,8 +1420,6 @@ class LyricManager:
                 self.logger.info(f"成功嵌入歌词并生成 LRC 文件: {file_path}")
             else:
                 self.logger.warning(f"歌词嵌入成功，但 LRC 文件生成失败: {file_path}")
-        else:
-            self.logger.info(f"成功嵌入歌词到 MP3 (仅嵌入模式): {file_path}")
 
         return True
 

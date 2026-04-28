@@ -1,6 +1,56 @@
 # 项目变更历史
 task：添加网易云音乐的下载功能 有搞头   转换页面无法支持多格式选择
 
+## v0.4.78 (2026-04-28)
+- fix(lyric): 修复嵌入歌词后重新加载目录数据还原的问题（最终方案）
+  - 根因(核心)：eyed3 的 LyricsFrameSet API 存在帧追加/替换歧义，多次修复仍无法可靠写入
+  - eyed3 tag.lyrics.set() 在 description 不匹配时追加而非替换帧
+  - eyed3 tag.lyrics.remove() API 参数类型敏感，清除旧帧操作不可靠
+  - save() 返回成功但立即 extract 仍返回旧数据，说明写入未真正生效
+  - 最终方案：_embed_mp3_lyrics() 从 eyed3 全面迁移到 mutagen
+  - 使用 mutagen.mp3.MP3 + mutagen.id3.USLT 帧进行歌词写入
+  - 写入前通过 keys() 遍历删除所有 'USLT:' 前缀的帧（mutagen 字典式删除，简单可靠）
+  - 再 add() 单个新 USLT 帧 → save()，确保文件中只有最新歌词
+  - 附加修复：tag.save() 后显式释放 / 嵌入成功后清除 cache + extract 验证
+  - 新增翻译键 lyric_embed_verify_failed
+  - 涉及文件: `auto_tag/lyric/manager.py`, `auto_tag/gui/pages/music_manager_page.py`, `auto_tag/gui/i18n/locales/*.json`
+
+## v0.4.77 (2026-04-28)
+- fix(lyric): 修复批量获取歌词时所有歌曲嵌入同一首歌词的问题
+  - 根因：批量模式下 LyricWorker 接收所有文件列表但只使用同一个 song_id，导致所有文件都获取了同一首歌的歌词
+  - 新增 _batch_current_index 和 _batch_results 状态变量，实现逐文件串行处理
+  - 新增 _process_current_batch_file() 方法，按索引逐个处理文件
+  - 新增 _continue_fetch_for_single() 方法，只为当前单个文件创建 LyricWorker
+  - 新增 _on_batch_single_finished() 回调，单个文件完成后自动触发下一个文件的处理
+  - 重构 on_search_finished() 回调的批量模式逻辑，支持搜索无结果或选择失败时的自动跳过
+  - 新增 _on_batch_all_finished() 方法，所有文件处理完毕后统一显示统计结果
+  - 批量处理流程改为：搜索file[i] → 选择最佳匹配 → 获取file[i]歌词 → 处理file[i+1]
+  - 每首歌独立搜索、独立匹配、独立获取，确保歌词正确对应
+- fix(lyric): 修复单首获取歌词误触发批量结果对话框的问题
+  - 根因：_start_lyric_fetch() 中网易云/酷狗分支无条件调用 _process_current_batch_file()
+  - 单首模式(batch_mode=False)时未重置 _batch_current_index，残留旧值导致直接跳到 _on_batch_all_finished()
+  - 修复：按 batch_mode 分流，单首模式走原有 _start_search_and_show_dialog() 路径
+  - 涉及文件: `auto_tag/gui/pages/music_manager_page.py`
+
+## v0.4.76 (2026-04-28)
+- fix(lyric): 修复批量获取歌词导致 UI 卡死的问题
+  - music_manager_page.py: 在 __init__ 中初始化 self.logger，解决 AttributeError 异常
+  - music_manager_page.py: 修复 _on_clear_data 方法中裸 logger 引用为 self.logger
+  - music_manager_page.py: 为 on_search_finished 回调添加 try-except 异常处理，防止异常导致 UI 无响应
+  - 统一 logger 使用方式为实例属性 self.logger，避免 NameError 和 AttributeError
+  - 增强批量歌词获取流程的健壮性，确保异常时正确释放按钮状态
+  - 涉及文件: `auto_tag/gui/pages/music_manager_page.py`
+
+## v0.4.75 (2026-04-28)
+- fix(lyric): 修复歌词搜索"首次成功、再次失败"的问题
+  - 根因：pymusiclibrary 原生 C 库(QuickJS)不支持多实例/重复初始化
+  - 每次点击"获取歌词"会在子线程中创建新的 pymusiclibrary 实例，导致第二次及以后的搜索失败
+  - REST API fallback 也因全局 SSL/Cookie 配置被污染而失败
+  - manager.py: search_songs() 改为 REST API 优先策略（无状态 HTTP 请求）
+  - manager.py: fetch_lyric_by_id() 同样采用 REST API 优先策略
+  - pymusiclibrary 仅作为主线程备选方案（使用全局单例，避免多实例冲突）
+  - 涉及文件: `auto_tag/lyric/manager.py`
+
 ## v0.4.75 (2026-04-28)
 - feat(search): 优化歌曲搜索策略 - 新增智能回退模式解决原名搜索失败问题
   - audio_recognize.py: 新增 _build_smart_keyword() 方法，支持4种关键词构建模式

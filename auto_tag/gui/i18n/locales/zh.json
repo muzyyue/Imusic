@@ -88,6 +88,7 @@
   "enter_image_url": "输入图片URL",
   "lyric_embed_success": "歌词嵌入成功",
   "lyric_embed_failed": "歌词嵌入失败",
+  "lyric_embed_verify_failed": "歌词嵌入验证失败：文件中的数据与预期不一致，可能未正确写入",
   "lyric_saved": "歌词已保存",
   "searching": "搜索中",
   "searching_please_wait": "正在搜索，请稍候...",

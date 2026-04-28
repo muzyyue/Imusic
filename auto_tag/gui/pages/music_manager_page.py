@@ -92,6 +92,8 @@ class MusicManagerPage(QWidget):
         """
         super().__init__(parent)
 
+        self.logger = logging.getLogger(__name__)
+
         # 状态变量
         self.files: list[str] = []
         self.selected_files: list[str] = []
@@ -121,6 +123,8 @@ class MusicManagerPage(QWidget):
         self._pending_provider: str = ""
         self._loading_dialog: QDialog | None = None
         self._batch_mode: bool = False  # 是否为批量模式（自动选择最佳匹配）
+        self._batch_current_index: int = 0  # 批量模式当前处理的文件索引
+        self._batch_results: dict[str, dict | None] = {}  # 批量模式结果缓存
 
         # 构建 UI
         self._setup_ui()
@@ -618,7 +622,7 @@ class MusicManagerPage(QWidget):
         import gc
         gc.collect()
 
-        logger.info("[MusicManagerPage] Data cleared, file handles released")
+        self.logger.info("[MusicManagerPage] Data cleared, file handles released")
 
     def _scan_audio_files(self, directory: str) -> None:
         """
@@ -1049,11 +1053,16 @@ class MusicManagerPage(QWidget):
 
         # 对于网易云和酷狗，需要先选择歌曲
         if provider in ['netease', 'kugou'] and len(file_paths) > 0:
-            # 使用异步搜索 + 加载动画，避免阻塞 UI
             self._pending_file_paths = file_paths
             self._pending_provider = provider
             self._batch_mode = batch_mode
-            self._start_search_and_show_dialog(file_paths[0], provider)
+
+            if batch_mode:
+                self._batch_current_index = 0
+                self._batch_results = {}
+                self._process_current_batch_file()
+            else:
+                self._start_search_and_show_dialog(file_paths[0], provider)
             return
 
         # 其他提供商直接获取歌词
@@ -1070,6 +1079,41 @@ class MusicManagerPage(QWidget):
 
         # 启动线程
         self.lyric_worker.start()
+
+    def _process_current_batch_file(self) -> None:
+        """
+        处理批量模式下的当前文件
+
+        根据 _batch_current_index 获取当前要处理的文件路径，
+        启动搜索流程。如果所有文件都已处理完毕，则显示最终结果。
+        """
+        if self._batch_current_index >= len(self._pending_file_paths):
+            self._on_batch_all_finished()
+            return
+
+        current_file = self._pending_file_paths[self._batch_current_index]
+        self._start_search_and_show_dialog(current_file, self._pending_provider)
+
+    def _on_batch_all_finished(self) -> None:
+        """
+        批量处理全部完成后的回调
+
+        统计成功/失败数量，显示结果对话框，恢复按钮状态。
+        """
+        self.get_lyric_btn.setEnabled(True)
+        self.batch_get_lyric_btn.setEnabled(True)
+        self.lyric_progress.setValue(100)
+
+        success_count = sum(1 for v in self._batch_results.values() if v is not None)
+        fail_count = len(self._batch_results) - success_count
+
+        MessageBox(
+            tr("success"),
+            f"{tr('batch_lyric_fetch_complete')}\n"
+            f"{tr('success_count').format(count=success_count)}\n"
+            f"{tr('fail_count').format(count=fail_count)}",
+            self
+        ).exec()
 
     def _start_search_and_show_dialog(
         self,
@@ -1159,46 +1203,63 @@ class MusicManagerPage(QWidget):
 
         def on_search_finished(songs: list[dict]) -> None:
             """搜索完成回调：关闭加载对话框，根据模式处理结果"""
-            if self._loading_dialog:
-                self._loading_dialog.close()
+            try:
+                if self._loading_dialog:
+                    self._loading_dialog.close()
 
-            if not songs:
-                MessageBox(
-                    tr("no_search_results"),
-                    tr("search_failed"),
-                    self
-                ).show()
+                if not songs:
+                    if getattr(self, '_batch_mode', False):
+                        current_file = self._pending_file_paths[self._batch_current_index]
+                        self._batch_results[current_file] = None
+                        self.logger.warning(f"[批量模式] 文件搜索无结果: {current_file}")
+                        self._batch_current_index += 1
+                        self._process_current_batch_file()
+                    else:
+                        MessageBox(
+                            tr("no_search_results"),
+                            tr("search_failed"),
+                            self
+                        ).show()
+                        self.get_lyric_btn.setEnabled(True)
+                        self.batch_get_lyric_btn.setEnabled(True)
+                    return
+
+                # 批量模式下自动选择最佳匹配结果
+                if getattr(self, '_batch_mode', False):
+                    best_match = self.lyric_manager.select_best_match(
+                        songs=songs,
+                        file_path=file_path,
+                        provider=provider
+                    )
+                    if best_match:
+                        self.logger.info(f"[批量模式] ({self._batch_current_index + 1}/{len(self._pending_file_paths)}) 自动选择最佳匹配: {best_match.get('name', '')} - {best_match.get('artist', '')}")
+                        self._continue_fetch_for_single(file_path, best_match.get('id'))
+                    else:
+                        current_file = self._pending_file_paths[self._batch_current_index]
+                        self._batch_results[current_file] = None
+                        self.logger.warning(f"[批量模式] 无法选择最佳匹配: {current_file}")
+                        self._batch_current_index += 1
+                        self._process_current_batch_file()
+                    return
+
+                # 如果只有一个结果，直接进入歌词获取
+                if len(songs) == 1:
+                    self._continue_fetch(songs[0].get('id'))
+                    return
+
+                # 多个结果时显示选择对话框（单首模式）
+                self._show_result_dialog(songs)
+            except Exception as e:
+                self.logger.error(f"[批量模式] 搜索完成回调异常: {e}", exc_info=True)
+                if self._loading_dialog:
+                    self._loading_dialog.close()
                 self.get_lyric_btn.setEnabled(True)
                 self.batch_get_lyric_btn.setEnabled(True)
-                return
-
-            # 批量模式下自动选择最佳匹配结果
-            if getattr(self, '_batch_mode', False):
-                best_match = self.lyric_manager.select_best_match(
-                    songs=songs,
-                    file_path=file_path,
-                    provider=provider
-                )
-                if best_match:
-                    self.logger.info(f"[批量模式] 自动选择最佳匹配: {best_match.get('name', '')} - {best_match.get('artist', '')}")
-                    self._continue_fetch(best_match.get('id'))
-                else:
-                    MessageBox(
-                        tr("no_search_results"),
-                        tr("search_failed"),
-                        self
-                    ).show()
-                    self.get_lyric_btn.setEnabled(True)
-                    self.batch_get_lyric_btn.setEnabled(True)
-                return
-
-            # 如果只有一个结果，直接进入歌词获取
-            if len(songs) == 1:
-                self._continue_fetch(songs[0].get('id'))
-                return
-
-            # 多个结果时显示选择对话框（单首模式）
-            self._show_result_dialog(songs)
+                MessageBox(
+                    tr("search_error"),
+                    str(e),
+                    self
+                ).show()
 
         def on_search_error(error_msg: str) -> None:
             """搜索错误回调"""
@@ -1247,6 +1308,66 @@ class MusicManagerPage(QWidget):
 
         # 启动线程
         self.lyric_worker.start()
+
+    def _continue_fetch_for_single(self, file_path: str, selected_song_id: int | None) -> None:
+        """
+        批量模式下为单个文件继续歌词获取流程
+
+        只处理当前这一个文件，获取完成后自动触发下一个文件的处理。
+
+        Args:
+            file_path: 当前正在处理的文件路径
+            selected_song_id: 搜索结果中选中的歌曲 ID
+        """
+        if selected_song_id is None:
+            current_file = self._pending_file_paths[self._batch_current_index]
+            self._batch_results[current_file] = None
+            self._batch_current_index += 1
+            self._process_current_batch_file()
+            return
+
+        # 创建工作线程，只传入当前单个文件
+        self.lyric_worker = LyricWorker(
+            file_paths=[file_path],
+            provider=self._pending_provider,
+            song_id=selected_song_id
+        )
+
+        # 连接信号
+        self.lyric_worker.progress_updated.connect(self._on_lyric_progress)
+        self.lyric_worker.lyric_fetched.connect(self._on_lyric_fetched)
+        self.lyric_worker.finished_all.connect(self._on_batch_single_finished)
+        self.lyric_worker.error_occurred.connect(self._on_lyric_error)
+
+        # 启动线程
+        self.lyric_worker.start()
+
+    def _on_batch_single_finished(self, results: dict) -> None:
+        """
+        批量模式下单个文件歌词获取完成回调
+
+        保存当前文件的结果，更新进度，然后自动处理下一个文件。
+        如果所有文件都已处理完毕，则显示最终统计结果。
+
+        Args:
+            results (dict): 当前文件的获取结果 {file_path: lyrics_data}
+        """
+        current_file = self._pending_file_paths[self._batch_current_index]
+        lyrics = results.get(current_file)
+        self._batch_results[current_file] = lyrics
+
+        if lyrics:
+            self.logger.info(f"[批量模式] ({self._batch_current_index + 1}/{len(self._pending_file_paths)}) 歌词获取成功: {current_file}")
+        else:
+            self.logger.warning(f"[批量模式] ({self._batch_current_index + 1}/{len(self._pending_file_paths)}) 歌词获取失败: {current_file}")
+
+        # 更新进度
+        progress = int((self._batch_current_index + 1) / len(self._pending_file_paths) * 100)
+        self.lyric_progress.setValue(progress)
+
+        # 处理下一个文件
+        self._batch_current_index += 1
+        self._process_current_batch_file()
 
     def _show_result_dialog(self, songs: list[dict]) -> None:
         """
@@ -1425,6 +1546,27 @@ class MusicManagerPage(QWidget):
             )
 
             if success:
+                self.lyrics_cache.pop(self.current_file, None)
+                verified = self.lyric_manager.extract_lyrics(self.current_file)
+                if verified:
+                    verified_text = verified.get('synced_lyrics', '') or verified.get('plain_lyrics', '')
+                    if lyrics_text.strip() != verified_text.strip():
+                        self.logger.warning(f"嵌入验证失败: 文件中的歌词与预期不一致")
+                        self.current_lyrics = verified
+                        self.lyrics_cache[self.current_file] = verified
+                        synced = verified.get('synced_lyrics', '')
+                        plain = verified.get('plain_lyrics', '')
+                        self.lyric_text.setText(synced or plain)
+                        MessageBox(
+                            tr("errors_occurred"),
+                            tr("lyric_embed_verify_failed"),
+                            self
+                        ).exec()
+                        return
+                self.current_lyrics = {
+                    'synced_lyrics': lyrics_text,
+                    'plain_lyrics': lyrics_text,
+                }
                 if mode == 'embed_and_lrc':
                     MessageBox(tr("success"), tr("lyric_embed_success") + "\n" + tr("embed_and_lrc_desc"), self).exec()
                 else:
