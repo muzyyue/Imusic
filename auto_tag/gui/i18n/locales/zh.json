@@ -163,7 +163,9 @@
     },
     "keyword_modes": {
       "title_only": "仅歌曲名",
-      "artist_title": "艺术家 + 歌曲名"
+      "artist_title": "艺术家 + 歌曲名",
+      "filename_first": "文件名优先",
+      "smart_fallback": "智能回退（推荐）"
     },
     "netease_types": {
       "1": "单曲 (Song)",

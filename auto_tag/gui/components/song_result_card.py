@@ -153,7 +153,7 @@ class CoverImageLoader(QThread):
         if cache_key:
             cached_pixmap = CoverImageCache.get(cache_key)
             if cached_pixmap is not None:
-                self.loaded.emit(QPixmap(cached_pixmap))  # 返回副本
+                self.loaded.emit(cached_pixmap)
                 return
 
         pixmap = None
@@ -420,6 +420,7 @@ class CoverImageWidget(QFrame):
 
         确保加载线程被正确停止，防止内存泄漏。
         """
+        self._cleanup_resources()
         self._stop_loader()
         super().closeEvent(event)
 
@@ -427,8 +428,9 @@ class CoverImageWidget(QFrame):
         """
         延迟删除覆盖
 
-        在组件被删除前停止加载线程并断开信号连接。
+        在组件被删除前停止加载线程、断开信号连接并释放图片资源。
         """
+        self._cleanup_resources()
         self._stop_loader()
         # 断开主题变化信号连接
         try:
@@ -436,6 +438,16 @@ class CoverImageWidget(QFrame):
         except (TypeError, RuntimeError):
             pass
         super().deleteLater()
+
+    def _cleanup_resources(self) -> None:
+        """
+        清理图片资源
+
+        显式释放 pixmap 和 label 持有的图片引用，确保内存被回收。
+        """
+        self._pixmap = None
+        if hasattr(self, 'image_label') and self.image_label:
+            self.image_label.clear()
 
     def _on_cover_loaded(self, pixmap: Optional[QPixmap]) -> None:
         """
@@ -447,7 +459,6 @@ class CoverImageWidget(QFrame):
         self._is_loading = False
 
         if pixmap and not pixmap.isNull():
-            self._pixmap = pixmap
             rounded = self._round_pixmap(pixmap, self.size - 4)
             self.image_label.setPixmap(rounded)
             self.image_label.setText("")
@@ -457,6 +468,7 @@ class CoverImageWidget(QFrame):
                     border-radius: %dpx;
                 }
             """ % ((self.size - 4) // 2))
+            self._pixmap = rounded
         else:
             # 加载失败，显示默认图标
             self._show_default_icon()
@@ -793,8 +805,12 @@ class PlatformResultWidget(QFrame):
         """
         延迟删除覆盖
 
-        在组件被删除前断开信号连接，防止内存泄漏。
+        在组件被删除前断开信号连接并清理子组件资源，防止内存泄漏。
         """
+        # 清理封面组件资源
+        if hasattr(self, 'cover_widget') and self.cover_widget:
+            self.cover_widget._cleanup_resources()
+            self.cover_widget._stop_loader()
         try:
             qconfig.themeChanged.disconnect(self._on_theme_changed)
         except (TypeError, RuntimeError):

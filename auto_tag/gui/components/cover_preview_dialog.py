@@ -148,7 +148,7 @@ class CoverPreviewDialog(QWidget):
         if image.isNull():
             return
 
-        self._pixmap = QPixmap.fromImage(image)
+        source_pixmap = QPixmap.fromImage(image)
 
         # 计算预览窗口大小（基于屏幕尺寸）
         screen_geometry = QApplication.primaryScreen().geometry()
@@ -160,7 +160,7 @@ class CoverPreviewDialog(QWidget):
         min_size = 400  # 最小限制
 
         # 保持宽高比计算实际显示尺寸
-        pixmap_size = self._pixmap.size()
+        pixmap_size = source_pixmap.size()
         aspect_ratio = pixmap_size.width() / pixmap_size.height()
 
         if aspect_ratio > 1:  # 横图
@@ -179,7 +179,7 @@ class CoverPreviewDialog(QWidget):
                 display_height = int(display_width / aspect_ratio)
 
         # 设置图片和容器大小
-        scaled_pixmap = self._pixmap.scaled(
+        scaled_pixmap = source_pixmap.scaled(
             QSize(display_width, display_height),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
@@ -189,6 +189,9 @@ class CoverPreviewDialog(QWidget):
             display_width + 8,
             display_height + 8
         )
+
+        # 释放原始 pixmap，只保留缩放后的版本
+        source_pixmap = None
 
         # 设置遮罩层为全屏
         screen_rect = QApplication.primaryScreen().geometry()
@@ -435,7 +438,11 @@ class CoverPreviewDialog(QWidget):
         except RuntimeError:
             pass
 
-        # 释放资源
+        # 释放资源：清除 label 持有的 pixmap 引用
+        if hasattr(self, '_image_label') and self._image_label:
+            self._image_label.clear()
+
+        # 释放所有 pixmap 引用
         self._animation = None
         self._pixmap = None
 

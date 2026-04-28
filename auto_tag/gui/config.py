@@ -82,13 +82,15 @@ class AppConfig:
     DEFAULT_SEARCH_SOURCES: list[str] = ["acoustid", "shazam", "netease"]
     DEFAULT_NETEASE_SEARCH_TYPE: int = 1  # 单曲
     DEFAULT_INCLUDE_RADIO: bool = True
-    DEFAULT_SEARCH_KEYWORD_MODE: str = "title_only"  # 默认仅用歌曲名搜索
+    DEFAULT_SEARCH_KEYWORD_MODE: str = "smart_fallback"  # 默认使用智能回退模式（推荐）
 
     # 有效搜索关键词模式
-    VALID_KEYWORD_MODES: tuple[str, ...] = ("title_only", "artist_title")
+    VALID_KEYWORD_MODES: tuple[str, ...] = ("title_only", "artist_title", "filename_first", "smart_fallback")
     KEYWORD_MODE_LABELS: dict[str, str] = {
         "title_only": "仅歌曲名",
         "artist_title": "艺术家 + 歌曲名",
+        "filename_first": "文件名优先",
+        "smart_fallback": "智能回退（推荐）",
     }
 
     # 有效搜索源列表（包含音频指纹识别引擎 + 关键词搜索平台）

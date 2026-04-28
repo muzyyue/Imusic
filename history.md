@@ -1,6 +1,29 @@
 # 项目变更历史
 task：添加网易云音乐的下载功能 有搞头   转换页面无法支持多格式选择
 
+## v0.4.75 (2026-04-28)
+- feat(search): 优化歌曲搜索策略 - 新增智能回退模式解决原名搜索失败问题
+  - audio_recognize.py: 新增 _build_smart_keyword() 方法，支持4种关键词构建模式
+  - config.py: 扩展 VALID_KEYWORD_MODES 添加 filename_first 和 smart_fallback 选项
+  - config.py: 默认模式改为 smart_fallback（智能回退），提升中文/日文歌曲搜索成功率
+  - recognize_and_rename_file(): 集成智能关键词逻辑，首选关键词无结果时自动尝试备选
+  - smart_fallback 策略：优先使用含非ASCII字符的文件名/标题，依次回退到组合关键词
+  - 解决"夏style"等中文/日文原名在网易云搜不到的问题
+  - settings_page.py: 下拉框自动适配新模式（无需修改，从config动态读取）
+  - zh.json / en.json: 新增 filename_first、smart_fallback 翻译键
+  - 涉及文件: `audio_recognize.py`, `config.py`, `zh.json`, `en.json`
+
+## v0.4.74 (2026-04-28)
+- fix(memory): 修复首页连续点击封面导致内存占用持续增长且关闭后未回收的问题
+  - CoverImageLoader: 缓存命中时直接返回引用而非创建 QPixmap 副本，利用 Qt 隐式共享机制避免重复内存分配
+  - CoverImageWidget: _on_cover_loaded() 只保留圆角处理后的 pixmap，不再同时持有原始和圆角两份数据
+  - CoverImageWidget: 新增 _cleanup_resources() 方法，显式释放 _pixmap 和 image_label 持有的图片引用
+  - CoverImageWidget: closeEvent() 和 deleteLater() 中调用 _cleanup_resources() 确保资源释放
+  - CoverPreviewDialog: 使用局部变量替代实例变量存储原始 pixmap，缩放后立即释放原始数据
+  - CoverPreviewDialog: closeEvent() 中增加 _image_label.clear() 断开 QLabel 对 pixmap 的持有
+  - PlatformResultWidget: deleteLater() 中增加子组件 cover_widget 的资源清理调用
+  - 涉及文件: `song_result_card.py`, `cover_preview_dialog.py`
+
 ## v0.4.73 (2026-04-27)
 - feat(lyric): 批量获取歌词时自动选择匹配度最高的结果
   - LyricManager: 新增 select_best_match() 方法，使用多维度评分算法自动选择最佳匹配歌曲

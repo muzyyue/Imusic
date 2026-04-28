@@ -5,6 +5,7 @@
 import asyncio
 import logging
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -46,7 +47,8 @@ def extract_audio_segment(file_path: str, duration: int = 10) -> str:
             cmd,
             capture_output=True,
             timeout=30,
-            check=True
+            check=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
         )
         logger.info(f"[NetEaseExtract] 提取音频片段成功: {temp_path}")
         return temp_path

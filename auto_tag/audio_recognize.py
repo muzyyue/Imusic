@@ -2293,6 +2293,101 @@ def _build_search_keyword_from_filename(file_path: str) -> str:
     return name
 
 
+def _build_smart_keyword(
+    file_path: str,
+    title: str,
+    artist: str,
+    mode: str = "smart_fallback",
+) -> tuple[str, list[str]]:
+    """
+    智能构建搜索关键词（支持多种模式）
+
+    根据用户选择的模式，从不同来源构建搜索关键词。
+    智能回退模式下会返回多个备选关键词供依次尝试。
+
+    Args:
+        file_path: 音频文件完整路径
+        title: Shazam识别的歌曲标题
+        artist: Shazam识别的艺术家
+        mode: 关键词构建模式
+            - "title_only": 仅使用歌曲名
+            - "artist_title": 使用"艺术家 歌曲名"组合
+            - "filename_first": 优先使用文件名
+            - "smart_fallback": 智能回退模式（推荐）
+
+    Returns:
+        tuple[str, list[str]]: (首选关键词, 备选关键词列表)
+            首选关键词用于第一次搜索，如果无结果则尝试备选列表
+    """
+    import re
+
+    filename_base = os.path.splitext(os.path.basename(file_path))[0].strip()
+
+    if mode == "title_only":
+        return title, []
+
+    elif mode == "artist_title":
+        if artist and artist != "Unknown Artist":
+            return f"{artist} {title}", []
+        else:
+            return title, []
+
+    elif mode == "filename_first":
+        filename_kw = _build_search_keyword_from_filename(file_path)
+        if filename_kw:
+            alternatives = [title]
+            if artist and artist != "Unknown Artist":
+                alternatives.append(f"{artist} {title}")
+            return filename_kw, alternatives
+        else:
+            return title, []
+
+    elif mode == "smart_fallback":
+        keywords_to_try = []
+        primary_keyword = title
+
+        def _contains_non_ascii(s: str) -> bool:
+            """检查字符串是否包含非ASCII字符（中文/日文/韩文等）"""
+            return bool(re.search(r'[^\x00-\x7F]', s))
+
+        def _is_meaningful_filename(name: str) -> bool:
+            """检查文件名是否有意义（非纯数字、非无意义字符串）"""
+            if not name or len(name) < 2:
+                return False
+            if re.match(r'^[\d\s_\-\.]+$', name):
+                return False
+            return True
+
+        strategy_order = []
+
+        if _is_meaningful_filename(filename_base) and _contains_non_ascii(filename_base):
+            strategy_order.append(("filename", _build_search_keyword_from_filename(file_path)))
+        if _contains_non_ascii(title):
+            strategy_order.append(("title", title))
+        if artist and artist != "Unknown Artist":
+            strategy_order.append(("combined", f"{artist} {title}"))
+        if title not in [s[1] for s in strategy_order]:
+            strategy_order.append(("title_fallback", title))
+
+        if strategy_order:
+            primary_keyword = strategy_order[0][1]
+            keywords_to_try = [s[1] for s in strategy_order[1:]]
+
+            logger.info(
+                f"[SmartKeyword] Strategy for '{os.path.basename(file_path)}': "
+                f"primary='{primary_keyword}', "
+                f"alternatives={keywords_to_try[:3]}"
+            )
+        else:
+            primary_keyword = title
+
+        return primary_keyword, keywords_to_try
+
+    else:
+        logger.warning(f"[SmartKeyword] Unknown mode '{mode}', falling back to title_only")
+        return title, []
+
+
 async def recognize_and_rename_file(
     *,
     file_path: str,
@@ -2518,20 +2613,46 @@ async def recognize_and_rename_file(
     s_artist = sanitize(artist, trace)
     s_album = sanitize(album, trace)
 
-    # 3.5) Multi-source search: 根据配置构建关键词
+    # 3.5) Multi-source search: 根据配置构建关键词（支持智能回退）
     from auto_tag.gui.config import config
-    if config.search_keyword_mode == "artist_title":
-        keyword = f"{artist} {title}"
-    else:
-        keyword = title
+
+    primary_keyword, alternative_keywords = _build_smart_keyword(
+        file_path=file_path,
+        title=title,
+        artist=artist,
+        mode=config.search_keyword_mode,
+    )
+
     search_results = await multi_source_search(
-        keyword=keyword,
+        keyword=primary_keyword,
         shazam_result=out,
         limit=3,
         sources=config.search_sources,
         include_radio=config.include_radio,
         fingerprint_engine=recognition_source or "none",
     )
+
+    if not search_results and alternative_keywords:
+        for alt_kw in alternative_keywords[:3]:
+            logger.info(
+                f"[SmartKeyword] Primary keyword '{primary_keyword}' failed, "
+                f"trying alternative: '{alt_kw}'"
+            )
+            alt_results = await multi_source_search(
+                keyword=alt_kw,
+                shazam_result=out,
+                limit=3,
+                sources=config.search_sources,
+                include_radio=config.include_radio,
+                fingerprint_engine=recognition_source or "none",
+            )
+            if alt_results:
+                logger.info(
+                    f"[SmartKeyword] Alternative keyword '{alt_kw}' succeeded "
+                    f"with {len(alt_results)} results"
+                )
+                search_results = alt_results
+                break
 
     # 4) Build final name (if renaming)
     if plex_structure:
