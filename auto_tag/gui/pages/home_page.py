@@ -781,6 +781,13 @@ class HomePage(QWidget):
         self.search_results_map.clear()
         self._selected_results.clear()
 
+        # 先停止所有卡片的加载线程（同步等待，防止竞态条件）
+        for card in self.song_cards.values():
+            if hasattr(card, '_platform_widgets'):
+                for widget in card._platform_widgets:
+                    if hasattr(widget, 'cover_widget') and widget.cover_widget:
+                        widget.cover_widget._stop_loader()
+
         # 删除所有卡片组件（释放文件句柄）
         for card in self.song_cards.values():
             card.deleteLater()
@@ -792,6 +799,17 @@ class HomePage(QWidget):
             if child.widget():
                 child.widget().deleteLater()
         self.cards_layout.addStretch()
+
+        # ✅ 新增：清空全局封面图片缓存（修复内存泄漏 #1）
+        from auto_tag.gui.components.song_result_card import CoverImageCache
+        CoverImageCache.clear()
+
+        # 强制处理事件循环，确保所有 DeferredDelete 被执行
+        from PySide6.QtCore import QCoreApplication
+        QCoreApplication.processEvents(
+            QProcessEventLoop.ProcessEventsFlags.ExcludeUserInputEvents,
+            100
+        )
 
         # 重置进度条和状态
         self.progress_bar.setValue(0)

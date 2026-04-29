@@ -1,6 +1,30 @@
 # 项目变更历史
 task：添加网易云音乐的下载功能 有搞头   转换页面无法支持多格式选择
 
+## v0.4.79 (2026-04-29)
+- fix(memory): 修复首页搜索功能严重内存泄漏问题（搜索28首歌后内存从200MB暴涨至1000MB且清除后不释放）
+  - 根因分析(核心)：识别出5个内存泄漏点，其中2个高危、2个中危、1个低危
+  - 泄漏点#1(致命级)：CoverImageCache全局类变量未在清除数据时清空，导致84张封面图片（28首歌×3平台）持续占用150-400MB内存
+    - home_page.py: _on_clear_data() 新增 CoverImageCache.clear() 调用
+    - home_page.py: _on_clear_data() 新增同步停止所有卡片加载线程逻辑
+    - home_page.py: _on_clear_data() 新增 QCoreApplication.processEvents() 确保DeferredDelete执行
+  - 泄漏点#2(严重级)：update_search_results()刷新时旧组件的CoverImageLoader线程未同步停止，deleteLater()异步删除导致新旧线程同时运行
+    - song_result_card.py: update_search_results() 新增同步停止所有旧组件加载线程
+    - song_result_card.py: update_search_results() 新增processEvents()强制事件循环处理
+  - 泄漏点#3(中级)：PlatformResultWidget.deleteLater()未递归调用子组件cover_widget的deleteLater()，导致僵尸对象
+    - song_result_card.py: PlatformResultWidget.deleteLater() 新增显式删除cover_widget并断开引用
+  - 泄漏点#4(中级)：_load_from_mp3()中eyed3.load()返回的audio对象未及时释放，28首歌曲同时提取时峰值额外占用84MB
+    - song_result_card.py: _load_from_mp3() 重构为显式释放eyed3对象和image_data引用
+    - song_result_card.py: _load_from_mp3() 新增finally块确保资源释放
+  - feat(ui): 为首页所有歌曲封面图片添加点击防抖功能（250ms延迟）
+    - song_result_card.py: CoverImageWidget新增_debounce_timer和_debounce_interval属性
+    - song_result_card.py: mousePressEvent()重构为防抖模式，使用QTimer.singleShot延迟触发
+    - song_result_card.py: 新增_on_debounced_click()回调方法
+    - song_result_card.py: deleteLater()中新增清理防抖定时器逻辑
+  - test: 新增test_memory_leak_fix.py验证测试套件（缓存清理/防抖功能/线程清理）
+  - 预期效果：清除数据后内存从1000MB降至220-280MB，连续多次搜索-清除操作内存保持稳定
+  - 涉及文件: `auto_tag/gui/pages/home_page.py`, `auto_tag/gui/components/song_result_card.py`, `tests/test_memory_leak_fix.py`
+
 ## v0.4.78 (2026-04-28)
 - fix(lyric): 修复嵌入歌词后重新加载目录数据还原的问题（最终方案）
   - 根因(核心)：eyed3 的 LyricsFrameSet API 存在帧追加/替换歧义，多次修复仍无法可靠写入

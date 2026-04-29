@@ -206,18 +206,38 @@ class CoverImageLoader(QThread):
         return None
 
     def _load_from_mp3(self) -> Optional[QPixmap]:
-        """从 MP3 文件提取内嵌封面"""
+        """
+        从 MP3 文件提取内嵌封面
+
+        Returns:
+            QPixmap | None: 提取成功的封面图片，失败返回 None
+        """
+        audio = None
         try:
             import eyed3
             audio = eyed3.load(self.file_path)
             if audio and audio.tag and audio.tag.images:
                 img = audio.tag.images[0]
+                image_data = img.image_data
+
+                # ✅ 新增：立即释放 eyed3 对象和图片数据引用
+                del img
+                if hasattr(audio, 'tag') and audio.tag:
+                    audio.tag.images = []
+                audio = None
+
                 image = QImage()
-                image.loadFromData(img.image_data)
+                image.loadFromData(image_data)
+                del image_data  # 释放原始数据
+
                 if not image.isNull():
                     return QPixmap.fromImage(image)
         except Exception as e:
             print(f"[CoverImageLoader] MP3 extract failed: {e}")
+        finally:
+            # ✅ 确保 audio 被完全释放
+            if audio is not None:
+                audio = None
         return None
 
 
@@ -260,6 +280,10 @@ class CoverImageWidget(QFrame):
         self._pixmap: Optional[QPixmap] = None
         self._loader: Optional[CoverImageLoader] = None
         self._is_loading = False
+
+        # ✅ 新增：防抖定时器（250ms 防抖延迟）
+        self._debounce_timer: Optional[QTimer] = None
+        self._debounce_interval: int = 250  # 毫秒
 
         self.setFixedSize(size, size)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -432,6 +456,15 @@ class CoverImageWidget(QFrame):
         """
         self._cleanup_resources()
         self._stop_loader()
+        # ✅ 新增：清理防抖定时器
+        if self._debounce_timer is not None:
+            self._debounce_timer.stop()
+            try:
+                self._debounce_timer.timeout.disconnect(self._on_debounced_click)
+            except (TypeError, RuntimeError):
+                pass
+            self._debounce_timer.deleteLater()
+            self._debounce_timer = None
         # 断开主题变化信号连接
         try:
             qconfig.themeChanged.disconnect(self._on_theme_changed)
@@ -475,13 +508,34 @@ class CoverImageWidget(QFrame):
 
     def mousePressEvent(self, event) -> None:
         """
-        鼠标点击事件
+        鼠标点击事件（带防抖处理）
 
-        点击时触发预览功能。
+        使用 250ms 防抖延迟，防止快速多次点击导致性能问题或功能异常。
+        只在最后一次点击后的 250ms 内无新点击时才触发 clicked 信号。
         """
         if event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit()
+            # ✅ 新增：取消之前的防抖定时器
+            if self._debounce_timer is not None:
+                self._debounce_timer.stop()
+                self._debounce_timer.deleteLater()
+                self._debounce_timer = None
+
+            # 创建新的防抖定时器
+            self._debounce_timer = QTimer(self)
+            self._debounce_timer.setSingleShot(True)
+            self._debounce_timer.setInterval(self._debounce_interval)
+            self._debounce_timer.timeout.connect(self._on_debounced_click)
+            self._debounce_timer.start()
+
         super().mousePressEvent(event)
+
+    def _on_debounced_click(self) -> None:
+        """
+        防抖延迟结束回调
+
+        在防抖时间窗口内最后一次点击后执行实际的点击操作。
+        """
+        self.clicked.emit()
 
     def get_pixmap(self) -> Optional[QPixmap]:
         """
@@ -811,6 +865,9 @@ class PlatformResultWidget(QFrame):
         if hasattr(self, 'cover_widget') and self.cover_widget:
             self.cover_widget._cleanup_resources()
             self.cover_widget._stop_loader()
+            # ✅ 新增：显式删除子组件，确保完整生命周期管理
+            self.cover_widget.deleteLater()
+            self.cover_widget = None
         try:
             qconfig.themeChanged.disconnect(self._on_theme_changed)
         except (TypeError, RuntimeError):
@@ -1237,6 +1294,19 @@ class SongResultCard(CardWidget):
                 self.count_label.setVisible(True)
             else:
                 self.count_label.setVisible(False)
+
+        # ✅ 新增：同步停止所有旧组件的加载线程（修复内存泄漏 #2）
+        if hasattr(self, '_platform_widgets'):
+            for widget in self._platform_widgets:
+                if hasattr(widget, 'cover_widget') and widget.cover_widget:
+                    widget.cover_widget._stop_loader()
+
+        # 强制处理事件循环，确保 DeferredDelete 被执行
+        from PySide6.QtCore import QCoreApplication
+        QCoreApplication.processEvents(
+            QProcessEventLoop.ProcessEventsFlags.ExcludeUserInputEvents,
+            100
+        )
 
         # 重建结果容器内容
         results_layout = self.results_container.layout()
