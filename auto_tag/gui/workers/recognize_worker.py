@@ -120,16 +120,46 @@ class RecognizeWorker(QThread):
                 - apply: 是否可应用（无错误时为 True）
 
         Note:
-            该方法会跳过名称包含 "test" 的目录。
+            该方法会跳过系统目录和版本控制目录。
         """
+        # 定义需要跳过的系统/缓存目录（精确匹配）
+        SKIP_DIRS = {
+            "__pycache__",
+            ".git",
+            ".svn",
+            ".hg",
+            "node_modules",
+            ".venv",
+            "venv",
+            ".idea",
+            ".vscode",
+            "build",
+            "dist",
+            ".tox",
+        }
+
+        # 定义支持的音频格式扩展名（与 music_manager_page.py 保持一致）
+        SUPPORTED_AUDIO_EXTENSIONS = (
+            ".mp3",    # MPEG Audio Layer III
+            ".ogg",    # OGG Vorbis / Opus
+            ".flac",   # Free Lossless Audio Codec
+            ".m4a",    # MPEG-4 Audio (AAC)
+            ".wav",    # Waveform Audio File Format
+            ".wma",    # Windows Media Audio
+            ".opus",   # Opus (explicit extension)
+        )
+
         # 收集音频文件
         audio_files: list[str] = []
         for rootdir, _, names in os.walk(self.directory):
-            # 跳过 test 目录
-            if "test" in os.path.basename(rootdir).lower():
+            # 跳过系统目录和版本控制目录（精确匹配，避免误伤用户目录）
+            basename = os.path.basename(rootdir)
+            if basename in SKIP_DIRS:
+                logger.debug(f"[RecognizeWorker] Skipping system directory: {rootdir}")
                 continue
+
             for name in names:
-                if name.lower().endswith((".mp3", ".ogg")):
+                if name.lower().endswith(SUPPORTED_AUDIO_EXTENSIONS):
                     audio_files.append(os.path.join(rootdir, name))
 
         total_files = len(audio_files)

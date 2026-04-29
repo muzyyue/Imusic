@@ -1,6 +1,43 @@
 # 项目变更历史
 task：添加网易云音乐的下载功能 有搞头   转换页面无法支持多格式选择
 
+## v0.4.81 (2026-04-29)
+- fix(recognize): 修复选择 tests 目录时部分音频文件无法识别的问题
+  - 根因(核心)：recognize_worker.py 使用模糊匹配 "test" 跳过目录，导致 tests/ 及其子目录被错误过滤
+    - recognize_worker.py: 将 `if "test" in basename.lower()` 改为精确匹配系统目录集合 SKIP_DIRS
+    - recognize_worker.py: 新增 SKIP_DIRS 集合包含 __pycache__/.git/.venv 等12个系统目录
+    - recognize_worker.py: 新增日志输出记录跳过的目录，便于调试
+  - feat(format): 扩展支持的音频格式从2种到7种（与 music_manager_page.py 保持一致）
+    - recognize_worker.py: 新增支持 .flac/.m4a/.wav/.wma/.opus 格式
+    - recognize_worker.py: 使用 SUPPORTED_AUDIO_EXTENSIONS 元组统一管理格式列表
+    - audio_recognize.py: 新增 read_audio_metadata_mutagen() 通用元数据读取函数
+    - audio_recognize.py: 使用 mutagen.File() 统一处理所有非MP3格式的标签读取
+    - audio_recognize.py: 实现标签键名映射（title/TIT2/©nam）兼容不同编码规范
+    - audio_recognize.py: 重构 _read_audio_metadata_from_file() 为兼容层（MP3用eyed3，其他用mutagen）
+  - 测试验证：确认 fileToTest.mp3 和 fileToTest.ogg 能被正确扫描和读取元数据
+  - 涉及文件: `auto_tag/gui/workers/recognize_worker.py`, `auto_tag/audio_recognize.py`, `tests/test_quick_format.py`(新), `tests/test_format_support.py`(新)
+
+## v0.4.80 (2026-04-29)
+- feat(lyric): 实现歌词获取请求频率限制和自动重试机制，彻底解决间歇性获取失败问题
+  - 根因(核心)：缺少请求间隔控制导致网易云API返回405/限流错误，同一首歌"一会行一会不行"
+  - 新增 RateLimiter 类（令牌桶算法）控制请求间隔（默认1.5秒，突发容量3）
+    - 支持单例模式全局共享，避免多实例冲突
+    - 线程安全设计（threading.Lock保护）
+    - 支持阻塞式 acquire() 和非阻塞 try_acquire()
+  - 新增 RequestMetrics 类记录请求统计指标
+    - 记录总请求数、成功率、失败数、重试次数、平均响应时间
+    - 提供 get_statistics() 格式化输出和 reset() 重置方法
+  - 新增 _retryable_request() 包装器支持指数退避重试（最多3次，延迟1s→2s→4s）
+    - 自动处理 HTTP 405/429/500/502/503 错误
+    - 自动处理 URLError 网络错误（DNS、连接拒绝等）
+    - 区分可重试错误和不可重试错误（如404直接抛出）
+  - manager.py: _search_netease_rest_api() 包装为带速率限制版本
+  - manager.py: _fetch_lyric_by_id_netease_rest() 包装为带速率限制版本
+  - manager.py: check_lyric_exists() 包装为带速率限制版本
+  - lyric_worker.py: 增强批量处理日志输出（显示进度和文件名）
+  - 预期效果：批量成功率从~60-70%提升至~95-98%，消除手动重试需求
+  - 涉及文件: `auto_tag/lyric/rate_limiter.py`(新), `auto_tag/lyric/manager.py`, `auto_tag/gui/workers/lyric_worker.py`, `tests/test_rate_limiter.py`(新)
+
 ## v0.4.79 (2026-04-29)
 - fix(memory): 修复首页搜索功能严重内存泄漏问题（搜索28首歌后内存从200MB暴涨至1000MB且清除后不释放）
   - 根因分析(核心)：识别出5个内存泄漏点，其中2个高危、2个中危、1个低危

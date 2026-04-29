@@ -2083,11 +2083,69 @@ async def find_and_recognize_audio_files(
     print(f"Succeeded {ok}/{len(audio_files)}.")
 
 
+def read_audio_metadata_mutagen(file_path: str) -> dict[str, str]:
+    """
+    使用 mutagen 库统一读取音频文件元数据
+
+    支持所有常见音频格式：MP3, OGG (Vorbis/Opus), FLAC, M4A, WAV, WMA 等。
+    作为通用的元数据提取接口，为识别流程提供回退搜索关键词。
+
+    Args:
+        file_path: 音频文件路径
+
+    Returns:
+        dict: 包含 title, artist, album 的字典，空字符串表示未找到
+    """
+    metadata = {"title": "", "artist": "", "album": ""}
+
+    try:
+        audio = File(file_path)
+
+        if audio is None:
+            logger.debug(f"[MutagenMetadata] Unsupported format or corrupt file: {file_path}")
+            return metadata
+
+        # 统一标签键名映射（处理不同格式的大小写差异）
+        tag_mappings = {
+            "title": ["title", "TIT2", "\xa9nam"],  # 通用/Vorbis/ID3v2/iTunes
+            "artist": ["artist", "TPE1", "\xa9ART"],
+            "album": ["album", "TALB", "\xa9alb"],
+        }
+
+        for field, possible_keys in tag_mappings.items():
+            value = ""
+            for key in possible_keys:
+                try:
+                    if key in audio.tags:
+                        raw_value = audio.tags[key]
+                        if isinstance(raw_value, list):
+                            value = raw_value[0] if raw_value else ""
+                        else:
+                            value = str(raw_value)
+                        if value:
+                            break
+                except (KeyError, AttributeError, TypeError):
+                    continue
+
+            metadata[field] = value or ""
+
+        logger.debug(
+            f"[MutagenMetadata] Read from {os.path.basename(file_path)}: "
+            f"title='{metadata['title']}', artist='{metadata['artist']}', album='{metadata['album']}'"
+        )
+
+    except Exception as e:
+        logger.debug(f"[MutagenMetadata] Failed to read metadata: {e}")
+
+    return metadata
+
+
 def _read_audio_metadata_from_file(file_path: str) -> dict[str, str]:
     """
-    从音频文件内部读取元数据标签
+    从音频文件内部读取元数据标签（兼容层）
 
-    支持 MP3 (ID3) 和 OGG (Vorbis/Opus) 格式。
+    优先使用 eyed3 处理 MP3 格式（保持向后兼容），
+    其他格式统一使用 mutagen 库读取。
     当音频指纹引擎失败且文件名无意义时，使用此函数
     尝试从文件内部标签提取搜索关键词。
 
@@ -2097,34 +2155,23 @@ def _read_audio_metadata_from_file(file_path: str) -> dict[str, str]:
     Returns:
         dict: 包含 title, artist, album 的字典，空字符串表示未找到
     """
-    metadata = {"title": "", "artist": "", "album": ""}
     ext = os.path.splitext(file_path)[1].lower()
 
-    try:
-        if ext == ".mp3":
+    # MP3 格式：继续使用 eyed3（历史原因，eyed3 对 ID3 标签支持更完善）
+    if ext == ".mp3":
+        metadata = {"title": "", "artist": "", "album": ""}
+        try:
             audio = eyed3.load(file_path)
             if audio and audio.tag:
                 metadata["title"] = audio.tag.title or ""
                 metadata["artist"] = audio.tag.artist or ""
                 metadata["album"] = audio.tag.album or ""
-        else:
-            audio = None
-            try:
-                audio = OggVorbis(file_path)
-            except Exception:
-                try:
-                    audio = OggOpus(file_path)
-                except Exception:
-                    audio = File(file_path)
+        except Exception as e:
+            logger.debug(f"[MetadataFallback] eyed3 failed for {file_path}: {e}")
+        return metadata
 
-            if audio:
-                metadata["title"] = audio.get("TITLE", [""])[0]
-                metadata["artist"] = audio.get("ARTIST", [""])[0]
-                metadata["album"] = audio.get("ALBUM", [""])[0]
-    except Exception as e:
-        logger.debug(f"[MetadataFallback] Failed to read tags from {file_path}: {e}")
-
-    return metadata
+    # 其他所有格式：使用 mutagen 统一接口
+    return read_audio_metadata_mutagen(file_path)
 
 
 def _is_metadata_valid(metadata: dict[str, str]) -> bool:
