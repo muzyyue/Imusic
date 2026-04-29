@@ -117,7 +117,10 @@ class LyricWorker(QThread):
                     results[file_path] = None
                     self.lyric_fetched.emit(file_path, None)
                 else:
-                    self.logger.info(f"正在获取歌词: {file_path}, 提供商: {self.provider}")
+                    self.logger.info(
+                        f"[Batch] 处理第 {idx}/{len(self.file_paths)} 个文件: "
+                        f"{os.path.basename(file_path)}"
+                    )
 
                     # 如果指定了歌曲 ID，使用 fetch_lyric_by_id
                     if self.song_id and self.provider in ['netease', 'kugou']:
@@ -134,15 +137,25 @@ class LyricWorker(QThread):
                         lyrics = self._manager.fetch_lyrics(file_path, self.provider)
 
                     if lyrics:
-                        self.logger.info(f"获取歌词成功: {file_path}")
+                        self.logger.info(
+                            f"[Batch] ✓ 获取歌词成功 ({idx}/{len(self.file_paths)}): "
+                            f"{os.path.basename(file_path)}"
+                        )
                         results[file_path] = lyrics
                         self.lyric_fetched.emit(file_path, lyrics)
                     else:
-                        self.logger.warning(f"获取歌词返回空: {file_path}")
+                        self.logger.warning(
+                            f"[Batch] ✗ 获取歌词返回空 ({idx}/{len(self.file_paths)}): "
+                            f"{os.path.basename(file_path)}"
+                        )
                         results[file_path] = None
                         self.lyric_fetched.emit(file_path, None)
             except Exception as exc:
-                self.logger.error(f"获取歌词异常: {file_path}, 错误: {type(exc).__name__}: {exc}", exc_info=True)
+                self.logger.error(
+                    f"[Batch] ✗ 获取歌词异常 ({idx}/{len(self.file_paths)}): "
+                    f"{os.path.basename(file_path)}, 错误: {type(exc).__name__}: {exc}",
+                    exc_info=True
+                )
                 results[file_path] = None
                 self.lyric_fetched.emit(file_path, None)
 

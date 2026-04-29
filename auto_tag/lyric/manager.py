@@ -7,16 +7,19 @@
 from __future__ import annotations
 
 import logging
+import time
 import os
-from typing import Any
+from typing import Any, Callable
 
 import eyed3
 from mutagen import File
 from mutagen.flac import Picture
 from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
+from urllib.error import HTTPError, URLError
 
 from .provider import get_provider, get_provider_api
+from .rate_limiter import get_rate_limiter, RequestMetrics
 from auto_tag.audio_recognize import get_netease_api, get_kugou_api
 
 
@@ -41,7 +44,7 @@ class LyricManager:
     """
 
     def __init__(self):
-        """初始化歌词管理器，配置日志"""
+        """初始化歌词管理器，配置日志和请求限速器"""
         self.logger = logging.getLogger(__name__)
         if not self.logger.handlers:
             handler = logging.StreamHandler()
@@ -51,7 +54,13 @@ class LyricManager:
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
-        
+
+        # 初始化请求限速器（全局单例，控制 API 请求频率）
+        self._rate_limiter = get_rate_limiter()
+
+        # 初始化请求监控指标（记录成功率、响应时间等）
+        self._metrics = RequestMetrics()
+
         # 注意：MusicLibrary 使用 threading.local() 线程本地实例，
         # 不需要预初始化，首次调用时自动创建
         pass
@@ -73,6 +82,157 @@ class LyricManager:
             KuGouMusicApi or None: 当前线程的 API 实例
         """
         return get_kugou_api()
+
+    def _retryable_request(
+        self,
+        request_func: Callable[[], Any],
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+        retryable_errors: tuple[int, ...] = (405, 429, 500, 502, 503),
+        operation_name: str = "API请求"
+    ) -> Any:
+        """
+        带指数退避重试和速率限制的请求包装器
+
+        自动处理以下场景：
+        1. 速率限制：通过 RateLimiter 控制请求间隔
+        2. 网络错误：对可重试的 HTTP 错误自动重试
+        3. 指数退避：每次重试等待时间翻倍（1s, 2s, 4s, ...）
+        4. 指标记录：所有请求结果都记录到 RequestMetrics
+
+        Args:
+            request_func: 实际执行 HTTP 请求的可调用对象（无参数）
+            max_retries: 最大重试次数（默认3次，即最多尝试4次）
+            base_delay: 基础延迟时间（秒），实际延迟 = base_delay * 2^attempt
+            retryable_errors: 需要触发重试的 HTTP 状态码元组
+            operation_name: 操作名称（用于日志输出，如"搜索歌曲"、"获取歌词"）
+
+        Returns:
+            Any: request_func 的返回值（通常是解析后的数据字典或列表）
+
+        Raises:
+            TimeoutError: 等待速率限制许可超时
+            Exception: 重试耗尽后抛出最后一个异常
+
+        Example:
+            >>> def do_search():
+            ...     return urlopen(req).read()
+            >>>
+            >>> result = self._retryable_request(
+            ...     request_func=do_search,
+            ...     max_retries=3,
+            ...     operation_name="搜索歌曲"
+            ... )
+        """
+        last_exception: Exception | None = None
+        total_attempts = max_retries + 1  # 首次尝试 + 重试次数
+
+        for attempt in range(total_attempts):
+            try:
+                # 步骤1：获取速率限制许可（阻塞直到可用）
+                if not self._rate_limiter.acquire(timeout=30):
+                    self.logger.error(
+                        f"[RateLimit] {operation_name} 等待请求许可超时(30s)，放弃本次请求"
+                    )
+                    raise TimeoutError(f"{operation_name} 等待请求许可超时")
+
+                # 步骤2：执行实际请求并计时
+                start_time = time.time()
+                result = request_func()
+                response_time = time.time() - start_time
+
+                # 步骤3：记录成功指标
+                self._metrics.record_request(
+                    success=True,
+                    response_time=response_time,
+                    retry_count=attempt,
+                    is_rate_limited=(attempt > 0)  # 如果有重试说明可能被限流过
+                )
+
+                if attempt > 0:
+                    self.logger.info(
+                        f"[Retry] {operation_name} 在第 {attempt + 1} 次尝试成功 "
+                        f"(耗时: {response_time:.2f}s)"
+                    )
+
+                return result
+
+            except HTTPError as e:
+                last_exception = e
+                response_time = time.time() - start_time if 'start_time' in dir() else 0
+
+                # 判断是否为可重试错误
+                if e.code not in retryable_errors:
+                    # 不可重试的错误（如404 Not Found、403 Forbidden）直接抛出
+                    self.logger.warning(
+                        f"[Retry] {operation_name} 遇到不可重试错误 "
+                        f"(HTTP {e.code}: {e.reason})，直接抛出"
+                    )
+                    self._metrics.record_request(success=False, response_time=response_time)
+                    raise
+
+                # 记录失败指标
+                self._metrics.record_request(
+                    success=False,
+                    response_time=response_time,
+                    retry_count=attempt
+                )
+
+                # 计算退避延迟（指数增长）
+                delay = base_delay * (2 ** attempt)
+                delay = min(delay, 10.0)  # 最大延迟不超过10秒
+
+                if attempt < max_retries:
+                    self.logger.warning(
+                        f"[Retry] {operation_name} 失败 (HTTP {e.code}: {e.reason})，"
+                        f"{delay:.1f}秒后重试 ({attempt + 1}/{max_retries})"
+                    )
+                    time.sleep(delay)
+                else:
+                    self.logger.error(
+                        f"[Retry] {operation_name} 重试耗尽 "
+                        f"(共{total_attempts}次)，最后错误: HTTP {e.code}"
+                    )
+
+            except URLError as e:
+                last_exception = e
+                response_time = time.time() - start_time if 'start_time' in dir() else 0
+
+                # 网络错误（DNS失败、连接拒绝等）也进行重试
+                self._metrics.record_request(
+                    success=False,
+                    response_time=response_time,
+                    retry_count=attempt
+                )
+
+                delay = base_delay * (2 ** attempt)
+                delay = min(delay, 10.0)
+
+                if attempt < max_retries:
+                    self.logger.warning(
+                        f"[Retry] {operation_name} 网络错误 ({e.reason})，"
+                        f"{delay:.1f}秒后重试 ({attempt + 1}/{max_retries})"
+                    )
+                    time.sleep(delay)
+
+            except Exception as e:
+                # 其他未知错误，不重试直接抛出
+                last_exception = e
+                response_time = time.time() - start_time if 'start_time' in dir() else 0
+                self._metrics.record_request(success=False, response_time=response_time)
+                self.logger.error(
+                    f"[Retry] {operation_name} 遇到不可预见的错误 "
+                    f"({type(e).__name__}: {e})，停止重试"
+                )
+                raise
+
+        # 所有重试都失败了
+        self._metrics.record_request(
+            success=False,
+            response_time=0,
+            retry_count=max_retries
+        )
+        raise last_exception or RuntimeError(f"{operation_name} 未知错误")
 
     def fetch_lyrics(
         self,
@@ -285,10 +445,11 @@ class LyricManager:
 
     def _search_netease_rest_api(self, keyword: str, limit: int = 10) -> list[dict[str, Any]]:
         """
-        使用网易云 REST API 搜索歌曲
+        使用网易云 REST API 搜索歌曲（带速率限制和自动重试）
 
         直接调用网易云 Web API，比 pymusiclibrary 更稳定且搜索能力更强。
         无需登录，使用与网易云 app 相同的搜索接口。
+        内置请求频率控制（1.5秒间隔）和失败自动重试（最多3次）。
 
         Args:
             keyword (str): 搜索关键词
@@ -300,9 +461,9 @@ class LyricManager:
         import json
         from urllib.request import Request, urlopen
         from urllib.parse import urlencode
-        from urllib.error import URLError, HTTPError
 
-        try:
+        def _do_search() -> list[dict[str, Any]]:
+            """执行实际的 HTTP 搜索请求"""
             params = urlencode({
                 's': keyword,
                 'type': 1,
@@ -317,8 +478,6 @@ class LyricManager:
             }
             req = Request(url, headers=headers)
 
-            # 使用 urlopen（pymusiclibrary 初始化后会设置必要的 cookie/ssl 配置，
-            # urlopen 会自动继承这些配置，使得 API 请求能正常工作）
             with urlopen(req, timeout=15) as resp:
                 raw_data = resp.read().decode('utf-8')
 
@@ -352,14 +511,13 @@ class LyricManager:
             self.logger.info(f"[NetEase-REST] 搜索 '{keyword}' 返回 {len(songs)} 条结果")
             return songs
 
-        except URLError as e:
-            self.logger.warning(f"[NetEase-REST] 网络错误: {e}")
-            return []
-        except HTTPError as e:
-            self.logger.warning(f"[NetEase-REST] HTTP 错误: {e.code} - {e.reason}")
-            return []
+        try:
+            return self._retryable_request(
+                request_func=_do_search,
+                operation_name=f"搜索歌曲({keyword[:20]}...)"
+            )
         except Exception as e:
-            self.logger.error(f"[NetEase-REST] 搜索失败: {e}")
+            self.logger.warning(f"[NetEase-REST] 搜索最终失败: {keyword}, 错误: {e}")
             return []
 
     def check_lyric_exists(
@@ -369,9 +527,10 @@ class LyricManager:
         timeout: int = 5
     ) -> bool:
         """
-        轻量级检查歌曲是否有歌词（不下载歌词内容）
+        轻量级检查歌曲是否有歌词（带速率限制和自动重试）
 
         使用 REST API 快速检测歌词是否存在，用于搜索结果列表的预览。
+        内置请求频率控制，避免频繁调用触发限流。
 
         Args:
             song_id: 歌曲 ID
@@ -384,12 +543,12 @@ class LyricManager:
         import json
         from urllib.request import Request, urlopen
         from urllib.parse import urlencode
-        from urllib.error import URLError, HTTPError
 
         if provider != 'netease':
             return False
 
-        try:
+        def _do_check() -> bool:
+            """执行实际的 HTTP 检查请求"""
             params = urlencode({'id': song_id, 'lv': -1, 'tv': -1, 'kv': -1})
             url = f'https://music.163.com/api/song/lyric?{params}'
             headers = {
@@ -408,8 +567,11 @@ class LyricManager:
 
             return has_lyric
 
-        except (URLError, HTTPError):
-            return False
+        try:
+            return self._retryable_request(
+                request_func=_do_check,
+                operation_name=f"检查歌词存在(ID:{song_id})"
+            )
         except Exception:
             return False
 
@@ -541,7 +703,7 @@ class LyricManager:
         lyric_mode: str = 'merged'
     ) -> dict[str, Any] | None:
         """
-        使用 REST API 获取网易云歌词（备用方案）
+        使用 REST API 获取网易云歌词（带速率限制和自动重试）
 
         Args:
             song_id: 歌曲 ID
@@ -553,9 +715,9 @@ class LyricManager:
         import json
         from urllib.request import Request, urlopen
         from urllib.parse import urlencode
-        from urllib.error import URLError, HTTPError
 
-        try:
+        def _do_fetch() -> dict[str, Any]:
+            """执行实际的 HTTP 歌词获取请求"""
             params = urlencode({'id': song_id, 'lv': -1, 'tv': -1, 'kv': -1})
             url = f'https://music.163.com/api/song/lyric?{params}'
             headers = {
@@ -603,11 +765,13 @@ class LyricManager:
             self.logger.info(f"[FetchLyric] REST API 成功获取歌词 (ID: {song_id})")
             return result
 
-        except (URLError, HTTPError) as e:
-            self.logger.error(f"[FetchLyric] REST API 歌词请求失败 (ID: {song_id}): {e}")
-            return None
+        try:
+            return self._retryable_request(
+                request_func=_do_fetch,
+                operation_name=f"获取歌词(ID:{song_id})"
+            )
         except Exception as e:
-            self.logger.error(f"[FetchLyric] REST API 获取歌词失败 (ID: {song_id}): {e}")
+            self.logger.warning(f"[FetchLyric] REST API 歌词请求最终失败 (ID: {song_id}): {e}")
             return None
 
     def _fetch_lyrics_from_music_api(
