@@ -466,10 +466,13 @@ class CoverImageWidget(QFrame):
             self._debounce_timer.deleteLater()
             self._debounce_timer = None
         # 断开主题变化信号连接
-        try:
-            qconfig.themeChanged.disconnect(self._on_theme_changed)
-        except (TypeError, RuntimeError):
-            pass
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            try:
+                qconfig.themeChanged.disconnect(self._on_theme_changed)
+            except (TypeError, RuntimeError):
+                pass
         super().deleteLater()
 
     def _cleanup_resources(self) -> None:
@@ -868,10 +871,13 @@ class PlatformResultWidget(QFrame):
             # ✅ 新增：显式删除子组件，确保完整生命周期管理
             self.cover_widget.deleteLater()
             self.cover_widget = None
-        try:
-            qconfig.themeChanged.disconnect(self._on_theme_changed)
-        except (TypeError, RuntimeError):
-            pass
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            try:
+                qconfig.themeChanged.disconnect(self._on_theme_changed)
+            except (TypeError, RuntimeError):
+                pass
         super().deleteLater()
 
 
@@ -1210,10 +1216,13 @@ class SongResultCard(CardWidget):
             if hasattr(widget, 'cover_widget'):
                 widget.cover_widget._stop_loader()
         # 断开主题变化信号连接
-        try:
-            qconfig.themeChanged.disconnect(self._on_theme_changed)
-        except (TypeError, RuntimeError):
-            pass
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            try:
+                qconfig.themeChanged.disconnect(self._on_theme_changed)
+            except (TypeError, RuntimeError):
+                pass
         super().deleteLater()
 
     def _get_refresh_tooltip(self) -> str:

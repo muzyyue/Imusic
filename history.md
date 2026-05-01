@@ -1,6 +1,20 @@
 # 项目变更历史
 task：添加网易云音乐的下载功能 有搞头   转换页面无法支持多格式选择
 
+## v0.4.82 (2026-05-01)
+- fix(ui): 修复多个 UI 相关的 Bug
+  - fix(music_manager): 修复清除数据时封面图片未正确重置的问题
+    - 根因(核心)：_on_clear_data 使用 clear()+setText()+硬编码样式表方式清除 ImageLabel，效果不佳且深色主题下显示异常
+    - music_manager_page.py: 将 12 行清除逻辑替换为复用已有的 _set_default_cover() 方法
+    - music_manager_page.py: 避免硬编码浅色背景色 #f5f5f5，自动适配主题
+  - fix(home_page): 修复清除数据时 QProcessEventLoop 未定义导致崩溃的问题
+    - home_page.py: 将不存在的 QProcessEventLoop 改为正确的 QEventLoop 类名
+  - fix(song_result_card): 消除 themeChanged 信号断开时的 RuntimeWarning 警告
+    - song_result_card.py: 在 3 处 deleteLater() 的 disconnect 调用中添加 warnings.catch_warnings() 抑制警告
+    - 涉及组件：CoverImageWidget、PlatformResultWidget、SongResultCard
+  - test: 新增 test_clear_data_resets_cover 测试用例验证封面清除功能
+  - 涉及文件: `auto_tag/gui/pages/music_manager_page.py`, `auto_tag/gui/pages/home_page.py`, `auto_tag/gui/components/song_result_card.py`, `tests/test_music_manager_page.py`
+
 ## v0.4.81 (2026-04-29)
 - fix(recognize): 修复选择 tests 目录时部分音频文件无法识别的问题
   - 根因(核心)：recognize_worker.py 使用模糊匹配 "test" 跳过目录，导致 tests/ 及其子目录被错误过滤

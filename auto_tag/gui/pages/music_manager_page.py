@@ -591,18 +591,8 @@ class MusicManagerPage(QWidget):
         self.year_edit.clear()
         self.genre_edit.clear()
 
-        # 重置封面预览
-        self.cover_label.clear()
-        self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cover_label.setStyleSheet(
-            "background-color: #f5f5f5; border: 1px solid #ddd; border-radius: 4px;"
-        )
-        self.cover_label.setText(
-            "<div style='text-align: center; color: #999;'>"
-            "<p>🖼️</p>"
-            f"<p style='font-size: 14px;'>{tr('no_cover')}</p>"
-            "</div>"
-        )
+        # 重置封面预览（复用已有方法，确保行为一致）
+        self._set_default_cover()
 
         # 重置歌词编辑区
         self.lyric_text.clear()

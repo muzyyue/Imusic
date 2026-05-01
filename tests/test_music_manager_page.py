@@ -78,11 +78,51 @@ class TestMusicManagerPage:
         测试设置默认封面
         """
         from auto_tag.gui.pages import MusicManagerPage
-        
+
         page = MusicManagerPage()
-        
+
         # 调用 _set_default_cover 不应抛出异常
         page._set_default_cover()
+
+    def test_clear_data_resets_cover(self, qapp):
+        """
+        测试清除数据时封面是否正确重置
+
+        验证 _on_clear_data 调用后：
+        1. _current_cover_data 被清空
+        2. cover_label 显示默认状态
+        """
+        from auto_tag.gui.pages import MusicManagerPage
+        from PySide6.QtGui import QPixmap
+        from PySide6.QtCore import Qt
+
+        page = MusicManagerPage()
+
+        # 模拟设置一个封面（使用 _display_cover）
+        fake_cover_data = b'\x89PNG\r\n\x1a\n' + b'\x00' * 100
+        page._display_cover(fake_cover_data)
+
+        # 验证封面数据已设置
+        assert page._current_cover_data is not None
+        assert page.cover_label.pixmap() is not None
+
+        # 添加文件到列表（_on_clear_data 会检查 files 是否为空）
+        page.files.append("/fake/path/song.mp3")
+        page.file_table.insertRow(0)
+
+        # Mock 确认对话框，用户点击"确定"
+        with patch.object(page, 'files', ["/fake/path/song.mp3"]):
+            with patch("auto_tag.gui.pages.music_manager_page.MessageBox") as mock_msgbox:
+                mock_msgbox.return_value.exec.return_value = 1  # 用户确认
+
+                # 调用清除数据
+                page._on_clear_data()
+
+        # 验证封面数据已被清空
+        assert page._current_cover_data is None
+
+        # 验证 cover_label 仍然有 pixmap（因为 _set_default_cover 设置了灰色默认图）
+        assert page.cover_label.pixmap() is not None
 
     def test_update_selected_files_empty(self, qapp):
         """

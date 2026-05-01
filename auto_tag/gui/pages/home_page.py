@@ -805,9 +805,9 @@ class HomePage(QWidget):
         CoverImageCache.clear()
 
         # 强制处理事件循环，确保所有 DeferredDelete 被执行
-        from PySide6.QtCore import QCoreApplication
+        from PySide6.QtCore import QCoreApplication, QEventLoop
         QCoreApplication.processEvents(
-            QProcessEventLoop.ProcessEventsFlags.ExcludeUserInputEvents,
+            QEventLoop.ProcessEventsFlags.ExcludeUserInputEvents,
             100
         )
 
