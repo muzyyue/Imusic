@@ -6,6 +6,7 @@ build/
 mp3ShazamAutoTag.egg-info/
 dist/
 *.sublime-workspace
+*.sublime-project
 *.log
 
 .trae/
@@ -13,7 +14,8 @@ dist/
 # tests/
 # history.md 已改为追踪，用于记录项目变更历史
 
-# 临时测试文件
+# 测试数据文件
+test_*_found.json
 netease_api_test_report.json
 tests/test_netease_api.py
 
