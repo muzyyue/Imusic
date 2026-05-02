@@ -1,8 +1,9 @@
 # 项目变更历史
 
 ## v0.5.1 (2026-05-02)
-- fix(ui): 修复编辑器页面预设和输出质量下拉框高度偏小问题
-  - 将 preset_combo 和 quality_combo 统一设置 setFixedHeight(36)，与其他页面下拉框保持一致
+- fix(ui): 修复编辑器页面下拉框高度和间距问题
+  - 为 preset_combo 和 quality_combo 设置 setFixedHeight(36) 与其他页面一致
+  - 将输出格式区域 layout spacing 从 10 调整为 12 避免行间距过紧
   - 涉及文件: `auto_tag/gui/pages/editor_page.py`
 
 ## v0.5.0 (2026-05-02)

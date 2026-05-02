@@ -75,6 +75,7 @@ tests/test_music_manager_page.py
 tests/test_nested_i18n.py
 tests/test_netease_rest_api.py
 tests/test_qq_music_api.py
+tests/test_quality_differentiation.py
 tests/test_quick_format.py
 tests/test_radio_simple.py
 tests/test_rate_limiter.py
