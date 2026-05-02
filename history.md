@@ -1,5 +1,11 @@
 # 项目变更历史
 
+## v0.5.2 (2026-05-02)
+- fix(ui): 修复编辑器页面输出格式区域下拉框重叠问题
+  - 移除 format_card 的 setMinimumHeight(100) 限制，让卡片高度自适应内容
+  - 将 format_layout spacing 从 12 增加到 16，与裁剪设置区域保持一致
+  - 涉及文件: `auto_tag/gui/pages/editor_page.py`
+
 ## v0.5.1 (2026-05-02)
 - fix(ui): 修复编辑器页面下拉框高度和间距问题
   - 为 preset_combo 和 quality_combo 设置 setFixedHeight(36) 与其他页面一致

@@ -387,10 +387,9 @@ class EditorPage(ScrollArea):
 
         # === 输出格式区域 ===
         format_card = CardWidget(self)
-        format_card.setMinimumHeight(100)
         format_layout = QVBoxLayout(format_card)
         format_layout.setContentsMargins(20, 15, 20, 15)
-        format_layout.setSpacing(12)
+        format_layout.setSpacing(16)
 
         format_title = SubtitleLabel(tr("editor.output_format_settings"))
         format_layout.addWidget(format_title)
