@@ -5,7 +5,8 @@
     "settings": "Settings",
     "history": "History",
     "converter": "Converter",
-    "music_manager": "Music Manager"
+    "music_manager": "Music Manager",
+    "editor": "Audio Editor"
   },
   "home": "Home",
   "settings": "Settings",
@@ -249,6 +250,7 @@
   "music_manager": {
     "title": "Music Manager",
     "file_list": "File List",
+    "search_placeholder": "Search files...",
     "fields": {
       "title": "Title",
       "artist": "Artist",
@@ -395,5 +397,70 @@
     "success_apply": "Tags applied successfully to {count} files",
     "warning_no_files": "Please add audio files first",
     "info_search_config_updated": "Search configuration updated, will take effect on next search"
+  },
+  "editor": {
+    "title": "Audio Editor",
+    "select_directory": "Select Directory",
+    "trim_settings": "Trim Settings",
+    "volume_settings": "Volume Settings",
+    "output_format_settings": "Output Format",
+    "auto_trim": "Auto Detect Silence",
+    "manual_trim": "Manual Time Selection",
+    "duration_trim": "Specify Duration",
+    "start_time": "Start Time (seconds)",
+    "end_time": "End Time (seconds)",
+    "duration": "Duration (seconds)",
+    "fade_in": "Fade In (seconds)",
+    "fade_out": "Fade Out (seconds)",
+    "silence_threshold": "Silence Threshold (dB)",
+    "min_silence_duration": "Min Silence Duration (seconds)",
+    "enable_normalization": "Enable Volume Normalization",
+    "target_loudness": "Target Loudness (LUFS)",
+    "true_peak": "True Peak Limit (dBFS)",
+    "lra": "Loudness Range (LU)",
+    "preset": "Preset",
+    "preset_placeholder": "Select preset...",
+    "advanced_options": "Advanced Options",
+    "overwrite_original": "Overwrite Original File",
+    "output_quality": "Output Quality",
+    "output_quality_tip": "Balance between file size and audio quality",
+    "output_to": "Output Directory",
+    "same_directory": "Same Directory",
+    "custom_directory": "Custom Directory",
+    "start_editing": "Start Editing",
+    "stop_editing": "Stop Editing",
+    "editing_in_progress": "Waiting to start editing...",
+    "editing_completed": "Editing Completed",
+    "confirm_stop_editing": "Confirm Stop Editing",
+    "confirm_stop_editing_desc": "Editing in progress. Are you sure you want to stop?",
+    "no_files_selected": "No files selected",
+    "select_input_directory": "Please select input directory first",
+    "file_list": "File List",
+    "search_placeholder": "Search files...",
+    "processing": "Processing",
+    "completed": "Completed",
+    "failed": "Failed",
+    "skipped": "Skipped",
+    "edit_success_count": "{count} files succeeded",
+    "edit_fail_count": "{count} files failed",
+    "presets": {
+      "ringtone": "📱 Phone Ringtone",
+      "car_audio": "🚗 Car Audio",
+      "hifi_archive": "💾 HiFi Archive",
+      "podcast": "🎧 Podcast",
+      "music_share": "🎵 Music Share"
+    },
+    "preset_descriptions": {
+      "ringtone": "Optimized for iPhone/Android ringtones (30s with fade in/out)",
+      "car_audio": "High compatibility MP3 for car audio systems",
+      "hifi_archive": "Lossless FLAC format for long-term music archiving",
+      "podcast": "Voice-optimized MP3 for podcasts and audiobooks",
+      "music_share": "High quality AAC format, small size with great quality"
+    },
+    "tips": {
+      "loudness_info": "Loudness unit: LUFS (Loudness Units Full Scale), -16 LUFS suitable for web publishing",
+      "trim_tip": "Tip: Auto mode detects and removes silence at the beginning and end",
+      "overwrite_warning": "Warning: Overwriting original file cannot be undone, backup recommended"
+    }
   }
 }

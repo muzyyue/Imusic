@@ -1,5 +1,20 @@
 # 项目变更历史
-task：添加网易云音乐的下载功能 有搞头   转换页面无法支持多格式选择
+
+## v0.5.1 (2026-05-02)
+- fix(ui): 修复编辑器页面预设和输出质量下拉框高度偏小问题
+  - 将 preset_combo 和 quality_combo 统一设置 setFixedHeight(36)，与其他页面下拉框保持一致
+  - 涉及文件: `auto_tag/gui/pages/editor_page.py`
+
+## v0.5.0 (2026-05-02)
+- feat(editor): 新增音频编辑功能（Phase 1 MVP）
+  - 智能音频裁剪（自动静音检测/手动时间选择/指定时长模式，支持淡入淡出）
+  - 音量标准化（基于 EBU R128 loudnorm 滤镜，可自定义目标响度/真峰值/响度范围）
+  - 格式转换增强（5种实用预设：手机铃声📱/车载播放🚗/HiFi存档💾/Podcast🎧/音乐分享🎵）
+  - 新增 EditorPage 页面和侧边导航项（位于"音乐管理"和"设置"之间）
+  - 新增 auto_tag/editor/ 核心模块（AudioEditor + EditorConfig + PresetManager + EditorWorker）
+  - 完整的国际化支持（中英文翻译，60+ 新增翻译键）
+  - 核心功能单元测试（test_audio_editor.py: 9个用例, test_editor_presets.py: 18个用例）
+  - 涉及文件: `auto_tag/editor/__init__.py`, `auto_tag/editor/audio_editor.py`, `auto_tag/editor/config.py`, `auto_tag/editor/presets.py`, `auto_tag/editor/workers/__init__.py`, `auto_tag/editor/workers/editor_worker.py`, `auto_tag/gui/pages/editor_page.py`, `auto_tag/gui/main_window.py`, `auto_tag/gui/i18n/locales/zh.json`, `auto_tag/gui/i18n/locales/en.json`, `tests/test_audio_editor.py`, `tests/test_editor_presets.py`
 
 ## v0.4.82 (2026-05-01)
 - fix(ui): 修复多个 UI 相关的 Bug

@@ -1,0 +1,49 @@
+warning: Failed to uninstall package at .venv\Lib\site-packages\imusic-0.4.57.dist-info due to missing `RECORD` file. Installation may result in an incomplete environment.
+Uninstalled 2 packages in 1.02s
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 1 package in 43ms
+================================================================================
+[DIAGNOSE] FFmpeg 特殊字符处理诊断
+================================================================================
+
+[1] 原始文件:
+    路径: F:\Code\Imusic\tests\fixtures\song\Grand Escape  [feat. Toko Miura] [From Weathering With You] [For Piano Solo] - daigoro789 - Weathering With You Piano Collections.mp3
+    存在: True
+    文件名: Grand Escape  [feat. Toko Miura] [From Weathering With You] [For Piano Solo] - daigoro789 - Weathering With You Piano Collections.mp3
+    含特殊字符: True
+
+[2] _safe_path() 结果:
+    输入: F:\Code\Imusic\tests\fixtures\song\Grand Escape  [feat. Toko Miura] [From Weathering With You] [For Piano Solo] - daigoro789 - Weathering With You Piano Collections.mp3
+    输出: F:/Code/Imusic/tests/fixtures/song/Grand Escape  [feat. Toko Miura] [From Weathering With You] [For Piano Solo] - daigoro789 - Weathering With You Piano Collections.mp3
+
+[3] _create_safe_temp_link():
+    临时路径: C:\Users\86136\AppData\Local\Temp\imusic_safe_2552_1634023558480.mp3
+    临时文件存在: False
+
+[4] 测试 ffmpeg.input(临时路径):
+    FFmpeg 命令长度: 4 参数
+    完整命令:
+      [0] ffmpeg
+      [1] -i
+      [2] C:\Users\86136\AppData\Local\Temp\imusic_safe_2552_1634023558480.mp3 <-- 输入文件
+      [3] C:\Users\86136\AppData\Local\Temp\diagnose_output.mp3 <-- 输出文件
+
+[5] 尝试执行 FFmpeg (使用临时路径):
+    ❌ 执行失败: Error: ffmpeg error (see stderr output for detail)
+    stderr 类型: <class 'str'>
+    stderr 内容:
+ffmpeg version 2025-08-14-git-cdbb5f1b93-full_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers
+
+  built with gcc 15.2.0 (Rev8, Built by MSYS2 project)
+
+  configuration: --enable-gpl --enable-version3 --enable-static --disable-w32threads --disable-autodetect --enable-fontconfig --enable-iconv --enable-gnutls --enable-lcms2 --enable-libxml2 --enable-gmp --enable-bzlib --enable-lzma --enable-libsnappy --enable-zlib --enable-librist --enable-libsrt --enable-libssh --enable-libzmq --e
+
+[6] 临时链接已清理
+
+[7] 对比测试（无特殊字符的文件）:
+
+================================================================================
+[DONE] 诊断完成
+================================================================================

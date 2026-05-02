@@ -29,7 +29,7 @@ from qfluentwidgets import (
     Theme,
 )
 
-from auto_tag.gui.pages import HomePage, SettingsPage, ConverterPage, MusicManagerPage
+from auto_tag.gui.pages import HomePage, SettingsPage, ConverterPage, MusicManagerPage, EditorPage
 from auto_tag.gui.i18n import tr, translator
 from auto_tag.gui.config import config
 
@@ -99,6 +99,9 @@ class MainWindow(FluentWindow):
         self.music_manager_page = MusicManagerPage(self)
         self.music_manager_page.setObjectName("music_manager_page")
 
+        self.editor_page = EditorPage(self)
+        self.editor_page.setObjectName("editor_page")
+
         self.settings_page = SettingsPage(self)
         self.settings_page.setObjectName("settings_page")
 
@@ -138,6 +141,13 @@ class MainWindow(FluentWindow):
             tr("navigation.music_manager")
         )
 
+        # 添加音频编辑导航项
+        self.addSubInterface(
+            self.editor_page,
+            FIF.VOLUME,
+            tr("navigation.editor")
+        )
+
         # 添加设置导航项
         self.addSubInterface(
             self.settings_page,
@@ -174,8 +184,8 @@ class MainWindow(FluentWindow):
         仅在各页面和导航项已创建后调用。
         """
         # 刷新导航项文本
-        nav_keys = ["home_page", "converter_page", "music_manager_page", "settings_page"]
-        tr_keys = ["home", "navigation.converter", "navigation.music_manager", "settings"]
+        nav_keys = ["home_page", "converter_page", "music_manager_page", "editor_page", "settings_page"]
+        tr_keys = ["home", "navigation.converter", "navigation.music_manager", "navigation.editor", "settings"]
         for nav_key, tr_key in zip(nav_keys, tr_keys):
             nav_item = self.navigationInterface.widget(nav_key)
             if nav_item is not None:
@@ -188,6 +198,8 @@ class MainWindow(FluentWindow):
             self.converter_page.refresh_texts()
         if hasattr(self.music_manager_page, 'refresh_texts'):
             self.music_manager_page.refresh_texts()
+        if hasattr(self.editor_page, 'refresh_texts'):
+            self.editor_page.refresh_texts()
         if hasattr(self.settings_page, 'refresh_texts'):
             self.settings_page.refresh_texts()
 

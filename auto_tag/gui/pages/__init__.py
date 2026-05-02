@@ -9,19 +9,22 @@ auto_tag.gui.pages 模块
 - ConverterPage: 音频转换页面
 - SettingsPage: 设置页面
 - MusicManagerPage: 音乐管理页面
+- EditorPage: 音频编辑页面
 
 使用示例：
-    from auto_tag.gui.pages import HomePage, ConverterPage, SettingsPage, MusicManagerPage
+    from auto_tag.gui.pages import HomePage, ConverterPage, SettingsPage, MusicManagerPage, EditorPage
 
     home = HomePage()
     converter = ConverterPage()
     settings = SettingsPage()
     music_manager = MusicManagerPage()
+    editor = EditorPage()
 """
 
 from .home_page import HomePage
 from .converter_page import ConverterPage
 from .settings_page import SettingsPage
 from .music_manager_page import MusicManagerPage
+from .editor_page import EditorPage
 
-__all__ = ['HomePage', 'ConverterPage', 'SettingsPage', 'MusicManagerPage']
+__all__ = ['HomePage', 'ConverterPage', 'SettingsPage', 'MusicManagerPage', 'EditorPage']

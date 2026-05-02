@@ -17,7 +17,7 @@ import time
 import logging
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QPixmap, QImage, QCursor
 from PySide6.QtWidgets import (
     QDialog,
@@ -48,6 +48,7 @@ from qfluentwidgets import (
     MessageBox,
     ProgressBar,
     PushButton,
+    SearchLineEdit,
     SegmentedWidget,
     SubtitleLabel,
     TableWidget,
@@ -126,6 +127,11 @@ class MusicManagerPage(QWidget):
         self._batch_current_index: int = 0  # 批量模式当前处理的文件索引
         self._batch_results: dict[str, dict | None] = {}  # 批量模式结果缓存
 
+        # 文件列表搜索功能
+        self._search_timer: QTimer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.timeout.connect(self._perform_search)
+
         # 构建 UI
         self._setup_ui()
 
@@ -175,6 +181,14 @@ class MusicManagerPage(QWidget):
         self.browse_btn.setFixedHeight(36)
         self.browse_btn.clicked.connect(self._on_browse_directory)
         dir_layout.addWidget(self.browse_btn)
+
+        # 文件列表搜索框
+        self.search_edit = SearchLineEdit()
+        self.search_edit.setPlaceholderText(tr("music_manager.search_placeholder"))
+        self.search_edit.setFixedHeight(36)
+        self.search_edit.setFixedWidth(240)
+        self.search_edit.textChanged.connect(self._on_search_text_changed)
+        dir_layout.addWidget(self.search_edit)
 
         dir_layout.addStretch()
         layout.addLayout(dir_layout)
@@ -577,6 +591,9 @@ class MusicManagerPage(QWidget):
         # 清空表格
         self.file_table.setRowCount(0)
 
+        # 清除搜索状态
+        self._clear_search()
+
         # 清空歌词缓存
         self.lyrics_cache.clear()
         self.current_lyrics = None
@@ -636,6 +653,9 @@ class MusicManagerPage(QWidget):
         self.lyrics_cache.clear()
         self.current_lyrics = None
         self.lyric_text.clear()
+
+        # 清除搜索状态（恢复显示所有文件）
+        self._clear_search()
 
         # 遍历目录收集所有文件
         audio_files = []
@@ -854,6 +874,58 @@ class MusicManagerPage(QWidget):
             if item:
                 item.setCheckState(Qt.CheckState.Unchecked)
         self._update_selected_files()
+
+    def _on_search_text_changed(self, text: str) -> None:
+        """
+        搜索文本变更处理
+
+        当用户在搜索框中输入文本时触发，重启防抖定时器以延迟执行搜索。
+
+        Args:
+            text (str): 当前搜索框中的文本
+        """
+        self._search_timer.start(300)
+
+    def _perform_search(self) -> None:
+        """
+        执行文件列表搜索过滤
+
+        从搜索框获取关键词并调用过滤方法，
+        使用防抖机制避免频繁更新导致的性能问题。
+        """
+        keyword = self.search_edit.text().strip().lower()
+        self._filter_files(keyword)
+
+    def _filter_files(self, keyword: str) -> None:
+        """
+        根据关键词过滤文件列表
+
+        遍历表格所有行，根据文件名是否包含关键词来决定显示或隐藏该行。
+        支持大小写不敏感的模糊匹配。
+
+        Args:
+            keyword (str): 搜索关键词（已转小写），空字符串表示显示所有文件
+        """
+        self.file_table.setUpdatesEnabled(False)
+        try:
+            for row in range(self.file_table.rowCount()):
+                filename_item = self.file_table.item(row, 1)
+                if filename_item:
+                    filename = filename_item.text().lower()
+                    should_show = (keyword in filename) if keyword else True
+                    self.file_table.setRowHidden(row, not should_show)
+        finally:
+            self.file_table.setUpdatesEnabled(True)
+
+    def _clear_search(self) -> None:
+        """
+        清除搜索状态
+
+        清空搜索框内容并恢复显示所有文件行。
+        在切换目录或清除数据时调用此方法。
+        """
+        self.search_edit.clear()
+        self._filter_files("")
 
     def _on_save_metadata(self) -> None:
         """
@@ -1619,6 +1691,7 @@ class MusicManagerPage(QWidget):
         # 更新文件列表区域
         self.file_list_title.setText(tr("music_manager.file_list"))
         self.browse_btn.setText(tr("converter.browse"))
+        self.search_edit.setPlaceholderText(tr("music_manager.search_placeholder"))
         self.check_all_btn.setText(tr("converter.check_all"))
         self.uncheck_all_btn.setText(tr("converter.uncheck_all"))
         self.clear_data_btn.setText(tr("search.clear_data"))
