@@ -1,5 +1,12 @@
 # 项目变更历史
 
+## v0.5.3 (2026-05-02)
+- fix(build): 修复 uv sync 残留 dist-info 和 hardlink 警告
+  - 删除 site-packages 中残留的 imusic-0.4.57.dist-info 目录（RECORD 文件缺失导致卸载警告）
+  - 在 uv.toml 中配置 link-mode = "copy"，抑制 Windows 环境下 hardlink 回退警告
+  - uv sync 验证通过，两个 warning 均消失
+  - 涉及文件: `uv.toml`
+
 ## v0.5.2 (2026-05-02)
 - fix(ui): 修复编辑器页面输出格式区域下拉框重叠问题
   - 移除 format_card 的 setMinimumHeight(100) 限制，让卡片高度自适应内容

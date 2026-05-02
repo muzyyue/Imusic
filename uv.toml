@@ -5,3 +5,6 @@ index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 extra-index-url = [
     "https://pypi.org/simple"
 ]
+
+# Windows 环境下禁用 hardlink 以避免跨文件系统警告
+link-mode = "copy"
