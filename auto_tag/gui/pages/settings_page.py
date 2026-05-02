@@ -145,6 +145,23 @@ class SettingsPage(QWidget):
         theme_layout.addWidget(self._theme_combo)
         self._layout.addLayout(theme_layout)
 
+        # ===== 新增：文件名编码设置 (2026-05-02) =====
+        filename_encoding_layout = QHBoxLayout()
+        self._filename_encoding_label = BodyLabel(tr("settings_page.filename_encoding_label"))
+        self._filename_encoding_switch = SwitchButton()
+        self._filename_encoding_switch.setChecked(config.ascii_only_filenames)
+        self._filename_encoding_switch.setToolTip(
+            tr("settings_page.filename_encoding_tooltip")
+        )
+
+        # 连接信号
+        self._filename_encoding_switch.checkedChanged.connect(self._on_filename_encoding_toggled)
+
+        filename_encoding_layout.addWidget(self._filename_encoding_label)
+        filename_encoding_layout.addStretch()
+        filename_encoding_layout.addWidget(self._filename_encoding_switch)
+        self._layout.addLayout(filename_encoding_layout)
+
         # ===== 新增：搜索设置分组 =====
         self._search_section = SubtitleLabel(tr("settings_page.search_settings_section"))
         self._search_section.setFont(font_general)
@@ -389,7 +406,24 @@ class SettingsPage(QWidget):
             
         except Exception as e:
             logger.error(f"Failed to change radio toggle: {e}")
-    
+
+    def _on_filename_encoding_toggled(self, checked: bool) -> None:
+        """
+        文件名编码模式开关状态变更回调 (2026-05-02 新增)
+
+        Args:
+            checked (bool): 是否启用 ASCII-only 模式
+                - True: 将非 ASCII 字符（如中文、日文）转换为英文近似音译
+                - False: 保留原始 Unicode 字符（默认，推荐）
+        """
+        try:
+            config.set_ascii_only_filenames(checked)
+            mode_str = "ASCII-only" if checked else "Unicode"
+            logger.info(f"Filename encoding mode changed to: {mode_str}")
+
+        except Exception as e:
+            logger.error(f"Failed to change filename encoding mode: {e}")
+
     def _on_keyword_mode_changed(self, index: int) -> None:
         """
         搜索关键词模式变更回调

@@ -25,6 +25,7 @@ from auto_tag.gui.main_window import MainWindow
 from auto_tag.gui.config import config
 from auto_tag.gui.i18n import translator
 from auto_tag.audio_recognize import initialize_music_library
+from auto_tag.utils.ffmpeg_utils import setup_ffmpeg_silent_mode
 
 
 def launch_gui() -> None:
@@ -40,6 +41,10 @@ def launch_gui() -> None:
         >>> from auto_tag.gui import launch_gui
         >>> launch_gui()
     """
+    # 初始化 FFmpeg 静默执行模式（隐藏CMD窗口）
+    # 必须在所有FFmpeg调用之前执行，通过猴子补丁自动修复第三方库
+    setup_ffmpeg_silent_mode()
+
     # 预初始化 MusicLibrary（全局单例模式，只在主线程创建一次）
     # 重要：pymusiclibrary 原生 C 库只能初始化一次！
     initialize_music_library()

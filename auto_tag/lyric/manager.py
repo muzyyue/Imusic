@@ -367,7 +367,23 @@ class LyricManager:
                     title = name_without_ext
 
             # 构建搜索关键词（优化策略：保留更多原始信息以提高匹配度）
+            # 强制调试：在调用前后分别记录原始值和清理后的值
+            self.logger.warning(f"[KEYWORD-DEBUG] 原始输入: title='{title}', artist='{artist}'")
             keyword = self._build_search_keyword(title, artist)
+            self.logger.warning(f"[KEYWORD-DEBUG] 清理后关键词: '{keyword}' (长度={len(keyword)})")
+
+            if 'unknown' in keyword.lower():
+                self.logger.error(f"[KEYWORD-ERROR] 关键词仍包含无效值: '{keyword}'")
+                # 强制再次清理作为备用方案
+                import re as _re
+                keyword = _re.sub(
+                    r'\s*[-–—:\s]+\s*(Unknown[_\s]*(Album|Artist|Title)|N/A|None)\s*$',
+                    '',
+                    keyword,
+                    flags=_re.IGNORECASE
+                ).strip()
+                self.logger.warning(f"[KEYWORD-FIX] 备用清理后: '{keyword}'")
+
             self.logger.info(f"[DEBUG] 搜索关键词: '{keyword}' (原始title='{title}', 原始artist='{artist}')")
 
             # === 修复：REST API 优先策略 ===
@@ -413,6 +429,7 @@ class LyricManager:
 
         策略：优先使用完整标题（不过度清理），REST API 本身支持模糊匹配
         如果标题为空或太短，则组合艺术家和标题
+        自动过滤无效值（Unknown Album/Unknown Artist 等）
 
         Args:
             title (str): 歌曲标题
@@ -423,25 +440,73 @@ class LyricManager:
         """
         import re
 
-        if title:
+        # 无效值列表（这些值不应该出现在搜索关键词中）
+        INVALID_VALUES = {
+            'unknown_album', 'unknown_artist', 'unknown_title',
+            'unknown', 'n/a', '', 'none'
+        }
+
+        def _clean_text(text: str) -> str:
+            """清理文本：过滤无效值和无意义后缀"""
+            if not text:
+                return ''
+
+            text = text.strip()
+
+            # 检查是否是无效值
+            if text.lower() in INVALID_VALUES:
+                return ''
+
+            # 移除各种格式的无效后缀（使用简单可靠的模式）
+            # 支持格式：
+            #   "Song Name - Unknown_Album" (下划线)
+            #   "Song Name - Unknown Album" (空格)
+            #   "Song Name  Unknown_Album" (多空格)
+            #   "Song Name : N/A"
+            patterns = [
+                r'\s+[-–—]\s+(Unknown[_\s]*(Album|Artist|Title)|N/A|None)\s*$',
+                r'\s{2,}(Unknown[_\s]*(Album|Artist|Title)|N/A|None)\s*$',
+                r'\s*:\s*(Unknown[_\s]*(Album|Artist|Title)|N/A|None)\s*$',
+            ]
+
+            for pattern in patterns:
+                text = re.sub(pattern, '', text, flags=re.IGNORECASE).strip()
+
             # 只清理明显的版本后缀，保留核心歌名
-            clean_title = re.sub(
+            text = re.sub(
                 r'\s*[\-–—]\s*(Movie|Piano|Short|Full)\s*Ver\.?\s*$'
                 r'|\s*[\(\[]\s*(Live|Acoustic|Remix|Cover|Inst\.?|Instrumental)\s*[\)\]]\s*$',
                 '',
-                title,
+                text,
                 flags=re.IGNORECASE
             ).strip()
 
-            # 优先使用完整标题（REST API 支持模糊匹配，不需要过度清理）
-            if len(clean_title) >= 2:
-                return clean_title
-            elif artist:
-                return f"{artist} {clean_title}".strip()
+            return text
+
+            # 再次检查清理后是否变成空或无效值
+            if text.lower() in INVALID_VALUES or len(text) < 2:
+                return ''
+
+            return text
+
+        # 清理标题和艺术家
+        clean_title = _clean_text(title)
+        clean_artist = _clean_text(artist)
+
+        # 优先使用完整标题（REST API 支持模糊匹配，不需要过度清理）
+        if clean_title:
             return clean_title
+        elif clean_artist:
+            return clean_artist
         else:
-            # 没有标题，使用艺术家
-            return artist if artist else ""
+            # 最后尝试：如果原始 title 包含 ' - '，取第一部分
+            if ' - ' in title:
+                parts = title.split(' - ', 1)
+                first_part = _clean_text(parts[0])
+                if first_part and len(first_part) >= 2:
+                    return first_part
+
+            return ''
 
     def _search_netease_rest_api(self, keyword: str, limit: int = 10) -> list[dict[str, Any]]:
         """
@@ -478,8 +543,11 @@ class LyricManager:
             }
             req = Request(url, headers=headers)
 
+            self.logger.debug(f"[NetEase-REST] 发送搜索请求: keyword='{keyword}', url={url[:80]}...")
+
             with urlopen(req, timeout=15) as resp:
                 raw_data = resp.read().decode('utf-8')
+                self.logger.debug(f"[NetEase-REST] 收到响应: status={resp.status}, length={len(raw_data)}")
 
             data = json.loads(raw_data)
 
@@ -491,15 +559,27 @@ class LyricManager:
                 )
                 if data.get('code') and data.get('code') != 200:
                     self.logger.error(
-                        f"[NetEase-REST] API 错误响应: {raw_data[:500]}"
+                        f"[NetEase-REST] API 错误响应 (code={data.get('code')}): {raw_data[:500]}"
                     )
                 return []
 
             result_data = data.get('result', {})
             song_list = result_data.get('songs', [])
+            self.logger.info(f"[NetEase-REST] API 返回 {len(song_list)} 首歌曲 (keyword='{keyword}')")
 
             songs = []
-            for song in song_list:
+            for idx, song in enumerate(song_list[:3]):  # 只记录前3首的详细信息
+                self.logger.debug(f"[NetEase-REST] 结果[{idx+1}]: id={song.get('id')}, name={song.get('name')}, artist={song.get('artists', [{}])[0].get('name', '') if song.get('artists') else ''}")
+                songs.append({
+                    'id': song.get('id'),
+                    'name': song.get('name', ''),
+                    'artist': song.get('artists', [{}])[0].get('name', '') if song.get('artists') else '',
+                    'album': song.get('album', {}).get('name', ''),
+                    'duration': song.get('duration', 0) // 1000
+                })
+
+            # 处理剩余的歌曲（不记录详细日志）
+            for song in song_list[3:]:
                 songs.append({
                     'id': song.get('id'),
                     'name': song.get('name', ''),

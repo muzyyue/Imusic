@@ -504,6 +504,14 @@ class HomePage(QWidget):
                                 loop.run_until_complete(shazam.close())
                         except Exception as close_err:
                             logger.debug(f"[HomePage] Shazam close error: {close_err}")
+
+                    # 关闭 Acoustid 的 aiohttp 会话，防止资源泄漏
+                    try:
+                        from auto_tag.audio_recognize import _close_acoustid_session
+                        loop.run_until_complete(_close_acoustid_session())
+                    except Exception as acoustid_close_err:
+                        logger.debug(f"[HomePage] Acoustid session close error: {acoustid_close_err}")
+
                     loop.close()
             except Exception as e:
                 logger.error(f"[HomePage] Failed to refresh search for {file_path}: {e}")

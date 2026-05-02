@@ -1,5 +1,37 @@
 # 项目变更历史
 
+## v0.5.4 (2026-05-03)
+- refactor(core): 重构音频识别模块，提取通用工具函数到独立模块
+  - 新增 `auto_tag/utils/` 工具包（字符串处理、文件名清理、元数据读取等）
+  - 从 `audio_recognize.py` 提取 267 行代码到 `auto_tag/utils/`，提升代码复用性和可维护性
+  - 删除 `_legacy_utils.py` 遗留文件，统一使用新的工具模块
+  - 涉及文件: `auto_tag/utils/__init__.py`, `auto_tag/utils/string_utils.py`, `auto_tag/utils/file_utils.py`, `auto_tag/utils/metadata_utils.py`, `auto_tag/audio_recognize.py`
+- feat(editor): 增强音频编辑器功能
+  - 优化音频编辑器配置和错误处理逻辑
+  - 改进输出格式区域的 UI 交互体验
+  - 涉及文件: `auto_tag/editor/audio_editor.py`, `auto_tag/gui/pages/editor_page.py`
+- fix(ui): 修复多个 GUI 组件问题
+  - 修复首页搜索结果卡片的显示异常
+  - 优化设置页面的配置项布局
+  - 改进国际化翻译（英文翻译全面更新）
+  - 涉及文件: `auto_tag/gui/pages/home_page.py`, `auto_tag/gui/pages/settings_page.py`, `auto_tag/gui/components/song_result_card.py`, `auto_tag/gui/i18n/locales/en.json`, `auto_tag/gui/i18n/locales/zh.json`
+- feat(lyric): 增强歌词管理功能
+  - 扩展歌词获取和处理的健壮性
+  - 优化多平台歌词提供商的兼容性
+  - 涉及文件: `auto_tag/lyric/manager.py`
+- chore(converter): 优化转换器模块
+  - 改进 FFmpeg 静默模式支持
+  - 增强音频格式和质量配置的灵活性
+  - 涉及文件: `auto_tag/converter/converter.py`
+- test: 新增测试用例和测试数据
+  - 新增音频格式质量差异化测试
+  - 新增重构后的音频识别模块测试
+  - 更新测试音频文件（替换为规范化命名的文件）
+  - 涉及文件: `tests/test_audio_format_quality.py`, `tests/test_audio_recognize_refactored.py`, `tests/test_ffmpeg_silent_mode.py`, `tests/test_legacy_import_restriction.py`
+- docs: 更新项目文档
+  - 全面更新 Readme.md（项目说明、功能介绍、使用指南）
+  - 涉及文件: `Readme.md`
+
 ## v0.5.3 (2026-05-02)
 - fix(build): 修复 uv sync 残留 dist-info 和 hardlink 警告
   - 删除 site-packages 中残留的 imusic-0.4.57.dist-info 目录（RECORD 文件缺失导致卸载警告）

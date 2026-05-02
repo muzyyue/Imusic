@@ -240,19 +240,22 @@ class AudioConverter:
             original_bitrate = config.output_format.bitrate
             smart_bitrate_applied = False
             
-            # 智能码率检测：如果启用 smart_bitrate，根据源文件码率调整
+            # 智能码率检测：如果启用 smart_bitrate，根据源文件码率优化
+            # 修正：只在源文件质量低于目标时才调整（避免错误降低质量）
             if config.output_format.smart_bitrate and config.output_format.bitrate:
                 source_bitrate = self.get_source_bitrate(input_path)
-                if source_bitrate:
-                    # 计算自适应码率：不超过源文件码率的 1.2 倍
+                if source_bitrate and source_bitrate < config.output_format.bitrate:
+                    # 源文件质量低于目标时，使用源文件的 1.2 倍（避免过度编码浪费）
                     adaptive_bitrate = min(config.output_format.bitrate, int(source_bitrate * 1.2))
                     # 确保码率不低于最低标准（64kbps）
                     adaptive_bitrate = max(64, adaptive_bitrate)
-                    logger.info(f"智能码率调整: {source_bitrate}kbps -> {adaptive_bitrate}kbps (上限: {config.output_format.bitrate}kbps)")
+                    logger.info(f"智能码率调整: 源文件{source_bitrate}kbps低于目标{config.output_format.bitrate}kbps, 调整为 {adaptive_bitrate}kbps")
                     
                     # 临时修改配置中的码率
                     config.output_format.bitrate = adaptive_bitrate
                     smart_bitrate_applied = True
+                elif source_bitrate:
+                    logger.debug(f"智能码率: 源文件{source_bitrate}kbps >= 目标{config.output_format.bitrate}kbps, 保持目标设置不变")
             
             # 构建 FFmpeg 输入流
             input_stream = ffmpeg.input(input_path)

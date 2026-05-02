@@ -13,6 +13,7 @@ Multi-source search support for NetEase Cloud Music and KuGou Music.
 from __future__ import annotations
 
 import asyncio
+import atexit
 import base64
 import json
 import logging
@@ -37,7 +38,10 @@ from mutagen.oggvorbis import OggVorbis
 from shazamio import Shazam
 from tqdm.asyncio import tqdm
 
-from auto_tag.utils import find_deepest_metadata_key, sanitize, is_file_in_use_error
+from auto_tag.utils import (
+    is_file_in_use_error,  # ✅ 已使用新版
+)
+from auto_tag.utils.ffmpeg_utils import get_silent_process_kwargs
 
 # Acoustid API Key（免费额度：100 次/天）
 ACOUSTID_API_KEY = "cSpUJKpD"
@@ -76,6 +80,29 @@ async def _close_acoustid_session() -> None:
     if hasattr(_acoustid_session_local, 'session') and _acoustid_session_local.session is not None and not _acoustid_session_local.session.closed:
         await _acoustid_session_local.session.close()
         _acoustid_session_local.session = None
+
+
+def _cleanup_aiohttp_resources():
+    """
+    程序退出时清理 aiohttp 资源（atexit 回调）
+
+    确保所有线程的 ClientSession 都被正确关闭，
+    避免 "Unclosed client session" 和 "Unclosed connector" 警告。
+    """
+    try:
+        if hasattr(_acoustid_session_local, 'session') and _acoustid_session_local.session is not None:
+            loop = _acoustid_session_local.session._loop if hasattr(_acoustid_session_local.session, '_loop') else None
+            if loop and loop.is_running():
+                asyncio.ensure_future(_close_acoustid_session(), loop=loop)
+            elif loop and not loop.is_closed():
+                loop.run_until_complete(_close_acoustid_session())
+            logger.debug("[Cleanup] aiohttp session cleaned up successfully")
+    except Exception as e:
+        logger.debug(f"[Cleanup] Error cleaning up aiohttp session: {e}")
+
+
+# 注册退出处理器，确保程序退出时清理 aiohttp 资源
+atexit.register(_cleanup_aiohttp_resources)
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -411,6 +438,98 @@ class SearchResult:
         }
 
 
+def _flatten_shazam_metadata(track: dict) -> dict:
+    """
+    将 Shazam API 的嵌套 metadata 结构扁平化为标准字典
+
+    转换前 (Shazam 原始格式):
+        {
+            "sections": [{
+                "metadata": [
+                    {"title": "Album", "text": "Weathering With You"},
+                    {"title": "Genre", "text": "Anime"}
+                ]
+            }]
+        }
+
+    转换后 (标准格式):
+        {
+            "album": "Weathering With You",
+            "genre": "Anime"
+        }
+
+    Args:
+        track: Shazam API 返回的 track 字典
+
+    Returns:
+        dict: 扁平化的元数据字典（键名小写）
+
+    可复用性说明 (2026-05-02):
+        此函数设计为可在其他模块中复用的通用工具函数。
+        
+        当前使用位置:
+        - audio_recognize.py: _parse_shazam_result() 和主识别流程
+        
+        未来提取路径（当有多个调用者时）:
+        1. 移至 auto_tag/shazam_utils.py
+        2. 重命名为 flatten_metadata()（移除 _ 前缀）
+        3. 更新所有导入语句
+        4. 将测试移至 tests/test_shazam_utils.py
+
+    设计决策: 保持当前位置的原因
+        - 当前只有1个调用者（audio_recognize.py）
+        - 函数是私有的（_ 前缀），表示内部使用
+        - 符合"就近定义"原则，调用者和定义者在一起易于理解上下文
+        - 已有完整的单元测试覆盖（tests/test_audio_recognize_refactored.py）
+
+    性能特点:
+        - 迭代式遍历（O(n) 复杂度，n 为 metadata 条目数）
+        - 比旧版递归实现更高效（2026-05-02 重构完成）
+        - 自动去重（保留第一个出现的值）
+        - 安全访问（使用 .get() 避免 KeyError）
+    """
+    result = {}
+
+    for section in track.get("sections", []):
+        for meta in section.get("metadata", []):
+            key = str(meta.get("title", "")).strip().lower()
+            value = str(meta.get("text", "")).strip()
+
+            if key and value:
+                if key not in result:
+                    result[key] = value
+                    logger.debug(f"提取元数据: {key} = {value}")
+
+    return result
+
+
+def _safe_filename(text: str, ascii_only: bool = False) -> str:
+    """
+    生成安全的文件名（可选 ASCII-only 转换）
+
+    使用新版 sanitize() 清理控制字符，并可选地使用 unidecode 转换为纯 ASCII。
+
+    Args:
+        text: 输入文本
+        ascii_only: 是否转换为纯 ASCII（默认 False，保留原始 Unicode 字符）
+
+    Returns:
+        str: 安全的文件名字符串
+    """
+    from auto_tag.utils import sanitize as new_sanitize
+
+    cleaned = new_sanitize(text)
+
+    if ascii_only and cleaned:
+        try:
+            from unidecode import unidecode
+            cleaned = unidecode(cleaned)
+        except ImportError:
+            logger.warning("unidecode 未安装，跳过 ASCII 转换")
+
+    return cleaned or "Unknown"
+
+
 def _parse_shazam_result(track: dict) -> SearchResult:
     """
     解析 Shazam API 返回的歌曲数据
@@ -423,7 +542,10 @@ def _parse_shazam_result(track: dict) -> SearchResult:
     """
     title = track.get("title", "Unknown Title")
     artist = track.get("subtitle", "Unknown Artist")
-    album = find_deepest_metadata_key(track, "Album") or "Unknown Album"
+
+    # 使用标准化函数提取嵌套元数据（替代旧版 find_deepest_metadata_key）
+    flat_meta = _flatten_shazam_metadata(track)
+    album = flat_meta.get("album", "Unknown Album")
     cover = track.get("images", {}).get("coverart", "")
     duration = 0
 
@@ -1087,6 +1209,56 @@ async def _search_netease_rest(
         list[SearchResult]: 搜索结果列表（歌曲+电台合并）
     """
     global _search_cache, _rate_limiter
+
+    # Step 0: 强制清理关键词（最底层的保障）
+    # 无论调用方是否已清理，这里再次确保关键词不包含无效值
+    import re as _netease_re
+    _original_keyword = keyword
+
+    # 清理 1: 移除 "Unknown_Album/Artist" 等无效后缀
+    if 'unknown' in keyword.lower() or 'n/a' in keyword.lower():
+        logger.warning(f"[NetEase-CLEAN] Dirty keyword detected: '{keyword}'")
+        keyword = _netease_re.sub(
+            r'\s*[-–—:\s]+\s*(Unknown[_\s]*(Album|Artist|Title)|N/A|None)\s*$',
+            '',
+            keyword,
+            flags=_netease_re.IGNORECASE
+        ).strip()
+        if keyword != _original_keyword:
+            logger.warning(f"[NetEase-CLEAN] Cleaned suffix: '{_original_keyword}' -> '{keyword}'")
+
+    # 清理 2: 如果关键词包含 "歌名 艺术家" 格式，尝试拆分只保留歌名
+    # Shazam 有时返回 title="歌名 艺术家"，导致搜索失败
+    # 日文/中文等 Unicode 字符每个算1个长度，所以用 len() 判断时要注意
+    if ' ' in keyword and not keyword.startswith(('http', 'www')):
+        parts = keyword.split(' ', 1)
+        if len(parts) >= 2 and len(parts[0]) >= 2:
+            candidate_title = parts[0]
+            # 只有当第一部分明显是歌名时才拆分（避免误拆）
+            if len(candidate_title) < len(keyword) * 0.6:  # 第一部分不超过总长的60%
+                logger.warning(
+                    f"[NetEase-CLEAN] Splitting keyword: '{keyword}' -> '{candidate_title}'"
+                )
+                keyword = candidate_title
+
+    # 最终检查：如果关键词变化了，需要更新缓存 key 并清除旧缓存
+    if keyword != _original_keyword:
+        logger.warning(f"[NetEase-CLEAN] Final keyword: '{keyword}' (original: '{_original_keyword}')")
+
+        # 清除旧脏缓存（避免命中之前的空结果缓存）
+        _dirty_cache_key = f"{_original_keyword}_radio" if include_radio else _original_keyword
+        if _search_cache.get(_dirty_cache_key) is not None:
+            logger.warning(f"[NetEase-CLEAN] Removing dirty cache for: '{_dirty_cache_key}'")
+            try:
+                with _search_cache._lock:
+                    if _dirty_cache_key in _search_cache._cache:
+                        del _search_cache._cache[_dirty_cache_key]
+                        logger.info(f"[NetEase-CLEAN] Cache entry removed successfully")
+            except Exception as cache_err:
+                logger.debug(f"[NetEase-CLEAN] Failed to remove cache: {cache_err}")
+
+        # 更新 cache_key（使用清理后的关键词）
+        cache_key = f"{keyword}_radio" if include_radio else keyword
 
     # Step 1: 检查缓存（命中则直接返回，无需网络请求）
     cache_key = f"{keyword}_radio" if include_radio else keyword
@@ -1866,10 +2038,10 @@ async def recognize_with_acoustid(file_path: str, trace: bool = False) -> dict |
     try:
         # 检查 ffmpeg 是否可用（使用非阻塞异步方式）
         try:
+            kwargs = get_silent_process_kwargs()
             proc = await asyncio.create_subprocess_exec(
                 "ffmpeg", "-version",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                **kwargs
             )
             await proc.communicate()
             if proc.returncode != 0:
@@ -1896,11 +2068,11 @@ async def recognize_with_acoustid(file_path: str, trace: bool = False) -> dict |
             if trace:
                 print(f"[Acoustid] Generating fingerprint for: {os.path.basename(file_path)}")
 
-            # 使用非阻塞异步方式执行 ffmpeg
+            # 使用非阻塞异步方式执行 ffmpeg（隐藏CMD窗口）
+            kwargs = get_silent_process_kwargs()
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                **kwargs
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
             
@@ -1922,11 +2094,11 @@ async def recognize_with_acoustid(file_path: str, trace: bool = False) -> dict |
             file_path
         ]
         
-        # 使用非阻塞异步方式执行 ffprobe
+        # 使用非阻塞异步方式执行 ffprobe（隐藏CMD窗口）
+        kwargs = get_silent_process_kwargs()
         proc = await asyncio.create_subprocess_exec(
             *probe_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            **kwargs
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
         
@@ -2351,6 +2523,7 @@ def _build_smart_keyword(
 
     根据用户选择的模式，从不同来源构建搜索关键词。
     智能回退模式下会返回多个备选关键词供依次尝试。
+    自动过滤无效值（Unknown Album/Unknown Artist 等）
 
     Args:
         file_path: 音频文件完整路径
@@ -2368,14 +2541,49 @@ def _build_smart_keyword(
     """
     import re
 
+    # 无效值列表（这些值不应该出现在搜索关键词中）
+    INVALID_VALUES = {
+        'unknown_album', 'unknown_artist', 'unknown_title',
+        'unknown', 'n/a', 'none'
+    }
+
+    def _clean_keyword(text: str) -> str:
+        """清理关键词：移除无效后缀和无效值"""
+        if not text:
+            return ''
+
+        text = text.strip()
+
+        # 移除 " - Unknown_Album" / " - Unknown Artist" 等无效后缀
+        # 使用简单可靠的模式，避免复杂正则表达式匹配失败
+        # 支持 "Unknown_Album" (下划线) 和 "Unknown Album" (空格) 两种格式
+        patterns = [
+            r'\s+[-–—]\s+(Unknown[_\s]*(Album|Artist|Title)|N/A|None)\s*$',
+            r'\s{2,}(Unknown[_\s]*(Album|Artist|Title)|N/A|None)\s*$',
+            r'\s*:\s*(Unknown[_\s]*(Album|Artist|Title)|N/A|None)\s*$',
+        ]
+
+        for pattern in patterns:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE).strip()
+
+        # 如果清理后是无效值或太短，返回空字符串
+        if text.lower() in INVALID_VALUES or len(text) < 2:
+            return ''
+
+        return text
+
+    # 清理输入参数
+    title = _clean_keyword(title)
+    artist = _clean_keyword(artist)
+
     filename_base = os.path.splitext(os.path.basename(file_path))[0].strip()
 
     if mode == "title_only":
         return title, []
 
     elif mode == "artist_title":
-        if artist and artist != "Unknown Artist":
-            return f"{artist} {title}", []
+        if artist and artist.lower() not in INVALID_VALUES:
+            return f"{artist} {title}" if title else artist, []
         else:
             return title, []
 
@@ -2383,7 +2591,7 @@ def _build_smart_keyword(
         filename_kw = _build_search_keyword_from_filename(file_path)
         if filename_kw:
             alternatives = [title]
-            if artist and artist != "Unknown Artist":
+            if artist and artist.lower() not in INVALID_VALUES and title:
                 alternatives.append(f"{artist} {title}")
             return filename_kw, alternatives
         else:
@@ -2409,11 +2617,11 @@ def _build_smart_keyword(
 
         if _is_meaningful_filename(filename_base) and _contains_non_ascii(filename_base):
             strategy_order.append(("filename", _build_search_keyword_from_filename(file_path)))
-        if _contains_non_ascii(title):
+        if title and title.lower() not in INVALID_VALUES:
             strategy_order.append(("title", title))
-        if artist and artist != "Unknown Artist":
+        if artist and artist.lower() not in INVALID_VALUES and title:
             strategy_order.append(("combined", f"{artist} {title}"))
-        if title not in [s[1] for s in strategy_order]:
+        if title and title not in [s[1] for s in strategy_order]:
             strategy_order.append(("title_fallback", title))
 
         if strategy_order:
@@ -2569,9 +2777,10 @@ async def recognize_and_rename_file(
 
                     if fallback_results:
                         best_match = fallback_results[0]
-                        s_title = sanitize(best_match.title, trace)
-                        s_artist = sanitize(best_match.artist, trace)
-                        s_album = sanitize(best_match.album, trace)
+                        # 使用新版文件名生成（替代旧版 sanitize(trace)）
+                        s_title = _safe_filename(best_match.title, ascii_only)
+                        s_artist = _safe_filename(best_match.artist, ascii_only)
+                        s_album = _safe_filename(best_match.album, ascii_only)
 
                         logger.info(
                             f"[Fallback] Success! Found: {best_match.title} - {best_match.artist}"
@@ -2613,9 +2822,10 @@ async def recognize_and_rename_file(
 
                     if fallback_results:
                         best_match = fallback_results[0]
-                        s_title = sanitize(best_match.title, trace)
-                        s_artist = sanitize(best_match.artist, trace)
-                        s_album = sanitize(best_match.album, trace)
+                        # 使用新版文件名生成（替代旧版 sanitize(trace)）
+                        s_title = _safe_filename(best_match.title, ascii_only)
+                        s_artist = _safe_filename(best_match.artist, ascii_only)
+                        s_album = _safe_filename(best_match.album, ascii_only)
 
                         logger.info(
                             f"[MetadataFallback] Success! Found: {best_match.title} - {best_match.artist}"
@@ -2653,12 +2863,17 @@ async def recognize_and_rename_file(
     track = out["track"]
     title = track.get("title", "Unknown Title")
     artist = track.get("subtitle", "Unknown Artist")
-    album = find_deepest_metadata_key(track, "Album") or "Unknown Album"
+
+    # 使用标准化函数提取嵌套元数据（替代旧版 find_deepest_metadata_key）
+    flat_meta = _flatten_shazam_metadata(track)
+    album = flat_meta.get("album", "Unknown Album")
     cover = track.get("images", {}).get("coverart", "")
 
-    s_title = sanitize(title, trace)
-    s_artist = sanitize(artist, trace)
-    s_album = sanitize(album, trace)
+    # 使用新版文件名生成（替代旧版 sanitize(trace)，支持可选 ASCII-only 转换）
+    ascii_only = config.ascii_only_filenames if config else False
+    s_title = _safe_filename(title, ascii_only)
+    s_artist = _safe_filename(artist, ascii_only)
+    s_album = _safe_filename(album, ascii_only)
 
     # 3.5) Multi-source search: 根据配置构建关键词（支持智能回退）
     from auto_tag.gui.config import config

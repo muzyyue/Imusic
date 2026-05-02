@@ -1311,9 +1311,9 @@ class SongResultCard(CardWidget):
                     widget.cover_widget._stop_loader()
 
         # 强制处理事件循环，确保 DeferredDelete 被执行
-        from PySide6.QtCore import QCoreApplication
+        from PySide6.QtCore import QCoreApplication, QEventLoop
         QCoreApplication.processEvents(
-            QProcessEventLoop.ProcessEventsFlags.ExcludeUserInputEvents,
+            QEventLoop.ProcessEventsFlags.ExcludeUserInputEvents,
             100
         )
 

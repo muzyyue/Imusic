@@ -9,7 +9,7 @@ from auto_tag.editor.config import TrimConfig, TrimMode, OutputQuality
 # 强制 UTF-8 输出
 sys.stdout.reconfigure(encoding='utf-8')
 
-test_file = r'f:\Code\Imusic\tests\fixtures\song\Grand Escape  [feat. Toko Miura] [From Weathering With You] [For Piano Solo] - daigoro789 - Weathering With You Piano Collections.mp3'
+test_file = r'f:\Code\Imusic\tests\fixtures\song\Grand_Escape_(feat._Toko_Miura) - RADWIMPS - Weathering_With_You_(Complete_Version)_-_EP.mp3'
 
 if not os.path.exists(test_file):
     print(f'[ERROR] 测试文件不存在: {test_file}')

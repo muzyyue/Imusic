@@ -24,8 +24,11 @@ from typing import Any
 
 import ffmpeg
 
-from auto_tag.editor.config import EditorConfig, NormalizeConfig, TrimConfig, TrimMode
+from auto_tag.editor.config import EditorConfig, NormalizeConfig, OutputQuality, TrimConfig, TrimMode
 from auto_tag.converter.config import ConverterConfig, FormatConfig, OutputFormat, QualityPreset
+# 为避免命名冲突，将 converter 的 QualityPreset 别名为 ConvQualityPreset
+ConvQualityPreset = QualityPreset
+from auto_tag.utils.ffmpeg_utils import get_silent_process_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -225,32 +228,29 @@ class AudioEditor:
 
         使用 shell=False 并手动构建参数列表，
         避免方括号、括号等特殊字符被命令行解析器误解。
+        自动隐藏 Windows CMD 窗口。
 
         Args:
             ffmpeg_output: ffmpeg.output() 返回的对象
         """
         # 编译 FFmpeg 命令为参数列表（不通过 shell）
         cmd = ffmpeg_output.compile()
-        
+
         # 确保 FFmpeg 使用完整路径（Windows shell=False 需要）
         import shutil
         ffmpeg_path = shutil.which('ffmpeg')
         if ffmpeg_path and cmd:
             cmd[0] = ffmpeg_path
-        
+
         logger.debug(f"FFmpeg 命令: {' '.join(cmd)}")
-        
-        # 使用 subprocess 直接运行，禁用 shell 解释
-        import subprocess
-        process = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=False,  # 关键：禁用 shell，避免特殊字符问题
-        )
+
+        # 使用静默参数执行（隐藏CMD窗口）
+        kwargs = get_silent_process_kwargs()
+        kwargs['shell'] = False  # 关键：禁用 shell，避免特殊字符问题
+
+        process = subprocess.Popen(cmd, **kwargs)
         _, stderr = process.communicate()
-        
+
         if process.returncode != 0:
             error_msg = stderr.decode('utf-8', errors='ignore') if stderr else ''
             raise ffmpeg.Error('ffmpeg', None, error_msg)
@@ -259,6 +259,7 @@ class AudioEditor:
     def _run_ffmpeg_safe_capture(ffmpeg_output) -> tuple:
         """
         安全执行 FFmpeg 命令并捕获输出（用于 loudnorm 等需要解析输出的场景）
+        自动隐藏 Windows CMD 窗口。
 
         Args:
             ffmpeg_output: ffmpeg.output() 返回的对象
@@ -267,29 +268,26 @@ class AudioEditor:
             tuple: (stdout_bytes, stderr_bytes)
         """
         cmd = ffmpeg_output.compile()
-        
+
         # 确保 FFmpeg 使用完整路径（Windows shell=False 需要）
         import shutil
         ffmpeg_path = shutil.which('ffmpeg')
         if ffmpeg_path and cmd:
             cmd[0] = ffmpeg_path
-        
+
         logger.debug(f"FFmpeg 命令 (capture): {' '.join(cmd)}")
-        
-        import subprocess
-        process = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=False,
-        )
+
+        # 使用静默参数执行（隐藏CMD窗口）
+        kwargs = get_silent_process_kwargs()
+        kwargs['shell'] = False
+
+        process = subprocess.Popen(cmd, **kwargs)
         stdout, stderr = process.communicate()
-        
+
         if process.returncode != 0:
             error_msg = stderr.decode('utf-8', errors='ignore') if stderr else ''
             raise ffmpeg.Error('ffmpeg', stdout, error_msg)
-            
+
         return stdout, stderr
 
     def trim_audio(
@@ -315,7 +313,6 @@ class AudioEditor:
             config = TrimConfig()
         
         if output_quality is None:
-            from auto_tag.editor.config import OutputQuality
             output_quality = OutputQuality.STANDARD
 
         result = {"success": False, "input_file": input_path, "output_file": output_path}
@@ -391,52 +388,49 @@ class AudioEditor:
                 processed = processed.filter("afade", **fade_kwargs)
 
             # 根据输出质量配置选择编解码器和比特率参数
-            vbr_quality = output_quality.get_vbr_quality()
-            max_bitrate = output_quality.get_max_bitrate()
+            # 统一使用 ConverterConfig 的质量预设体系，确保与格式转换步骤一致
             
-            logger.debug(f"输出质量: {output_quality.display_name} (VBR q:{vbr_quality}, max {max_bitrate/1000:.0f}kbps)")
+            quality_mapping = {
+                OutputQuality.HIGH: ConvQualityPreset.HIGH,
+                OutputQuality.STANDARD: ConvQualityPreset.MEDIUM,
+                OutputQuality.SMALL: ConvQualityPreset.LOW,
+            }
+            conv_preset = quality_mapping.get(output_quality, ConvQualityPreset.MEDIUM)
             
-            # 根据输出文件扩展名选择合适的音频编解码器和比特率
+            logger.debug(f"输出质量: {output_quality.display_name} -> ConverterPreset: {conv_preset.value}")
+            
+            # 根据输出文件扩展名选择合适的音频编解码器和比特率（与 FormatConfig._apply_quality_preset 一致）
             output_ext = os.path.splitext(safe_output)[1].lower()
-            codec_map = {
-                '.wav': ('pcm_s16le', None),  # WAV 无损，不设置比特率
-                '.flac': ('flac', None),        # FLAC 无损
-                '.mp3': ('libmp3lame', vbr_quality),
-                '.aac': ('aac', max_bitrate),
-                '.ogg': ('libvorbis', vbr_quality if vbr_quality <= 2 else -1),
-                '.m4a': ('aac', max_bitrate),
+            
+            # 统一的编码参数配置（与 converter/config.py FormatConfig 保持一致）
+            codec_config = {
+                '.wav': {'acodec': 'pcm_s16le'},                    # WAV 无损
+                '.flac': {'acodec': 'flac'},                        # FLAC 无损
+                '.mp3': {'acodec': 'libmp3lame'},                   # MP3
+                '.aac': {'acodec': 'aac'},                          # AAC
+                '.ogg': {'acodec': 'libvorbis'},                    # OGG Vorbis
+                '.m4a': {'acodec': 'aac'},                          # M4A (AAC)
             }
             
-            acodec, audio_params = codec_map.get(output_ext, (None, None))
+            # 比特率配置（kbps）- 与 FormatConfig._apply_quality_preset 完全一致
+            bitrate_config = {
+                ConvQualityPreset.LOW: {'.mp3': 128, '.aac': 96,  '.ogg': 96,  '.m4a': 96},
+                ConvQualityPreset.MEDIUM: {'.mp3': 192, '.aac': 128, '.ogg': 128, '.m4a': 128},
+                ConvQualityPreset.HIGH: {'.mp3': 256, '.aac': 160, '.ogg': 160, '.m4a': 160},
+                ConvQualityPreset.LOSSLESS: {'.mp3': 320, '.aac': 192, '.ogg': 192, '.m4a': 192},
+            }
             
-            if acodec:
-                kwargs = {'acodec': acodec}
-
-                # 根据输出质量设置比特率/质量参数
-                # 使用 FFmpeg 原生参数格式（b:a 或 q:a）
-                # 注意: ffmpeg-python 的 audio_bitrate 参数在某些版本不生效
-                # 直接使用 FFmpeg 原生选项名称确保参数正确传递
-                if output_ext == '.mp3':
-                    if audio_params is not None:
-                        # 将 VBR 质量映射为近似等效的固定比特率 (kbps)
-                        bitrate_map = {
-                            0: 245,   # 高质量 (~VBR q:0)
-                            1: 225,   # 很好 (~VBR q:1)
-                            2: 190,   # 标准/透明 (~VBR q:2) ✓推荐
-                            3: 165,   # 较好 (~VBR q:3)
-                            4: 140,   # 中等 (~VBR q:4)
-                            5: 115,   # 一般 (~VBR q:5)
-                            6: 95,    # 较低 (~VBR q:6)
-                            7: 75,    # 低 (~VBR q:7)
-                            8: 60,    # 很低 (~VBR q:8)
-                            9: 45,    # 最低 (~VBR q:9)
-                        }
-                        target_kbps = bitrate_map.get(audio_params, 192)
-                        kwargs['b:a'] = f'{target_kbps}k'
-
-                # AAC/其他: 使用固定比特率 (bps)
-                elif audio_params and isinstance(audio_params, int):
-                    kwargs['b:a'] = f'{audio_params}'
+            base_kwargs = codec_config.get(output_ext, {})
+            
+            if base_kwargs:
+                kwargs = dict(base_kwargs)
+                
+                # 为有损格式设置比特率（WAV/FLAC 不需要）
+                if output_ext in ['.mp3', '.aac', '.ogg', '.m4a']:
+                    preset_bitrates = bitrate_config.get(conv_preset, {})
+                    target_kbps = preset_bitrates.get(output_ext, 192)
+                    kwargs['b:a'] = f'{target_kbps}k'
+                    logger.debug(f"编码参数: codec={kwargs['acodec']}, bitrate={target_kbps}kbps")
                 
                 output = processed.output(safe_output, **kwargs)
             else:
@@ -804,7 +798,19 @@ class AudioEditor:
                         os.unlink(temp_normalized)
 
             converter_config = ConverterConfig()
-            converter_config.set_output_format(config.output_format.value, config.quality_preset)
+            
+            output_quality = getattr(config, 'output_quality', None)
+            if output_quality is not None:
+                quality_mapping = {
+                    OutputQuality.HIGH: QualityPreset.HIGH,
+                    OutputQuality.STANDARD: QualityPreset.MEDIUM,
+                    OutputQuality.SMALL: QualityPreset.LOW,
+                }
+                mapped_preset = quality_mapping.get(output_quality, config.quality_preset)
+                logger.debug(f"质量配置映射: {output_quality.value} -> {mapped_preset.value}")
+                converter_config.set_output_format(config.output_format.value, mapped_preset)
+            else:
+                converter_config.set_output_format(config.output_format.value, config.quality_preset)
 
             from auto_tag.converter.converter import AudioConverter
             converter = AudioConverter()

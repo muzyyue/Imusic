@@ -84,6 +84,9 @@ class AppConfig:
     DEFAULT_INCLUDE_RADIO: bool = True
     DEFAULT_SEARCH_KEYWORD_MODE: str = "smart_fallback"  # 默认使用智能回退模式（推荐）
 
+    # ===== 新增：文件名编码配置默认值 (2026-05-02) =====
+    DEFAULT_ASCII_ONLY_FILENAMES: bool = False  # 默认保留原始 Unicode 字符
+
     # 有效搜索关键词模式
     VALID_KEYWORD_MODES: tuple[str, ...] = ("title_only", "artist_title", "filename_first", "smart_fallback")
     KEYWORD_MODE_LABELS: dict[str, str] = {
@@ -164,6 +167,9 @@ class AppConfig:
         self._include_radio: bool = self.DEFAULT_INCLUDE_RADIO
         self._search_keyword_mode: str = self.DEFAULT_SEARCH_KEYWORD_MODE
 
+        # ===== 新增：初始化文件名编码配置属性 (2026-05-02) =====
+        self._ascii_only_filenames: bool = self.DEFAULT_ASCII_ONLY_FILENAMES
+
         # 加载配置文件
         self._load_config()
 
@@ -217,6 +223,12 @@ class AppConfig:
                     self._search_keyword_mode = self.DEFAULT_SEARCH_KEYWORD_MODE
             else:
                 self._search_keyword_mode = self.DEFAULT_SEARCH_KEYWORD_MODE
+
+            # ===== 新增：加载文件名编码配置 (2026-05-02) =====
+            if 'ascii_only_filenames' in config_data and isinstance(config_data['ascii_only_filenames'], bool):
+                self._ascii_only_filenames = config_data['ascii_only_filenames']
+            else:
+                self._ascii_only_filenames = self.DEFAULT_ASCII_ONLY_FILENAMES
             
             self._output_format = config_data.get(
                 "output_format", self.DEFAULT_OUTPUT_FORMAT
@@ -283,7 +295,8 @@ class AppConfig:
                 "output_format": self._output_format,
                 "quality_preset": self._quality_preset,
                 "converter_input_formats": self._converter_input_formats,
-                "custom_formats": self.custom_formats_manager.to_dict_list()
+                "custom_formats": self.custom_formats_manager.to_dict_list(),
+                "ascii_only_filenames": self._ascii_only_filenames,  # 新增 (2026-05-02)
             }
 
             # 写入配置文件
@@ -548,6 +561,35 @@ class AppConfig:
             >>> config.set_converter_input_formats(["mp3", "flac", "mp4"])
         """
         self._converter_input_formats = formats
+        self.save()
+
+    @property
+    def ascii_only_filenames(self) -> bool:
+        """
+        获取文件名编码模式 (2026-05-02 新增)
+
+        Returns:
+            bool: True 表示将非 ASCII 字符转换为 ASCII（使用 unidecode）
+                 False 表示保留原始 Unicode 字符（默认，推荐）
+
+        Example:
+            >>> config.ascii_only_filenames
+            False  # 默认保留原始字符
+        """
+        return self._ascii_only_filenames
+
+    def set_ascii_only_filenames(self, value: bool) -> None:
+        """
+        设置文件名编码模式并保存
+
+        Args:
+            value (bool): True 转换为 ASCII，False 保留原始字符
+
+        Example:
+            >>> config.set_ascii_only_filenames(True)
+            # 启用 ASCII-only 模式（适用于旧系统兼容）
+        """
+        self._ascii_only_filenames = value
         self.save()
 
     def __repr__(self) -> str:

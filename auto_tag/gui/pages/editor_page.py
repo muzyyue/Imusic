@@ -389,13 +389,13 @@ class EditorPage(ScrollArea):
         format_card = CardWidget(self)
         format_layout = QVBoxLayout(format_card)
         format_layout.setContentsMargins(20, 15, 20, 15)
-        format_layout.setSpacing(16)
+        format_layout.setSpacing(12)
 
         format_title = SubtitleLabel(tr("editor.output_format_settings"))
         format_layout.addWidget(format_title)
 
         preset_hbox = QHBoxLayout()
-        preset_hbox.setSpacing(10)
+        preset_hbox.setSpacing(16)
 
         preset_label = BodyLabel(tr("editor.preset") + ":")
         preset_hbox.addWidget(preset_label)
@@ -420,7 +420,7 @@ class EditorPage(ScrollArea):
 
         # 输出质量选择
         quality_hbox = QHBoxLayout()
-        quality_hbox.setSpacing(10)
+        quality_hbox.setSpacing(16)
 
         quality_label = BodyLabel(tr("editor.output_quality") + ":")
         quality_hbox.addWidget(quality_label)
