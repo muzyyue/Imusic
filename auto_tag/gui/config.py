@@ -87,6 +87,12 @@ class AppConfig:
     # ===== 新增：文件名编码配置默认值 (2026-05-02) =====
     DEFAULT_ASCII_ONLY_FILENAMES: bool = False  # 默认保留原始 Unicode 字符
 
+    # ===== 新增：QQ音乐Cookie配置默认值 (2026-05-05) =====
+    DEFAULT_QQ_MUSIC_COOKIE: str = ""  # 默认为空，用户可选填
+    QQ_MUSIC_COOKIE_MIN_LENGTH: int = 10  # Cookie最小长度
+    QQ_MUSIC_COOKIE_MAX_LENGTH: int = 10000  # Cookie最大长度
+    QQ_MUSIC_COOKIE_REQUIRED_KEYS: tuple[str, ...] = ('uin', 'qm_keyst', 'qqmusic_key')  # 必要字段（至少包含一个）
+
     # 有效搜索关键词模式
     VALID_KEYWORD_MODES: tuple[str, ...] = ("title_only", "artist_title", "filename_first", "smart_fallback")
     KEYWORD_MODE_LABELS: dict[str, str] = {
@@ -170,6 +176,9 @@ class AppConfig:
         # ===== 新增：初始化文件名编码配置属性 (2026-05-02) =====
         self._ascii_only_filenames: bool = self.DEFAULT_ASCII_ONLY_FILENAMES
 
+        # ===== 新增：初始化QQ音乐Cookie配置属性 (2026-05-05) =====
+        self._qq_music_cookie: str = self.DEFAULT_QQ_MUSIC_COOKIE
+
         # 加载配置文件
         self._load_config()
 
@@ -229,7 +238,17 @@ class AppConfig:
                 self._ascii_only_filenames = config_data['ascii_only_filenames']
             else:
                 self._ascii_only_filenames = self.DEFAULT_ASCII_ONLY_FILENAMES
-            
+
+            # ===== 新增：加载QQ音乐Cookie配置 (2026-05-05) =====
+            if 'qq_music_cookie' in config_data and isinstance(config_data['qq_music_cookie'], str):
+                cookie = config_data['qq_music_cookie'].strip()
+                if len(cookie) <= self.QQ_MUSIC_COOKIE_MAX_LENGTH:
+                    self._qq_music_cookie = cookie
+                else:
+                    self._qq_music_cookie = self.DEFAULT_QQ_MUSIC_COOKIE
+            else:
+                self._qq_music_cookie = self.DEFAULT_QQ_MUSIC_COOKIE
+
             self._output_format = config_data.get(
                 "output_format", self.DEFAULT_OUTPUT_FORMAT
             )
@@ -269,6 +288,8 @@ class AppConfig:
             self._netease_search_type = self.DEFAULT_NETEASE_SEARCH_TYPE
             self._include_radio = self.DEFAULT_INCLUDE_RADIO
             self._search_keyword_mode = self.DEFAULT_SEARCH_KEYWORD_MODE
+            self._ascii_only_filenames = self.DEFAULT_ASCII_ONLY_FILENAMES
+            self._qq_music_cookie = self.DEFAULT_QQ_MUSIC_COOKIE  # 新增 (2026-05-05)
             self._output_format = self.DEFAULT_OUTPUT_FORMAT
             self._quality_preset = self.DEFAULT_QUALITY_PRESET
             self._converter_input_formats = self.DEFAULT_CONVERTER_INPUT_FORMATS.copy()
@@ -297,6 +318,7 @@ class AppConfig:
                 "converter_input_formats": self._converter_input_formats,
                 "custom_formats": self.custom_formats_manager.to_dict_list(),
                 "ascii_only_filenames": self._ascii_only_filenames,  # 新增 (2026-05-02)
+                "qq_music_cookie": self._qq_music_cookie,  # 新增 (2026-05-05)
             }
 
             # 写入配置文件
@@ -591,6 +613,55 @@ class AppConfig:
         """
         self._ascii_only_filenames = value
         self.save()
+
+    @property
+    def qq_music_cookie(self) -> str:
+        """
+        获取QQ音乐用户Cookie (2026-05-05 新增)
+
+        Returns:
+            str: QQ音乐Cookie字符串，默认为空字符串
+                 用于QQ音乐API认证，提升搜索结果质量和获取VIP内容
+
+        Example:
+            >>> config.qq_music_cookie
+            ''  # 默认为空，表示未设置Cookie
+        """
+        return self._qq_music_cookie
+
+    def set_qq_music_cookie(self, cookie: str) -> None:
+        """
+        设置QQ音乐用户Cookie并保存 (2026-05-05 新增)
+
+        Cookie用于QQ音乐API认证，可以：
+        - 提升搜索结果质量（个性化推荐）
+        - 获取VIP专属内容（高音质下载等）
+        - 访问需要登录的接口（个人歌单等）
+
+        Args:
+            cookie (str): 从 y.qq.com 浏览器获取的完整Cookie字符串
+                         格式示例: "uin=xxx; qm_keyst=xxx; qqmusic_key=xxx; ..."
+
+        Raises:
+            ValueError: 当Cookie超过最大长度限制时抛出
+
+        Example:
+            >>> config.set_qq_music_cookie("uin=2253373466; qm_keyst=Q_H_L_63k3NmGdH...")
+            # 设置Cookie后，QQ音乐搜索将使用此认证信息
+        """
+        if not isinstance(cookie, str):
+            raise ValueError(f"Cookie必须是字符串类型，当前类型: {type(cookie).__name__}")
+
+        cookie = cookie.strip()
+
+        if len(cookie) > self.QQ_MUSIC_COOKIE_MAX_LENGTH:
+            raise ValueError(
+                f"Cookie长度超过限制 ({len(cookie)} > {self.QQ_MUSIC_COOKIE_MAX_LENGTH})"
+            )
+
+        if self._qq_music_cookie != cookie:
+            self._qq_music_cookie = cookie
+            self.save()
 
     def __repr__(self) -> str:
         """

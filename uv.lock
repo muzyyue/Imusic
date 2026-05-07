@@ -667,7 +667,7 @@ wheels = [
 
 [[package]]
 name = "imusic"
-version = "0.5.3"
+version = "0.5.4"
 source = { editable = "." }
 dependencies = [
     { name = "eyed3" },

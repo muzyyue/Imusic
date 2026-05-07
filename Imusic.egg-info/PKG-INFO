@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: Imusic
-Version: 0.5.3
+Version: 0.5.4
 Summary: Use shazam to rename and filled the tag of a list of mp3 files.
 Author: ling
 License: MIT License
@@ -46,233 +46,214 @@ Requires-Dist: pytest-asyncio; extra == "dev"
 Requires-Dist: pyinstaller>=6.0; extra == "dev"
 Dynamic: license-file
 
-# Imusic - 智能音频文件识别与管理系统
+# Imusic 🎵
 
-[![Version](https://img.shields.io/badge/version-0.4.68-blue.svg)](https://github.com/ling/Imusic)
-[![Python](https://img.shields.io/badge/python-3.12%2B-brightgreen.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+智能音频标签管理工具 - 使用 Shazam API 自动识别和重命名音乐文件
 
-一款基于 **Fluent Design** 的智能音频文件识别与管理系统，支持多引擎音频识别、自动重命名、标签管理、封面嵌入和音频格式转换。
+## ✨ 核心功能
 
-> [!WARNING]  
-> 杀毒软件可能会误报，但源代码完全无害。首次启动可执行文件可能需要较长时间。
+- 🔍 **智能识别**: 通过 Shazam API 自动识别音频文件的元数据（标题、艺术家、专辑等）
+- 🏷️ **批量标签编辑**: 支持批量修改 MP3/FLAC/AAC 等格式的 ID3 标签
+- ✂️ **音频裁剪**: 智能静音检测、手动时间选择、指定时长模式，支持淡入淡出
+- 🎚️ **音量标准化**: 基于 EBU R128 loudnorm 滤波器，可自定义目标响度
+- 🔄 **格式转换**: 5种实用预设（手机铃声📱/车载播放🚗/HiFi存档💾/Podcast🎧/音乐分享🎵）
+- 🌐 **多语言支持**: 完整的中英文界面国际化
 
-![](assets/main.png)
+## 🚀 快速开始
 
-## ✨ 功能特性
-
-### 核心功能
-- 🎵 **多引擎音频识别** - 支持 Acoustid、Shazam 等多种音频指纹识别引擎
-- 🔍 **多平台智能搜索** - 识别后自动在网易云音乐、QQ音乐等平台搜索补充信息
-- 📝 **自动重命名** - 智能重命名文件，支持多种命名模式
-- 🏷️ **标签管理** - 自动更新 ID3/Vorbis 元数据标签
-- 🖼️ **封面艺术** - 下载并嵌入专辑封面
-- 📁 **Plex 支持** - 支持 `Artist/Album/Title.ext` 目录结构整理
-
-### 音频转换
-- 🎛️ **格式转换** - 支持 MP3、FLAC、AAC、OGG、WAV、M4A 等格式互转
-- 🎞️ **视频转音频** - 支持 MP4、MKV、AVI、MOV、WMV、WEBM 视频提取音频
-- ⚡ **批量处理** - 支持批量转换，保留元数据
--  **进度追踪** - 实时显示转换进度和状态
-
-### 用户体验
-- 🌍 **国际化** - 支持 English 和 中文 (zh-CN)
-- 🎨 **Fluent Design UI** - 现代化界面，支持浅色/深色主题切换
-- ⚙️ **配置持久化** - 用户偏好自动保存
-- 🔒 **安全优先** - 遵循最小权限原则，无网络泄露风险
-
-## 📦 安装
-
-### 下载可执行文件
-
-从 [GitHub Releases](https://github.com/ling/Imusic/releases) 下载最新版本。
-
-### 源码安装
+### 安装依赖
 
 ```bash
-git clone https://github.com/ling/Imusic.git
-cd Imusic
+# 使用 uv (推荐)
 uv sync
+
+# 或使用 pip
+pip install -e .
+```
+
+### 运行应用
+
+```bash
 uv run python main.py
 ```
 
-**要求：**
-- Python 3.12+ 推荐
-- 建议使用 [uv](https://github.com/astral-sh/uv) 作为包管理器
-- 音频转换需要安装 [FFmpeg](https://ffmpeg.org/)
-
-## 🚀 使用指南
-
-### 首页 - 音频识别
-
-![音频识别](assets/main.png)
-
-1. **选择输入目录** - 浏览选择包含音频文件的文件夹
-2. **选择输出目录**（可选）- 勾选「复制到」并选择目标文件夹
-3. **查看搜索结果** - 系统自动识别并展示多平台搜索结果
-4. **应用更改** - 点击「应用」或「应用 (Plex)」完成文件处理
-
-### 转换器页面
-
-1. **选择输入/输出目录**
-2. **设置输出格式和质量** - 支持 MP3/FLAC/AAC/OGG/WAV/M4A
-3. **文件格式过滤** - 勾选需要处理的音频/视频格式
-4. **自定义格式** - 添加自定义文件扩展名
-5. **开始转换** - 点击「开始转换」并等待完成
-
-### 设置页面
-
-- **语言切换** - English / 中文
-- **主题切换** - 浅色 / 深色 / 跟随系统
-- **搜索源配置** - 选择启用的音乐平台
-- **搜索关键词模式** - 设置搜索匹配策略
-
-### 命令行界面 (CLI)
-
-```bash
-uv run python main.py [选项]
-```
-
-| 短选项 | 长选项 | 说明 | 默认值 |
-| ------ | ------ | ---- | ------ |
-| `-di` | `--directory` | 音频文件所在目录 | 当前目录 |
-| `-m` | `--modify` | 是否应用修改 (True/False) | `True` |
-| `-de` | `--delay` | Shazam 失败重试延迟 (秒) | `10` |
-| `-n` | `--nbrRetry` | Shazam 最大重试次数 | `3` |
-| `-tr` | `--trace` | 启用调试输出 | `False` |
-| `-g` | `--gui` | 启动 GUI | `True` |
-| `-e` | `--extensions` | 处理的文件扩展名 (逗号分隔) | `mp3,ogg` |
-| `-o` | `--output` | 输出目录 | 原目录 |
-| `-p` | `--plex` | 使用 Plex 目录结构 | 关闭 |
-| `-c` | `--copy-to` | 复制而非移动文件 | 无 |
-| `-to` | `--tag-only` | 仅修改标签不改文件名 | `False` |
-| `-h` | `--help` | 显示帮助信息 | — |
-
-## 📁 项目结构
+## 📁 项目架构
 
 ```
 Imusic/
-├── main.py                    # 主入口
-├── pyproject.toml             # 项目配置 (PEP 517/518)
-├── uv.lock                    # 依赖锁定文件
-├── README.md                  # 项目文档
-├── LICENSE                    # MIT 许可证
-├── history.md                 # 变更历史
-│
-├── auto_tag/                  # 核心模块
-│   ├── __init__.py
-│   ├── audio_recognize.py     # 音频识别核心逻辑
-│   ├── utils.py               # 工具函数
-│   │
-│   ├── gui/                   # GUI 模块 (PySide6 + QFluentWidgets)
-│   │   ├── __init__.py
-│   │   ├── config.py          # GUI 配置管理
-│   │   ├── main_window.py     # 主窗口
-│   │   ├── i18n/              # 国际化
-│   │   │   ├── translator.py
-│   │   │   └── locales/       # 翻译文件
-│   │   ├── pages/             # 页面组件
-│   │   │   ├── home_page.py       # 音频识别页面
-│   │   │   ├── converter_page.py  # 音频转换页面
-│   │   │   └── settings_page.py   # 设置页面
-│   │   ├── components/        # UI 组件
-│   │   │   └── song_result_card.py  # 搜索结果卡片
-│   │   └── workers/           # 后台工作线程
-│   │       └── recognize_worker.py
-│   │
-│   └── converter/             # 音频转换模块
-│       ├── __init__.py
-│       ├── config.py          # 转换器配置
-│       ├── converter.py       # 转换逻辑
-│       ├── metadata_manager.py # 元数据管理
-│       └── workers/
-│           └── converter_worker.py
-│
-├── assets/                    # 静态资源
-│   ├── imusic.ico             # 应用图标
-│   └── main.png               # 项目截图
-│
-├── build_tools/               # 构建工具
-│   └── build_exe.py           # PyInstaller 构建脚本
-│
-└── tests/                     # 测试目录
-    ├── test_recognize.py
-    ├── test_converter.py
-    ├── test_converter_worker.py
-    ├── test_settings_page.py
-    ├── test_converter_page.py
-    └── fixtures/              # 测试数据
+├── auto_tag/
+│   ├── utils/                    # ⭐ 工具模块（双版本共存设计）
+│   │   ├── __init__.py           # 统一入口 + 新版函数 + 遗留适配层
+│   │   ├── _legacy_utils.py      # 遗留实现（已弃用）
+│   │   └── ffmpeg_utils.py       # FFmpeg 静默执行工具
+│   ├── editor/                   # 音频编辑核心模块
+│   ├── converter/                # 格式转换模块
+│   ├── audio_recognize.py        # Shazam API 音频识别
+│   └── gui/                      # PySide6 + QFluentWidgets GUI
+├── tests/                        # 测试套件
+└── .trae/documents/              # 项目文档
 ```
 
-## 🔧 构建可执行文件
+### Utils 模块架构说明 (2026-05-02)
 
-### 准备工作
+#### 设计背景
+
+项目历史原因导致存在两套工具函数实现：
+- `auto_tag/utils.py` (旧版) → 已重命名为 `_legacy_utils.py`
+- `auto_tag/utils/__init__.py` (新版) → 当前官方入口
+
+#### 双版本共存策略
+
+为避免破坏现有功能（特别是 `audio_recognize.py` 的 Shazam API 解析），采用渐进式迁移：
+
+**✅ 迁移完成状态 (2026-05-02)**: 所有模块已使用新版 API，包括 audio_recognize.py
+
+| 函数 | 新版路径 | 旧版路径 | 迁移状态 | 说明 |
+|------|---------|---------|----------|------|
+| `find_deepest_metadata_key()` | `utils.__init__` | `_legacy_utils` | ✅ **已完成 (2026-05-02)** | audio_recognize.py 已改用 `_flatten_shazam_metadata()` |
+| `sanitize()` | `utils.__init__` | `_legacy_utils` | ✅ **已完成 (2026-05-02)** | audio_recognize.py 已改用 `_safe_filename()` |
+| `sanitize_filename_safe()` | `utils.__init__` | `_legacy_utils` | ✅ **已完成** | 新版增强（长度限制） |
+| `is_file_in_use_error()` | `utils.__init__` | `_legacy_utils` | ✅ **已完成** | 新版超集（更多错误码） |
+| `retry_on_file_in_use()` | `utils.__init__` | `_legacy_utils` | ✅ **已完成** | 接口略有差异 |
+| `_flatten_shazam_metadata()` 🆕 | `audio_recognize.py` | N/A | 🆕 **新增辅助函数** | 标准化 Shazam API 数据结构 |
+| `_safe_filename()` 🆕 | `audio_recognize.py` | N/A | 🆕 **新增包装器** | 可选 ASCII-only 文件名转换 |
+
+#### 新增功能：文件名编码配置
+
+**GUI 配置项**: 设置页面 → 常规设置 → **文件名编码**
+
+```python
+# 使用方式
+from auto_tag.gui.config import AppConfig
+
+config = AppConfig()
+config.ascii_only_filenames  # False (默认，保留原始 Unicode 字符)
+config.set_ascii_only_filenames(True)  # 启用 ASCII-only 模式
+```
+
+**行为说明**:
+- **关闭 (默认)**: 保留中文、日文等原始字符 → `"日本語.mp3"`
+- **开启**: 转换为 ASCII 近似音译 → `"Ri Ben Yu.mp3"`
+
+**适用场景**:
+- ✅ 关闭：现代系统（Windows 10+、macOS、Linux），文件系统原生支持 Unicode
+- ✅ 开启：旧系统兼容性需求，或需要纯 ASCII 文件名的特殊场景
+
+#### 关键行为差异
+
+##### 1. sanitize() 函数
+
+| 特性 | 旧版 (`_legacy_sanitize`) | 新版 (`sanitize`) |
+|------|------------------------|------------------|
+| **签名** | `sanitize(s: str, trace: bool)` | `sanitize(value: Any)` |
+| **日文处理** | 转换为 ASCII ("日本語" → "Ri Ben Yu") | 保留原样 ("日本語") |
+| **依赖库** | unidecode | 无（纯 Python） |
+| **特殊字符** | 移除 `<>:"/\|?*`，替换 `&`→`-` | 仅移除控制字符 |
+| **空字符串** | 返回 `"Unknown"` | 返回 `""` |
+
+**影响范围**: ~~仅 `audio_recognize.py` 使用旧版（通过别名映射）~~  
+**✅ 已完成迁移 (2026-05-02)**: 所有模块已使用新版 API，包括 audio_recognize.py
+
+**重构方案**: 通过新增辅助函数 `_flatten_shazam_metadata()` 和 `_safe_filename()` 完全移除对旧版 API 的依赖
+
+---
+
+##### 2. find_deepest_metadata_key() 函数
+
+| 特性 | 旧版 (`_legacy_find_*`) | 新版 (`find_*`) |
+|------|------------------------|------------------|
+| **搜索逻辑** | 匹配 `{title, text}` 结构 | 直接匹配字典键名 |
+| **大小写** | 区分大小写 | **不区分大小写** |
+| **适用数据** | Shazam API 返回格式 | 标准 key-value 格式 |
+
+**示例**:
+```python
+data = {"sections": [{"metadata": [{"title": "Album", "text": "XXX"}]}]}
+
+# 旧版: 找到 "XXX"（匹配 title/text 结构）
+old_find_metadata(data, "Album")  # → "XXX"
+
+# 新版: 返回 None（没有 "Album" 键）
+new_find_metadata(data, "Album")  # → None
+```
+
+---
+
+##### 3. 其他函数（已安全迁移）
+
+- **is_file_in_use_error()**: 新版支持 errno.EACCES/EBUSY，完全向下兼容
+- **sanitize_filename_safe()**: 新版增加 200 字符长度限制和空格标准化
+- **retry_on_file_in_use()**: 接口相似，内部实现优化
+
+#### 正确使用方式
+
+✅ **推荐（新代码）**:
+```python
+from auto_tag.utils import sanitize, find_deepest_metadata_key
+# 使用新版实现
+```
+
+⚠️ **特殊情况（仅限 audio_recognize.py）**:
+```python
+from auto_tag.utils import (
+    _legacy_sanitize as sanitize,           # TODO: 未来迁移到新版
+    _legacy_find_deepest_metadata_key as find_deepest_metadata_key,  # TODO
+    is_file_in_use_error,                  # ✅ 已使用新版
+)
+```
+
+❌ **禁止**:
+```python
+from auto_tag._legacy_utils import sanitize  # CI 会拦截！
+```
+
+## 🔧 开发规范
+
+### 导入规则
+
+1. **必须使用统一入口**: `from auto_tag.utils import ...`
+2. **禁止直接导入遗留模块**: CI 测试会自动检测并阻止
+3. **新代码使用新版 API**: 除非有特殊原因需要旧行为
+
+### 测试命令
 
 ```bash
-uv sync
-uv pip install pyinstaller
+# 运行全部测试
+uv run pytest tests/ -v
+
+# 运行特定测试套件
+uv run pytest tests/test_audio_editor.py -v          # 音频编辑器测试
+uv run pytest tests/test_audio_format_quality.py -v    # 格式质量测试
+uv run pytest tests/test_legacy_import_restriction.py -v  # Lint 规则检查
+uv run pytest tests/test_utils_legacy_vs_new.py -v     # 行为差异对比
+
+# 运行全部测试（含新增）
+uv run pytest tests/ -v --tb=short
 ```
 
-### 构建命令
+### Utils 模块相关测试
 
-```bash
-python build_tools/build_exe.py
-```
+| 测试文件 | 用例数 | 用途 |
+|---------|-------|------|
+| `test_audio_format_quality.py` | 21 | 格式转换质量和参数验证 |
+| `test_legacy_import_restriction.py` | 2 | CI Lint 规则：禁止直接导入 _legacy_utils |
+| `test_utils_legacy_vs_new.py` | 12 (+3 skip) | 新旧函数行为差异文档化 |
 
-或手动构建：
+**总计**: 35+ 个测试用例保障 utils 模块正确性
 
-```bash
-pyinstaller --onefile --noconsole \
-    --icon="assets/auto_tag.ico" \
-    --add-data="assets/auto_tag.ico;assets" \
-    --add-data="auto_tag/gui/i18n/locales;auto_tag/gui/i18n/locales" \
-    --workpath=build --distpath=build --specpath=build \
-    main.py
-```
+## 📊 版本信息
 
-构建完成后，可执行文件位于 `build/` 目录。
+- **当前版本**: v0.5.3
+- **Python 要求**: >= 3.10
+- **主要依赖**: mutagen, shazamio, PySide6, QFluentWidgets, ffmpeg-python
 
-## 📋 依赖
+## 📄 License
 
-### 核心依赖
-
-| 包 | 用途 |
-| ---- | ---- |
-| `shazamio` | Shazam 音频识别 API |
-| `mutagen` | 音频元数据处理 |
-| `eyed3` | MP3 ID3 标签处理 |
-| `soundfile` | OGG 转 WAV 音频转换 |
-| `unidecode` | Unicode 转 ASCII |
-| `tqdm` | 进度条显示 |
-| `PySide6` | Qt6 GUI 框架 |
-| `qfluentwidgets` | Fluent Design UI 组件库 |
-| `ffmpeg-python` | 音频转换后端 |
-| `httpx` | HTTP 客户端 |
-| `pydantic` | 数据验证 |
-
-### 开发依赖
-
-| 包 | 用途 |
-| ---- | ---- |
-| `pytest` | 单元测试框架 |
-| `pytest-asyncio` | 异步测试支持 |
-
-## 🐛 已知问题
-
-1. **Python 3.11/3.12 兼容性** - 详见 [Issue #1](https://github.com/ling/Imusic/issues/1)
-2. **macOS shazamio 安装** - 详见 [Issue #5](https://github.com/ling/Imusic/issues/5)
-3. **杀毒软件误报** - 可执行文件可能被隔离（源代码安全）
-4. **需要 FFmpeg** - 音频转换需安装 FFmpeg
-
-## 📝 许可证
-
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
+MIT License
 
 ## 🙏 致谢
 
-- [mp3ShazamAutoTag](https://github.com/davidAlgis/mp3ShazamAutoTag) - 原始项目，音频识别和标签灵感来源
-- [shazamio](https://github.com/dotX12/shazamio) - Shazam API 封装
-- [QFluentWidgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets) - Fluent Design UI 库
-- [PySide6](https://www.pyside.org/) - Qt6 Python 绑定
-
-
+- [mp3ShazamAutoTag](https://github.com/davidAlgis/mp3ShazamAutoTag) - 音频识别和标签灵感来源
+- [ShazamIO](https://github.com/dotX12/ShazamIO) - Shazam API 封装
+- [QFluentWidgets](https://qfluentwidgets.com) - Fluent Design UI 组件库
+- [FFmpeg](https://ffmpeg.org/) - 音频/视频处理引擎

@@ -1,5 +1,39 @@
 # 项目变更历史
 
+## v0.5.5 (2026-05-05)
+- feat(settings): 新增QQ音乐Cookie输入、验证与持久化功能
+  - 设置页面新增"用户Cookie"多行文本输入框（条件显示，仅QQ音乐选中时）
+  - 实时Cookie格式验证（非空、格式、必要字段uin/qm_keyst/qqmusic_key、长度）
+  - 自动保存到config.json，重启后保留配置
+  - 新增 `auto_tag/utils/validation.py` 验证工具模块（含日志脱敏函数）
+  - 完整的中英文国际化支持（标签、提示、错误消息）
+  - 涉及文件: `auto_tag/gui/config.py`, `auto_tag/gui/pages/settings_page.py`, `auto_tag/utils/validation.py`, `auto_tag/gui/i18n/locales/*.json`
+- feat(audio): QQ音乐搜索支持Cookie认证
+  - `_do_qqmusic_search()` 新增 cookie 参数，注入HTTP请求头
+  - `_search_qqmusic()` 从config自动读取Cookie并传递
+  - 日志输出时Cookie脱敏处理（只显示前8位...后4位）
+  - 涉及文件: `auto_tag/audio_recognize.py`
+- feat(settings): 新增QQ音乐Cookie刷新登录功能
+  - 设置页面新增"🔄 刷新登录"按钮，调用QQ音乐API延长Cookie有效期
+  - 前置验证（无Cookie/格式无效直接拒绝，不浪费请求）
+  - 防重复点击设计（请求期间按钮禁用，文本变为"⏳ 刷新中..."）
+  - 状态反馈机制（⏳蓝=进行中 / ✓绿=成功 / 🟠橙=过期 / 🔴红=错误）
+  - 异常安全处理（网络错误、解析失败均不崩溃）
+  - 涉及文件: `auto_tag/gui/pages/settings_page.py`, `auto_tag/gui/i18n/locales/*.json`
+- feat(ui): 新增Cookie失效引导弹窗
+  - 检测到API返回301/100020错误码时自动弹出引导对话框
+  - 详细8步操作教程（从打开浏览器到粘贴Cookie）
+  - "🔗 前往QQ音乐获取"按钮一键打开 https://y.qq.com
+  - 完整中英文国际化（标题、说明、步骤、按钮、提示）
+  - 深色/浅色主题自适应
+  - 涉及文件: `auto_tag/gui/dialogs/cookie_expired_dialog.py`, `auto_tag/gui/pages/settings_page.py`, `auto_tag/gui/i18n/locales/*.json`
+- test: 新增QQ音乐Cookie完整测试套件（39个测试用例）
+  - `test_qq_music_cookie.py`: 基础功能(5) + 有效性(4) + 边界条件(6) + 安全性(4) + 兼容性(2) + 集成(3)
+  - `test_cookie_refresh.py`: UI组件(5) + 逻辑功能(8) + 集成(3) + 边界条件(4)
+  - `test_cookie_expired_dialog.py`: UI组件(5) + 按钮交互(4) + 便捷函数(2) + 集成(3) + 国际化(2)
+  - 覆盖真实Cookie测试、Mock API调用、网络异常、并发安全等场景
+  - 涉及文件: `tests/test_qq_music_cookie.py`, `tests/test_cookie_refresh.py`, `tests/test_cookie_expired_dialog.py`
+
 ## v0.5.4 (2026-05-03)
 - refactor(core): 重构音频识别模块，提取通用工具函数到独立模块
   - 新增 `auto_tag/utils/` 工具包（字符串处理、文件名清理、元数据读取等）

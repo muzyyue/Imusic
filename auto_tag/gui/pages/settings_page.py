@@ -43,10 +43,15 @@ from qfluentwidgets import (
     Theme,
     isDarkTheme,
     CheckBox,
+    PlainTextEdit,
+    InfoBarIcon,
+    InfoBar,
+    PushButton,
 )
 
 from auto_tag.gui.config import config, AppConfig
 from auto_tag.gui.i18n import tr
+from auto_tag.gui.dialogs.cookie_expired_dialog import show_cookie_expired_dialog
 
 
 logger = logging.getLogger(__name__)
@@ -264,6 +269,51 @@ class SettingsPage(QWidget):
         radio_layout.addWidget(self._radio_switch)
         self._layout.addLayout(radio_layout)
 
+        # ===== 新增：QQ音乐Cookie输入 (2026-05-05) =====
+        cookie_layout = QHBoxLayout()
+        self._qq_music_cookie_label = BodyLabel(tr("settings_page.qq_music_cookie_label"))
+        cookie_layout.addWidget(self._qq_music_cookie_label)
+        cookie_layout.addStretch()
+
+        # Cookie多行文本输入框
+        self._qq_music_cookie_edit = PlainTextEdit()
+        self._qq_music_cookie_edit.setPlaceholderText(tr("settings_page.qq_music_cookie_placeholder"))
+        self._qq_music_cookie_edit.setToolTip(tr("settings_page.qq_music_cookie_tooltip"))
+        self._qq_music_cookie_edit.setFixedHeight(80)
+        self._qq_music_cookie_edit.setMinimumWidth(400)
+
+        # 设置当前Cookie值
+        current_cookie = config.qq_music_cookie
+        if current_cookie:
+            self._qq_music_cookie_edit.setPlainText(current_cookie)
+
+        # 连接文本变化信号（用于实时验证）
+        self._qq_music_cookie_edit.textChanged.connect(self._on_qq_music_cookie_changed)
+
+        # Cookie输入区域使用垂直布局（标签 + 输入框）
+        cookie_container = QVBoxLayout()
+        cookie_container.addLayout(cookie_layout)
+        cookie_container.addWidget(self._qq_music_cookie_edit)
+
+        # 验证状态提示标签
+        self._cookie_validation_label = BodyLabel("")
+        self._cookie_validation_label.setWordWrap(True)
+        cookie_container.addWidget(self._cookie_validation_label)
+
+        # ===== 新增：刷新登录按钮 (2026-05-05) =====
+        refresh_button_layout = QHBoxLayout()
+        refresh_button_layout.addStretch()
+
+        self._refresh_cookie_button = PushButton(tr("settings_page.refresh_cookie_button"))
+        self._refresh_cookie_button.setToolTip(tr("settings_page.refresh_cookie_tooltip"))
+        self._refresh_cookie_button.setFixedWidth(120)
+        self._refresh_cookie_button.clicked.connect(self._on_refresh_cookie_clicked)
+
+        refresh_button_layout.addWidget(self._refresh_cookie_button)
+        cookie_container.addLayout(refresh_button_layout)
+
+        self._layout.addLayout(cookie_container)
+
         # 弹性空间，将内容推到顶部
         self._layout.addStretch()
 
@@ -277,6 +327,9 @@ class SettingsPage(QWidget):
 
         # 根据初始搜索源状态更新UI可见性（任一选中源包含 netease 则显示）
         self._update_netease_options_visibility("netease" in config.search_sources)
+
+        # 根据初始搜索源状态更新QQ音乐Cookie可见性（2026-05-05 新增）
+        self._update_qq_music_cookie_visibility("qqmusic" in config.search_sources)
 
         logger.debug("Settings page initialized with search source configuration")
 
@@ -347,6 +400,9 @@ class SettingsPage(QWidget):
 
             # 更新网易云选项的可见性（选中包含 netease 时显示）
             self._update_netease_options_visibility("netease" in selected)
+
+            # 更新QQ音乐Cookie输入框的可见性（选中包含 qqmusic 时显示）(2026-05-05 新增)
+            self._update_qq_music_cookie_visibility("qqmusic" in selected)
 
             # 发射信号通知其他组件
             self.search_config_changed.emit()
@@ -462,6 +518,190 @@ class SettingsPage(QWidget):
         
         logger.debug(f"NetEase options visibility updated: {'visible' if visible else 'hidden'}")
 
+    def _update_qq_music_cookie_visibility(self, visible: bool) -> None:
+        """
+        更新QQ音乐Cookie输入框和刷新按钮的可见性 (2026-05-05 新增)
+
+        当QQ音乐搜索源被选中时显示，否则隐藏。
+
+        Args:
+            visible: 是否可见
+        """
+        self._qq_music_cookie_label.setVisible(visible)
+        self._qq_music_cookie_edit.setVisible(visible)
+        self._cookie_validation_label.setVisible(visible)
+        self._refresh_cookie_button.setVisible(visible)  # 新增：刷新按钮也跟随显示
+
+        logger.debug(f"QQ Music cookie input visibility updated: {'visible' if visible else 'hidden'}")
+
+    def _on_qq_music_cookie_changed(self) -> None:
+        """
+        QQ音乐Cookie文本变化回调 (2026-05-05 新增)
+
+        当用户在Cookie输入框中输入或修改内容时触发：
+        1. 实时验证Cookie格式
+        2. 显示验证结果（成功/错误提示）
+        3. 验证通过后自动保存到配置
+        """
+        from auto_tag.utils.validation import validate_qq_music_cookie
+
+        cookie_text = self._qq_music_cookie_edit.toPlainText().strip()
+
+        if not cookie_text:
+            # 空内容，清除提示并清空配置
+            self._cookie_validation_label.setText("")
+            try:
+                config.set_qq_music_cookie("")
+            except ValueError:
+                pass
+            return
+
+        # 执行验证
+        is_valid, error_msg = validate_qq_music_cookie(cookie_text)
+
+        if is_valid:
+            # 验证通过，保存到配置
+            self._cookie_validation_label.setText("✓ Cookie格式正确")
+            self._cookie_validation_label.setStyleSheet("color: green;")
+            try:
+                config.set_qq_music_cookie(cookie_text)
+                logger.info("QQ Music cookie validated and saved successfully")
+            except ValueError as e:
+                self._cookie_validation_label.setText(f"✗ 保存失败: {str(e)}")
+                self._cookie_validation_label.setStyleSheet("color: red;")
+                logger.error(f"Failed to save QQ Music cookie: {e}")
+        else:
+            # 验证失败，显示错误信息
+            self._cookie_validation_label.setText(f"✗ {error_msg}")
+            self._cookie_validation_label.setStyleSheet("color: red;")
+            logger.debug(f"QQ Music cookie validation failed: {error_msg}")
+
+    def _on_refresh_cookie_clicked(self) -> None:
+        """
+        刷新QQ音乐Cookie登录状态回调 (2026-05-05 新增)
+
+        当用户点击"刷新登录"按钮时触发：
+        1. 检查当前是否已设置Cookie
+        2. 调用QQ音乐 /user/refresh API刷新登录状态
+        3. 根据返回结果更新Cookie或显示错误
+        4. 提供清晰的状态反馈
+
+        该功能可以延长Cookie的有效期，避免频繁手动复制粘贴。
+        """
+        import http.client
+        import json as json_lib
+        from auto_tag.utils.validation import mask_cookie_for_logging, validate_qq_music_cookie
+
+        current_cookie = self._qq_music_cookie_edit.toPlainText().strip()
+
+        # 前置条件检查：必须有Cookie才能刷新
+        if not current_cookie:
+            self._cookie_validation_label.setText("✗ 请先输入Cookie再刷新")
+            self._cookie_validation_label.setStyleSheet("color: orange;")
+            logger.warning("Refresh cookie attempted without any cookie set")
+            return
+
+        # 验证当前Cookie格式
+        is_valid, validation_error = validate_qq_music_cookie(current_cookie)
+        if not is_valid:
+            self._cookie_validation_label.setText(f"✗ 当前Cookie格式无效，无法刷新: {validation_error}")
+            self._cookie_validation_label.setStyleSheet("color: red;")
+            return
+
+        # 禁用按钮防止重复点击
+        self._refresh_cookie_button.setEnabled(False)
+        self._refresh_cookie_button.setText(tr("settings_page.refreshing_status"))
+
+        # 显示正在刷新的状态
+        self._cookie_validation_label.setText("⏳ 正在刷新登录状态...")
+        self._cookie_validation_label.setStyleSheet("color: blue;")
+
+        logger.info(f"[QQMusic] Starting cookie refresh... Cookie: {mask_cookie_for_logging(current_cookie)}")
+
+        try:
+            # 调用QQ音乐刷新登录API
+            conn = http.client.HTTPSConnection('u.y.qq.com', timeout=15)
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://y.qq.com/',
+                'Accept': 'application/json',
+                'Cookie': current_cookie,
+            }
+
+            refresh_body = json_lib.dumps({
+                "comm": {
+                    "ct": 24,
+                    "cv": 1000000,
+                },
+                "action": {
+                    "method": "RefreshCookie",
+                    "module": "music.login.LoginServer",
+                    "param": {}
+                }
+            }, ensure_ascii=False).encode('utf-8')
+
+            conn.request('POST', '/cgi-bin/musicu.fcg', body=refresh_body, headers=headers)
+            response = conn.getresponse()
+            status = response.status
+            raw_data = response.read().decode('utf-8')
+            conn.close()
+
+            if status != 200:
+                error_msg = f"HTTP请求失败 ({status})"
+                self._cookie_validation_label.setText(f"✗ {error_msg}")
+                self._cookie_validation_label.setStyleSheet("color: red;")
+                logger.warning(f"[QQMusic] Refresh failed with HTTP {status}")
+                return
+
+            try:
+                data = json_lib.loads(raw_data)
+            except json_lib.JSONDecodeError as e:
+                error_msg = f"响应解析失败: {str(e)}"
+                self._cookie_validation_label.setText(f"✗ {error_msg}")
+                self._cookie_validation_label.setStyleSheet("color: red;")
+                logger.error(f"[QQMusic] Failed to parse refresh response: {e}")
+                return
+
+            api_code = data.get('code', -1)
+
+            if api_code == 0:
+                success_msg = "✓ 登录状态已刷新，有效期延长"
+                self._cookie_validation_label.setText(success_msg)
+                self._cookie_validation_label.setStyleSheet("color: green;")
+                logger.info("[QQMusic] Cookie refreshed successfully")
+                
+            elif api_code == 301 or api_code == 100020:
+                # Cookie已过期或失效 - 显示引导对话框 (2026-05-05 新增)
+                error_msg = "Cookie已过期或失效"
+                self._cookie_validation_label.setText(f"✗ {error_msg}")
+                self._cookie_validation_label.setStyleSheet("color: orange;")
+                logger.warning("[QQMusic] Cookie expired or invalid during refresh")
+                
+                # 弹出引导对话框，帮助用户重新获取Cookie
+                try:
+                    show_cookie_expired_dialog(parent=self.window())
+                    logger.info("[QQMusic] Cookie expired dialog shown to user")
+                except Exception as dialog_error:
+                    logger.error(f"[QQMusic] Failed to show cookie expired dialog: {dialog_error}")
+                
+            else:
+                error_detail = data.get('msg', f'未知错误 (code={api_code})')
+                error_msg = f"刷新失败: {error_detail}"
+                self._cookie_validation_label.setText(f"✗ {error_msg}")
+                self._cookie_validation_label.setStyleSheet("color: red;")
+                logger.warning(f"[QQMusic] Refresh API returned error: {api_code} - {error_detail}")
+
+        except Exception as e:
+            error_msg = f"网络异常: {type(e).__name__}"
+            self._cookie_validation_label.setText(f"✗ {error_msg}")
+            self._cookie_validation_label.setStyleSheet("color: red;")
+            logger.error(f"[QQMusic] Exception during cookie refresh: {e}", exc_info=True)
+
+        finally:
+            self._refresh_cookie_button.setEnabled(True)
+            self._refresh_cookie_button.setText(tr("settings_page.refresh_cookie_button"))
+
     def refresh_texts(self) -> None:
         """
         刷新页面文本
@@ -476,6 +716,7 @@ class SettingsPage(QWidget):
         netease_type_idx = self._netease_type_combo.currentIndex()
         keyword_mode_idx = self._keyword_mode_combo.currentIndex()
         radio_checked = self._radio_switch.isChecked()
+        qq_music_cookie_text = self._qq_music_cookie_edit.toPlainText()  # 新增 (2026-05-05)
 
         # 更新标题和分组标题
         self._title_label.setText(tr("settings_page.title"))
@@ -492,6 +733,15 @@ class SettingsPage(QWidget):
         self._keyword_mode_label.setText(tr("settings_page.keyword_mode_label"))
         self._netease_type_label.setText(tr("settings_page.netease_type_label"))
         self._radio_label.setText(tr("settings_page.include_radio_label"))
+
+        # 更新QQ音乐Cookie相关标签 (2026-05-05 新增)
+        self._qq_music_cookie_label.setText(tr("settings_page.qq_music_cookie_label"))
+        self._qq_music_cookie_edit.setPlaceholderText(tr("settings_page.qq_music_cookie_placeholder"))
+        self._qq_music_cookie_edit.setToolTip(tr("settings_page.qq_music_cookie_tooltip"))
+
+        # 更新刷新按钮文本 (2026-05-05 新增)
+        self._refresh_cookie_button.setText(tr("settings_page.refresh_cookie_button"))
+        self._refresh_cookie_button.setToolTip(tr("settings_page.refresh_cookie_tooltip"))
 
         # 阻止信号触发
         self._language_combo.blockSignals(True)
@@ -539,6 +789,9 @@ class SettingsPage(QWidget):
         
         # 恢复电台开关状态
         self._radio_switch.setChecked(radio_checked)
+
+        # 恢复QQ音乐Cookie文本 (2026-05-05 新增)
+        self._qq_music_cookie_edit.setPlainText(qq_music_cookie_text)
 
         # 恢复信号连接
         self._language_combo.blockSignals(False)

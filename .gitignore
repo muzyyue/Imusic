@@ -38,6 +38,10 @@ compilation-report.html
 # 测试临时产物
 tests/app_flow_result*.txt
 tests/*.log
+tests/__pycache__/
+tests/.pytest_cache/
+tests/*.pyc
+tests/*.pyo
 
 # Egg info 自动生成的元数据
 Imusic.egg-info/PKG-INFO

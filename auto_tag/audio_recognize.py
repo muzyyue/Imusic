@@ -422,7 +422,14 @@ class SearchResult:
             return source_display
 
     def to_dict(self) -> dict[str, Any]:
-        """转换为字典格式"""
+        """
+        转换为字典格式
+
+        ✅ 修复#3：移除raw_data字段以减少内存占用
+        原始API响应数据通常包含大量冗余信息（完整艺术家详情、专辑曲目列表等），
+        34个文件 × 4个结果 = 136个SearchResult，每个raw_data可能10-50KB，总计1.3-6.8MB。
+        UI层只需要展示用的关键字段，不需要原始响应数据。
+        """
         return {
             "source": self.source,
             "fingerprint_engine": self.fingerprint_engine,
@@ -434,7 +441,9 @@ class SearchResult:
             "song_id": self.song_id,
             "duration": self.duration,
             "confidence": self.confidence,
-            "raw_data": self.raw_data or {},
+            # ❌ 已移除: "raw_data": self.raw_data or {},
+            # 如需调试可在开发环境单独启用：
+            # "__debug_raw__": self.raw_data if os.environ.get("DEBUG_RAW_DATA") else None,
         }
 
 
@@ -1520,7 +1529,7 @@ def _do_radio_search(keyword: str, limit: int) -> list[SearchResult]:
     return _do_single_search(keyword, limit, search_type=1009)
 
 
-def _do_qqmusic_search(keyword: str, limit: int = 5) -> list[SearchResult]:
+def _do_qqmusic_search(keyword: str, limit: int = 5, cookie: str = "") -> list[SearchResult]:
     """
     执行 QQ 音乐搜索的同步 HTTP 请求
 
@@ -1550,14 +1559,18 @@ def _do_qqmusic_search(keyword: str, limit: int = 5) -> list[SearchResult]:
     Args:
         keyword: 搜索关键词
         limit: 返回结果数量限制（默认5）
+        cookie: QQ音乐用户Cookie字符串（可选，用于认证和提升搜索质量）
 
     Returns:
         list[SearchResult]: QQ 音乐搜索结果列表，失败返回空列表
     """
     import http.client
+    from auto_tag.utils.validation import mask_cookie_for_logging
 
     try:
-        logger.info(f"[QQMusic] Searching: {keyword} (limit={limit})")
+        # 日志输出时对Cookie进行脱敏处理 (2026-05-05 新增)
+        log_cookie_info = f", Cookie: {mask_cookie_for_logging(cookie)}" if cookie else ""
+        logger.info(f"[QQMusic] Searching: {keyword} (limit={limit}{log_cookie_info})")
 
         # 构建请求体（QQ 音乐统一网关 JSON 格式）
         request_body = json.dumps({
@@ -1589,6 +1602,10 @@ def _do_qqmusic_search(keyword: str, limit: int = 5) -> list[SearchResult]:
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         }
+
+        # 如果提供了Cookie，添加到请求头中 (2026-05-05 新增)
+        if cookie and cookie.strip():
+            headers['Cookie'] = cookie.strip()
 
         conn.request('POST', '/cgi-bin/musicu.fcg', body=request_body, headers=headers)
         response = conn.getresponse()
@@ -1863,7 +1880,7 @@ async def _search_qqmusic(
     通过 asyncio.run_in_executor 包装同步函数实现异步调用。
     简化版实现：无缓存和限流机制（首次集成）。
 
-    API 接口: GET http://api.qq.jsososo.com/search?key=关键词&pageNo=1&pageSize=N&t=0
+    API 接口: POST https://u.y.qq.com/cgi-bin/musicu.fcg
 
     Args:
         keyword: 搜索关键词
@@ -1879,10 +1896,15 @@ async def _search_qqmusic(
         >>> for r in results:
         ...     print(f"{r.title} - {r.artist}")
     """
+    # 从配置读取Cookie (2026-05-05 新增)
+    from auto_tag.gui.config import config as app_config
+    cookie = app_config.qq_music_cookie
+
     try:
         def _do_search() -> list[SearchResult]:
             """执行同步搜索并返回结果"""
-            results = _do_qqmusic_search(keyword, limit)
+            # 将Cookie传递给底层搜索函数 (2026-05-05 新增)
+            results = _do_qqmusic_search(keyword, limit, cookie=cookie)
             # 为每个结果设置 fingerprint_engine
             for r in results:
                 r.fingerprint_engine = fingerprint_engine
@@ -1903,7 +1925,8 @@ async def _search_qqmusic(
         # 备选方案：当没有运行中的事件循环时使用 ThreadPoolExecutor
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_do_qqmusic_search, keyword, limit)
+            # 将Cookie传递给底层搜索函数 (2026-05-05 新增)
+            future = executor.submit(_do_qqmusic_search, keyword, limit, cookie)
             try:
                 results = future.result(timeout=30)
                 if results:

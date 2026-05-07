@@ -9,7 +9,12 @@
 from __future__ import annotations
 
 import io
+import logging
+import weakref
 from typing import TYPE_CHECKING, Optional
+
+# 初始化模块级logger（用于CoverImageCache日志输出）
+logger = logging.getLogger(__name__)
 
 from PySide6.QtCore import (
     Qt,
@@ -64,21 +69,22 @@ if TYPE_CHECKING:
 
 class CoverImageCache:
     """
-    封面图片内存缓存（LRU 策略）
+    封面图片内存缓存（LRU + 引用计数策略）
 
-    使用 OrderedDict 实现 LRU 缓存，避免重复下载相同封面。
-    最大缓存 100 张图片，超出时自动淘汰最久未使用的项。
-
-    优化：减少网络请求，降低封面加载延迟 80% 以上。
+    ✅ 修复#2：使用引用计数解决淘汰时Widget仍持有pixmap的问题
+    - LRU淘汰时检查引用计数，只删除无人使用的图片
+    - 使用weakref存储，避免阻止GC回收
+    - 最大缓存 100 张图片，超出时自动淘汰最久未使用的项
     """
 
-    _cache: dict = {}
+    _cache: dict = {}  # key -> weakref.ref(QPixmap)
+    _ref_count: dict = {}  # key -> int (引用计数)
     _max_size: int = 100
 
     @classmethod
-    def get(cls, key: str) -> Optional[QPixmap]:
+    def acquire(cls, key: str) -> Optional[QPixmap]:
         """
-        从缓存获取封面图片
+        获取封面图片并增加引用计数（✅ 新增方法）
 
         Args:
             key (str): 缓存键（URL 或文件路径）
@@ -87,16 +93,54 @@ class CoverImageCache:
             QPixmap | None: 缓存的图片对象，未命中时返回 None
         """
         if key in cls._cache:
-            # 移动到末尾（标记为最近使用）
-            value = cls._cache.pop(key)
-            cls._cache[key] = value
-            return value
+            ref = cls._cache[key]
+            pixmap = ref() if ref else None
+            if pixmap is not None and not pixmap.isNull():
+                # 移动到末尾（标记为最近使用）
+                cls._cache.pop(key)
+                cls._cache[key] = ref
+                # 增加引用计数
+                cls._ref_count[key] = cls._ref_count.get(key, 0) + 1
+                return pixmap
+            else:
+                # 弱引用已失效，清理
+                del cls._cache[key]
+                cls._ref_count.pop(key, None)
         return None
+
+    @classmethod
+    def release(cls, key: str) -> None:
+        """
+        释放封面图片引用（✅ 新增方法）
+
+        当Widget销毁或更换图片时调用，减少引用计数。
+        引用计数为0时不立即删除，等待LRU淘汰。
+
+        Args:
+            key (str): 缓存键
+        """
+        if key in cls._ref_count:
+            cls._ref_count[key] -= 1
+            if cls._ref_count[key] <= 0:
+                del cls._ref_count[key]
+
+    @classmethod
+    def get(cls, key: str) -> Optional[QPixmap]:
+        """
+        从缓存获取封面图片（兼容旧接口，内部调用acquire）
+
+        Args:
+            key (str): 缓存键（URL 或文件路径）
+
+        Returns:
+            QPixmap | None: 缓存的图片对象，未命中时返回 None
+        """
+        return cls.acquire(key)
 
     @classmethod
     def set(cls, key: str, pixmap: QPixmap) -> None:
         """
-        将封面图片存入缓存
+        将封面图片存入缓存（使用弱引用存储）
 
         Args:
             key (str): 缓存键（URL 或文件路径）
@@ -104,17 +148,41 @@ class CoverImageCache:
         """
         if key in cls._cache:
             cls._cache.pop(key)
-        cls._cache[key] = pixmap
 
-        # LRU 淘汰：超出容量时移除最久未使用的项
+        # ✅ 关键改进：使用弱引用存储，不阻止GC回收
+        cls._cache[key] = weakref.ref(pixmap)
+        cls._ref_count[key] = cls._ref_count.get(key, 0) + 1
+
+        # LRU 淘汰：超出容量时移除最久未使用且无人引用的项
         if len(cls._cache) > cls._max_size:
-            oldest_key = next(iter(cls._cache))
-            del cls._cache[oldest_key]
+            cls._evict_unused()
+
+    @classmethod
+    def _evict_unused(cls) -> None:
+        """
+        ✅ 新增：智能淘汰未被任何Widget引用的图片
+
+        遍历缓存，找到第一个引用计数为0的项并删除。
+        如果所有项都有引用，则强制淘汰最旧的（可能造成显示问题但保内存）。
+        """
+        for oldest_key in list(cls._cache.keys()):
+            if cls._ref_count.get(oldest_key, 0) <= 0:
+                del cls._cache[oldest_key]
+                logger.debug(f"[CoverImageCache] Evicted unused: {oldest_key[:50]}...")
+                return
+
+        # 所有图片都在被使用，强制淘汰最旧的（极端情况）
+        oldest_key = next(iter(cls._cache))
+        del cls._cache[oldest_key]
+        cls._ref_count.pop(oldest_key, None)
+        logger.warning(f"[CoverImageCache] Force evicted (all in use): {oldest_key[:50]}...")
 
     @classmethod
     def clear(cls) -> None:
         """清空所有缓存"""
         cls._cache.clear()
+        cls._ref_count.clear()
+        logger.info("[CoverImageCache] Cache cleared")
 
 
 class CoverImageLoader(QThread):
@@ -123,9 +191,15 @@ class CoverImageLoader(QThread):
 
     支持从 URL 下载或从 MP3 文件提取内嵌封面图片。
     使用独立线程避免阻塞主界面。
+
+    ✅ 修复#5：添加信号量限制并发线程数
+    - 最多同时运行 8 个加载线程，避免 34×4=136 个线程同时存在
+    - 超过限制时排队等待，减少内存峰值占用
     """
 
-    # 信号：加载完成，传递 QPixmap 或 None（失败时）
+    _semaphore = None  # 类级别信号量，延迟初始化
+    MAX_CONCURRENT = 8  # 最大并发加载数
+
     loaded = Signal(object)  # QPixmap | None
 
     def __init__(
@@ -146,8 +220,27 @@ class CoverImageLoader(QThread):
         self.cover_url = cover_url
         self.file_path = file_path
 
+    @classmethod
+    def _get_semaphore(cls):
+        """延迟初始化信号量（避免模块导入问题）"""
+        if cls._semaphore is None:
+            from PySide6.QtCore import QSemaphore
+            cls._semaphore = QSemaphore(cls.MAX_CONCURRENT)
+        return cls._semaphore
+
     def run(self) -> None:
-        """执行异步加载任务（带缓存支持）"""
+        """执行异步加载任务（带并发控制和缓存支持）"""
+        # ✅ 关键改进：获取信号量，限制并发数
+        semaphore = self._get_semaphore()
+        semaphore.acquire(1)  # 等待可用槽位
+        
+        try:
+            self._do_load()
+        finally:
+            semaphore.release(1)  # 释放槽位
+
+    def _do_load(self) -> None:
+        """实际的加载逻辑（从原run()提取）"""
         # 优先从缓存获取
         cache_key = self.cover_url or self.file_path
         if cache_key:
@@ -277,7 +370,7 @@ class CoverImageWidget(QFrame):
         self.size = size
         self.cover_url = cover_url
         self.file_path = file_path
-        self._pixmap: Optional[QPixmap] = None
+        self._pixmap: Optional[QPixmap] = None  # 恢复强引用（Widget存活期间需要）
         self._loader: Optional[CoverImageLoader] = None
         self._is_loading = False
 
@@ -479,8 +572,13 @@ class CoverImageWidget(QFrame):
         """
         清理图片资源
 
-        显式释放 pixmap 和 label 持有的图片引用，确保内存被回收。
+        释放 pixmap 和 label 持有的图片引用，并通知Cache释放引用计数。
         """
+        # 通知Cache释放引用
+        cache_key = self.cover_url or self.file_path
+        if cache_key:
+            CoverImageCache.release(cache_key)
+
         self._pixmap = None
         if hasattr(self, 'image_label') and self.image_label:
             self.image_label.clear()
@@ -504,10 +602,11 @@ class CoverImageWidget(QFrame):
                     border-radius: %dpx;
                 }
             """ % ((self.size - 4) // 2))
-            self._pixmap = rounded
+            self._pixmap = rounded  # 保持强引用（用于预览功能）
         else:
             # 加载失败，显示默认图标
             self._show_default_icon()
+            self._pixmap = None
 
     def mousePressEvent(self, event) -> None:
         """
