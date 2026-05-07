@@ -269,3 +269,81 @@ class TestMusicManagerPageIntegration:
         
         # 验证歌词被提取
         mock_lyric_mgr.extract_lyrics.assert_called_once_with("/fake/path/song.mp3")
+
+    def test_supported_audio_formats_completeness(self, qapp):
+        """
+        测试支持的音频格式列表完整性
+
+        验证 MusicManagerPage._scan_audio_files 支持所有预期的音频格式，
+        包括新增的 wma/opus/aac 等格式。
+        """
+        import os
+        import tempfile
+        from unittest.mock import patch
+        from auto_tag.gui.pages import MusicManagerPage
+
+        page = MusicManagerPage()
+
+        # 预期的完整格式列表（与 CustomFormatManager 保持一致）
+        expected_formats = {
+            '.mp3', '.flac', '.ogg', '.wav', '.m4a',
+            '.aac', '.wma', '.opus'
+        }
+
+        # 创建临时目录并添加各格式的测试文件
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for ext in expected_formats:
+                test_file = os.path.join(tmpdir, f"test_song{ext}")
+                with open(test_file, 'w') as f:
+                    f.write("fake audio data")
+
+            # 调用扫描方法
+            page._scan_audio_files(tmpdir)
+
+            # 验证所有格式的文件都被识别
+            assert len(page.files) == len(expected_formats), \
+                f"期望识别 {len(expected_formats)} 个文件，实际识别 {len(page.files)} 个"
+
+            # 验证文件表格行数
+            assert page.file_table.rowCount() == len(expected_formats), \
+                f"期望表格有 {len(expected_formats)} 行，实际 {page.file_table.rowCount()} 行"
+
+            # 验证每种格式都出现在文件列表中
+            file_exts = {os.path.splitext(f)[1].lower() for f in page.files}
+            assert file_exts == expected_formats, \
+                f"格式不匹配：期望 {expected_formats}，实际 {file_exts}"
+
+    def test_audio_recognize_default_extensions(self, qapp):
+        """
+        测试 audio_recognize 模块的默认扩展名参数
+
+        验证 find_and_recognize_audio_files 的默认 extensions 参数
+        包含所有支持的音频格式。
+        """
+        import inspect
+        from auto_tag import audio_recognize
+        import auto_tag.audio_recognize as ar_module
+
+        # 获取源代码中的默认值（避免 mock 影响）
+        source = inspect.getsource(ar_module)
+        # 查找 extensions 参数的默认值
+        import re
+        match = re.search(
+            r'extensions:\s*list\[str\]\s*\|\s*tuple\[str,\s*\.\.\.\]\s*=\s*\(([^)]+)\)',
+            source
+        )
+
+        assert match, "未找到 extensions 参数定义"
+
+        default_extensions_str = match.group(1)
+        # 解析扩展名列表
+        default_extensions = [ext.strip().strip('"\'') for ext in default_extensions_str.split(',')]
+
+        # 预期的完整格式列表
+        expected_extensions = [
+            "mp3", "ogg", "flac", "wav", "m4a", "aac", "wma", "opus"
+        ]
+
+        # 验证默认值包含所有预期格式
+        assert set(default_extensions) == set(expected_extensions), \
+            f"audio_recognize 默认扩展名不匹配：期望 {set(expected_extensions)}，实际 {set(default_extensions)}"

@@ -2228,7 +2228,7 @@ async def find_and_recognize_audio_files(
     delay: int = 10,
     nbr_retry: int = 3,
     trace: bool = False,
-    extensions: list[str] | tuple[str, ...] = ("mp3", "ogg"),
+    extensions: list[str] | tuple[str, ...] = ("mp3", "ogg", "flac", "wav", "m4a", "aac", "wma", "opus"),
     output_dir: str | None = None,
     plex_structure: bool = False,
     copy_to: str | None = None,

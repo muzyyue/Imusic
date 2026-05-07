@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.5.6 (2026-05-07)
+- feat(audio-formats): 扩展音频格式支持，统一各模块格式列表
+  - MusicManagerPage 文件扫描支持从 5 种扩展到 8 种（新增 aac/wma/opus）
+  - audio_recognize 默认 extensions 参数同步更新（从 2 种到 8 种）
+  - 与 CustomFormatManager 内置格式保持一致
+  - 新增 2 个单元测试验证格式完整性
+  - 涉及文件: `music_manager_page.py`, `audio_recognize.py`, `test_music_manager_page.py`
+
 ## v0.5.5 (2026-05-05)
 - feat(qqmusic): 新增QQ音乐Cookie完整管理功能
   - Cookie输入框（多行文本、实时验证、自动持久化）

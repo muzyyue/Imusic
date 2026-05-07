@@ -643,8 +643,11 @@ class MusicManagerPage(QWidget):
         Args:
             directory (str): 要扫描的目录路径
         """
-        # 支持的音频格式
-        supported_formats = ['.mp3', '.ogg', '.flac', '.m4a', '.wav']
+        # 支持的音频格式（与 CustomFormatManager 内置格式保持一致）
+        supported_formats = [
+            '.mp3', '.flac', '.ogg', '.wav', '.m4a', '.aac',
+            '.wma', '.opus'
+        ]
 
         # 清空文件列表
         self.files.clear()
