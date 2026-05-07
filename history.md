@@ -10,735 +10,125 @@
   - 新增文件: `validation.py`, `cookie_expired_dialog.py`, 3个测试文件
 
 ## v0.5.4 (2026-05-03)
-- refactor(core): 重构音频识别模块，提取通用工具函数到独立模块
-  - 新增 `auto_tag/utils/` 工具包（字符串处理、文件名清理、元数据读取等）
-  - 从 `audio_recognize.py` 提取 267 行代码到 `auto_tag/utils/`，提升代码复用性和可维护性
-  - 删除 `_legacy_utils.py` 遗留文件，统一使用新的工具模块
-  - 涉及文件: `auto_tag/utils/__init__.py`, `auto_tag/utils/string_utils.py`, `auto_tag/utils/file_utils.py`, `auto_tag/utils/metadata_utils.py`, `auto_tag/audio_recognize.py`
-- feat(editor): 增强音频编辑器功能
-  - 优化音频编辑器配置和错误处理逻辑
-  - 改进输出格式区域的 UI 交互体验
-  - 涉及文件: `auto_tag/editor/audio_editor.py`, `auto_tag/gui/pages/editor_page.py`
-- fix(ui): 修复多个 GUI 组件问题
-  - 修复首页搜索结果卡片的显示异常
-  - 优化设置页面的配置项布局
-  - 改进国际化翻译（英文翻译全面更新）
-  - 涉及文件: `auto_tag/gui/pages/home_page.py`, `auto_tag/gui/pages/settings_page.py`, `auto_tag/gui/components/song_result_card.py`, `auto_tag/gui/i18n/locales/en.json`, `auto_tag/gui/i18n/locales/zh.json`
-- feat(lyric): 增强歌词管理功能
-  - 扩展歌词获取和处理的健壮性
-  - 优化多平台歌词提供商的兼容性
-  - 涉及文件: `auto_tag/lyric/manager.py`
-- chore(converter): 优化转换器模块
-  - 改进 FFmpeg 静默模式支持
-  - 增强音频格式和质量配置的灵活性
-  - 涉及文件: `auto_tag/converter/converter.py`
-- test: 新增测试用例和测试数据
-  - 新增音频格式质量差异化测试
-  - 新增重构后的音频识别模块测试
-  - 更新测试音频文件（替换为规范化命名的文件）
-  - 涉及文件: `tests/test_audio_format_quality.py`, `tests/test_audio_recognize_refactored.py`, `tests/test_ffmpeg_silent_mode.py`, `tests/test_legacy_import_restriction.py`
-- docs: 更新项目文档
-  - 全面更新 Readme.md（项目说明、功能介绍、使用指南）
-  - 涉及文件: `Readme.md`
+- refactor(core): 重构音频识别模块，提取通用工具函数到 `auto_tag/utils/`（字符串/文件名/元数据处理）
+- feat(editor): 增强音频编辑器功能和UI交互
+- fix(ui): 修复搜索结果卡片显示异常、设置页面布局优化、英文翻译更新
+- feat(lyric): 增强歌词管理功能，优化多平台兼容性
+- chore(converter): 改进FFmpeg静默模式和格式配置灵活性
+- test: 新增重构后模块测试和规范化测试音频文件
+- docs: 全面更新 Readme.md
 
 ## v0.5.3 (2026-05-02)
-- fix(build): 修复 uv sync 残留 dist-info 和 hardlink 警告
-  - 删除 site-packages 中残留的 imusic-0.4.57.dist-info 目录（RECORD 文件缺失导致卸载警告）
-  - 在 uv.toml 中配置 link-mode = "copy"，抑制 Windows 环境下 hardlink 回退警告
-  - uv sync 验证通过，两个 warning 均消失
-  - 涉及文件: `uv.toml`
+- fix(build): 修复 uv sync 残留 dist-info 和 hardlink 警告（配置 link-mode = "copy"）
 
 ## v0.5.2 (2026-05-02)
 - fix(ui): 修复编辑器页面输出格式区域下拉框重叠问题
-  - 移除 format_card 的 setMinimumHeight(100) 限制，让卡片高度自适应内容
-  - 将 format_layout spacing 从 12 增加到 16，与裁剪设置区域保持一致
-  - 涉及文件: `auto_tag/gui/pages/editor_page.py`
 
 ## v0.5.1 (2026-05-02)
 - fix(ui): 修复编辑器页面下拉框高度和间距问题
-  - 为 preset_combo 和 quality_combo 设置 setFixedHeight(36) 与其他页面一致
-  - 将输出格式区域 layout spacing 从 10 调整为 12 避免行间距过紧
-  - 涉及文件: `auto_tag/gui/pages/editor_page.py`
 
 ## v0.5.0 (2026-05-02)
-- feat(editor): 新增音频编辑功能（Phase 1 MVP）
-  - 智能音频裁剪（自动静音检测/手动时间选择/指定时长模式，支持淡入淡出）
-  - 音量标准化（基于 EBU R128 loudnorm 滤镜，可自定义目标响度/真峰值/响度范围）
-  - 格式转换增强（5种实用预设：手机铃声📱/车载播放🚗/HiFi存档💾/Podcast🎧/音乐分享🎵）
-  - 新增 EditorPage 页面和侧边导航项（位于"音乐管理"和"设置"之间）
-  - 新增 auto_tag/editor/ 核心模块（AudioEditor + EditorConfig + PresetManager + EditorWorker）
-  - 完整的国际化支持（中英文翻译，60+ 新增翻译键）
-  - 核心功能单元测试（test_audio_editor.py: 9个用例, test_editor_presets.py: 18个用例）
-  - 涉及文件: `auto_tag/editor/__init__.py`, `auto_tag/editor/audio_editor.py`, `auto_tag/editor/config.py`, `auto_tag/editor/presets.py`, `auto_tag/editor/workers/__init__.py`, `auto_tag/editor/workers/editor_worker.py`, `auto_tag/gui/pages/editor_page.py`, `auto_tag/gui/main_window.py`, `auto_tag/gui/i18n/locales/zh.json`, `auto_tag/gui/i18n/locales/en.json`, `tests/test_audio_editor.py`, `tests/test_editor_presets.py`
+- feat(editor): 新增音频编辑功能 Phase 1 MVP（智能裁剪/音量标准化/格式转换5种预设/EditorPage页面）
 
 ## v0.4.82 (2026-05-01)
-- fix(ui): 修复多个 UI 相关的 Bug
-  - fix(music_manager): 修复清除数据时封面图片未正确重置的问题
-    - 根因(核心)：_on_clear_data 使用 clear()+setText()+硬编码样式表方式清除 ImageLabel，效果不佳且深色主题下显示异常
-    - music_manager_page.py: 将 12 行清除逻辑替换为复用已有的 _set_default_cover() 方法
-    - music_manager_page.py: 避免硬编码浅色背景色 #f5f5f5，自动适配主题
-  - fix(home_page): 修复清除数据时 QProcessEventLoop 未定义导致崩溃的问题
-    - home_page.py: 将不存在的 QProcessEventLoop 改为正确的 QEventLoop 类名
-  - fix(song_result_card): 消除 themeChanged 信号断开时的 RuntimeWarning 警告
-    - song_result_card.py: 在 3 处 deleteLater() 的 disconnect 调用中添加 warnings.catch_warnings() 抑制警告
-    - 涉及组件：CoverImageWidget、PlatformResultWidget、SongResultCard
-  - test: 新增 test_clear_data_resets_cover 测试用例验证封面清除功能
-  - 涉及文件: `auto_tag/gui/pages/music_manager_page.py`, `auto_tag/gui/pages/home_page.py`, `auto_tag/gui/components/song_result_card.py`, `tests/test_music_manager_page.py`
+- fix(ui): 修复清除数据时封面图片未正确重置、QProcessEventLoop崩溃、themeChanged警告等问题
 
 ## v0.4.81 (2026-04-29)
-- fix(recognize): 修复选择 tests 目录时部分音频文件无法识别的问题
-  - 根因(核心)：recognize_worker.py 使用模糊匹配 "test" 跳过目录，导致 tests/ 及其子目录被错误过滤
-    - recognize_worker.py: 将 `if "test" in basename.lower()` 改为精确匹配系统目录集合 SKIP_DIRS
-    - recognize_worker.py: 新增 SKIP_DIRS 集合包含 __pycache__/.git/.venv 等12个系统目录
-    - recognize_worker.py: 新增日志输出记录跳过的目录，便于调试
-  - feat(format): 扩展支持的音频格式从2种到7种（与 music_manager_page.py 保持一致）
-    - recognize_worker.py: 新增支持 .flac/.m4a/.wav/.wma/.opus 格式
-    - recognize_worker.py: 使用 SUPPORTED_AUDIO_EXTENSIONS 元组统一管理格式列表
-    - audio_recognize.py: 新增 read_audio_metadata_mutagen() 通用元数据读取函数
-    - audio_recognize.py: 使用 mutagen.File() 统一处理所有非MP3格式的标签读取
-    - audio_recognize.py: 实现标签键名映射（title/TIT2/©nam）兼容不同编码规范
-    - audio_recognize.py: 重构 _read_audio_metadata_from_file() 为兼容层（MP3用eyed3，其他用mutagen）
-  - 测试验证：确认 fileToTest.mp3 和 fileToTest.ogg 能被正确扫描和读取元数据
-  - 涉及文件: `auto_tag/gui/workers/recognize_worker.py`, `auto_tag/audio_recognize.py`, `tests/test_quick_format.py`(新), `tests/test_format_support.py`(新)
+- fix(recognize): 修复 tests 目录被错误过滤的问题；扩展支持音频格式从2种到7种（flac/m4a/wav/wma/opus）；用 mutagen 统一处理非MP3元数据读取
 
 ## v0.4.80 (2026-04-29)
-- feat(lyric): 实现歌词获取请求频率限制和自动重试机制，彻底解决间歇性获取失败问题
-  - 根因(核心)：缺少请求间隔控制导致网易云API返回405/限流错误，同一首歌"一会行一会不行"
-  - 新增 RateLimiter 类（令牌桶算法）控制请求间隔（默认1.5秒，突发容量3）
-    - 支持单例模式全局共享，避免多实例冲突
-    - 线程安全设计（threading.Lock保护）
-    - 支持阻塞式 acquire() 和非阻塞 try_acquire()
-  - 新增 RequestMetrics 类记录请求统计指标
-    - 记录总请求数、成功率、失败数、重试次数、平均响应时间
-    - 提供 get_statistics() 格式化输出和 reset() 重置方法
-  - 新增 _retryable_request() 包装器支持指数退避重试（最多3次，延迟1s→2s→4s）
-    - 自动处理 HTTP 405/429/500/502/503 错误
-    - 自动处理 URLError 网络错误（DNS、连接拒绝等）
-    - 区分可重试错误和不可重试错误（如404直接抛出）
-  - manager.py: _search_netease_rest_api() 包装为带速率限制版本
-  - manager.py: _fetch_lyric_by_id_netease_rest() 包装为带速率限制版本
-  - manager.py: check_lyric_exists() 包装为带速率限制版本
-  - lyric_worker.py: 增强批量处理日志输出（显示进度和文件名）
-  - 预期效果：批量成功率从~60-70%提升至~95-98%，消除手动重试需求
-  - 涉及文件: `auto_tag/lyric/rate_limiter.py`(新), `auto_tag/lyric/manager.py`, `auto_tag/gui/workers/lyric_worker.py`, `tests/test_rate_limiter.py`(新)
+- feat(lyric): 实现歌词请求频率限制（令牌桶算法）和自动重试机制（指数退避），批量成功率从~60%提升至~95%
 
 ## v0.4.79 (2026-04-29)
-- fix(memory): 修复首页搜索功能严重内存泄漏问题（搜索28首歌后内存从200MB暴涨至1000MB且清除后不释放）
-  - 根因分析(核心)：识别出5个内存泄漏点，其中2个高危、2个中危、1个低危
-  - 泄漏点#1(致命级)：CoverImageCache全局类变量未在清除数据时清空，导致84张封面图片（28首歌×3平台）持续占用150-400MB内存
-    - home_page.py: _on_clear_data() 新增 CoverImageCache.clear() 调用
-    - home_page.py: _on_clear_data() 新增同步停止所有卡片加载线程逻辑
-    - home_page.py: _on_clear_data() 新增 QCoreApplication.processEvents() 确保DeferredDelete执行
-  - 泄漏点#2(严重级)：update_search_results()刷新时旧组件的CoverImageLoader线程未同步停止，deleteLater()异步删除导致新旧线程同时运行
-    - song_result_card.py: update_search_results() 新增同步停止所有旧组件加载线程
-    - song_result_card.py: update_search_results() 新增processEvents()强制事件循环处理
-  - 泄漏点#3(中级)：PlatformResultWidget.deleteLater()未递归调用子组件cover_widget的deleteLater()，导致僵尸对象
-    - song_result_card.py: PlatformResultWidget.deleteLater() 新增显式删除cover_widget并断开引用
-  - 泄漏点#4(中级)：_load_from_mp3()中eyed3.load()返回的audio对象未及时释放，28首歌曲同时提取时峰值额外占用84MB
-    - song_result_card.py: _load_from_mp3() 重构为显式释放eyed3对象和image_data引用
-    - song_result_card.py: _load_from_mp3() 新增finally块确保资源释放
-  - feat(ui): 为首页所有歌曲封面图片添加点击防抖功能（250ms延迟）
-    - song_result_card.py: CoverImageWidget新增_debounce_timer和_debounce_interval属性
-    - song_result_card.py: mousePressEvent()重构为防抖模式，使用QTimer.singleShot延迟触发
-    - song_result_card.py: 新增_on_debounced_click()回调方法
-    - song_result_card.py: deleteLater()中新增清理防抖定时器逻辑
-  - test: 新增test_memory_leak_fix.py验证测试套件（缓存清理/防抖功能/线程清理）
-  - 预期效果：清除数据后内存从1000MB降至220-280MB，连续多次搜索-清除操作内存保持稳定
-  - 涉及文件: `auto_tag/gui/pages/home_page.py`, `auto_tag/gui/components/song_result_card.py`, `tests/test_memory_leak_fix.py`
+- fix(memory): 修复首页搜索严重内存泄漏（搜索28首歌后内存从200MB暴涨至1000MB），识别并修复5个泄漏点，清除后内存降至220-280MB
 
 ## v0.4.78 (2026-04-28)
-- fix(lyric): 修复嵌入歌词后重新加载目录数据还原的问题（最终方案）
-  - 根因(核心)：eyed3 的 LyricsFrameSet API 存在帧追加/替换歧义，多次修复仍无法可靠写入
-  - eyed3 tag.lyrics.set() 在 description 不匹配时追加而非替换帧
-  - eyed3 tag.lyrics.remove() API 参数类型敏感，清除旧帧操作不可靠
-  - save() 返回成功但立即 extract 仍返回旧数据，说明写入未真正生效
-  - 最终方案：_embed_mp3_lyrics() 从 eyed3 全面迁移到 mutagen
-  - 使用 mutagen.mp3.MP3 + mutagen.id3.USLT 帧进行歌词写入
-  - 写入前通过 keys() 遍历删除所有 'USLT:' 前缀的帧（mutagen 字典式删除，简单可靠）
-  - 再 add() 单个新 USLT 帧 → save()，确保文件中只有最新歌词
-  - 附加修复：tag.save() 后显式释放 / 嵌入成功后清除 cache + extract 验证
-  - 新增翻译键 lyric_embed_verify_failed
-  - 涉及文件: `auto_tag/lyric/manager.py`, `auto_tag/gui/pages/music_manager_page.py`, `auto_tag/gui/i18n/locales/*.json`
+- fix(lyric): 修复嵌入歌词后重新加载还原的问题——从 eyed3 全面迁移到 mutagen 写入 USLT 帧
 
 ## v0.4.77 (2026-04-28)
-- fix(lyric): 修复批量获取歌词时所有歌曲嵌入同一首歌词的问题
-  - 根因：批量模式下 LyricWorker 接收所有文件列表但只使用同一个 song_id，导致所有文件都获取了同一首歌的歌词
-  - 新增 _batch_current_index 和 _batch_results 状态变量，实现逐文件串行处理
-  - 新增 _process_current_batch_file() 方法，按索引逐个处理文件
-  - 新增 _continue_fetch_for_single() 方法，只为当前单个文件创建 LyricWorker
-  - 新增 _on_batch_single_finished() 回调，单个文件完成后自动触发下一个文件的处理
-  - 重构 on_search_finished() 回调的批量模式逻辑，支持搜索无结果或选择失败时的自动跳过
-  - 新增 _on_batch_all_finished() 方法，所有文件处理完毕后统一显示统计结果
-  - 批量处理流程改为：搜索file[i] → 选择最佳匹配 → 获取file[i]歌词 → 处理file[i+1]
-  - 每首歌独立搜索、独立匹配、独立获取，确保歌词正确对应
-- fix(lyric): 修复单首获取歌词误触发批量结果对话框的问题
-  - 根因：_start_lyric_fetch() 中网易云/酷狗分支无条件调用 _process_current_batch_file()
-  - 单首模式(batch_mode=False)时未重置 _batch_current_index，残留旧值导致直接跳到 _on_batch_all_finished()
-  - 修复：按 batch_mode 分流，单首模式走原有 _start_search_and_show_dialog() 路径
-  - 涉及文件: `auto_tag/gui/pages/music_manager_page.py`
+- fix(lyric): 修复批量获取歌词时所有歌曲嵌入同一首歌词的问题（逐文件串行处理）+ 单首误触发批量对话框
 
 ## v0.4.76 (2026-04-28)
-- fix(lyric): 修复批量获取歌词导致 UI 卡死的问题
-  - music_manager_page.py: 在 __init__ 中初始化 self.logger，解决 AttributeError 异常
-  - music_manager_page.py: 修复 _on_clear_data 方法中裸 logger 引用为 self.logger
-  - music_manager_page.py: 为 on_search_finished 回调添加 try-except 异常处理，防止异常导致 UI 无响应
-  - 统一 logger 使用方式为实例属性 self.logger，避免 NameError 和 AttributeError
-  - 增强批量歌词获取流程的健壮性，确保异常时正确释放按钮状态
-  - 涉及文件: `auto_tag/gui/pages/music_manager_page.py`
+- fix(lyric): 修复批量获取歌词导致 UI 卡死的问题（logger 引用和异常处理）
 
-## v0.4.75 (2026-04-28)
-- fix(lyric): 修复歌词搜索"首次成功、再次失败"的问题
-  - 根因：pymusiclibrary 原生 C 库(QuickJS)不支持多实例/重复初始化
-  - 每次点击"获取歌词"会在子线程中创建新的 pymusiclibrary 实例，导致第二次及以后的搜索失败
-  - REST API fallback 也因全局 SSL/Cookie 配置被污染而失败
-  - manager.py: search_songs() 改为 REST API 优先策略（无状态 HTTP 请求）
-  - manager.py: fetch_lyric_by_id() 同样采用 REST API 优先策略
-  - pymusiclibrary 仅作为主线程备选方案（使用全局单例，避免多实例冲突）
-  - 涉及文件: `auto_tag/lyric/manager.py`
-
-## v0.4.75 (2026-04-28)
-- feat(search): 优化歌曲搜索策略 - 新增智能回退模式解决原名搜索失败问题
-  - audio_recognize.py: 新增 _build_smart_keyword() 方法，支持4种关键词构建模式
-  - config.py: 扩展 VALID_KEYWORD_MODES 添加 filename_first 和 smart_fallback 选项
-  - config.py: 默认模式改为 smart_fallback（智能回退），提升中文/日文歌曲搜索成功率
-  - recognize_and_rename_file(): 集成智能关键词逻辑，首选关键词无结果时自动尝试备选
-  - smart_fallback 策略：优先使用含非ASCII字符的文件名/标题，依次回退到组合关键词
-  - 解决"夏style"等中文/日文原名在网易云搜不到的问题
-  - settings_page.py: 下拉框自动适配新模式（无需修改，从config动态读取）
-  - zh.json / en.json: 新增 filename_first、smart_fallback 翻译键
-  - 涉及文件: `audio_recognize.py`, `config.py`, `zh.json`, `en.json`
+## v0.4.75 (2026-04-28) ×2
+- fix(lyric): 修复歌词搜索"首次成功、再次失败"的问题（pymusiclibrary 多实例冲突 → REST API 优先策略）
+- feat(search): 新增智能回退关键词模式（smart_fallback），提升中文/日文歌曲搜索成功率
 
 ## v0.4.74 (2026-04-28)
-- fix(memory): 修复首页连续点击封面导致内存占用持续增长且关闭后未回收的问题
-  - CoverImageLoader: 缓存命中时直接返回引用而非创建 QPixmap 副本，利用 Qt 隐式共享机制避免重复内存分配
-  - CoverImageWidget: _on_cover_loaded() 只保留圆角处理后的 pixmap，不再同时持有原始和圆角两份数据
-  - CoverImageWidget: 新增 _cleanup_resources() 方法，显式释放 _pixmap 和 image_label 持有的图片引用
-  - CoverImageWidget: closeEvent() 和 deleteLater() 中调用 _cleanup_resources() 确保资源释放
-  - CoverPreviewDialog: 使用局部变量替代实例变量存储原始 pixmap，缩放后立即释放原始数据
-  - CoverPreviewDialog: closeEvent() 中增加 _image_label.clear() 断开 QLabel 对 pixmap 的持有
-  - PlatformResultWidget: deleteLater() 中增加子组件 cover_widget 的资源清理调用
-  - 涉及文件: `song_result_card.py`, `cover_preview_dialog.py`
+- fix(memory): 修复首页连续点击封面导致内存持续增长且关闭后未回收的问题（Qt 隐式共享 + 显式资源释放）
 
 ## v0.4.73 (2026-04-27)
-- feat(lyric): 批量获取歌词时自动选择匹配度最高的结果
-  - LyricManager: 新增 select_best_match() 方法，使用多维度评分算法自动选择最佳匹配歌曲
-  - LyricManager: 新增 _calculate_match_score() 方法，基于歌名相似度（40%）、艺术家匹配度（35%）、时长接近度（25%）加权评分
-  - MusicManagerPage: 批量获取歌词时启用自动选择模式（batch_mode=True），跳过手动选择对话框
-  - MusicManagerPage: 单首获取歌词保持原有交互逻辑（弹窗选择），确保向后兼容
-  - 支持完全匹配、部分包含、相似度计算等多种匹配策略
-  - 当无法提取元数据或搜索结果为空时有合理的回退机制
-  - 新增测试用例验证自动选择逻辑的正确性和边界情况处理
-  - 涉及文件: `auto_tag/lyric/manager.py`, `auto_tag/gui/pages/music_manager_page.py`, `tests/test_best_match_selection.py`
+- feat(lyric): 批量获取歌词时自动选择匹配度最高的结果（多维度评分：歌名40% + 艺术家35% + 时长25%）
 
 ## v0.4.72 (2026-04-27)
-- fix(ui): 修复歌曲搜索结果卡片长文件名导致刷新按钮和收起按钮被隐藏的问题
-  - SongResultCard: 将头部布局重构为左右分离结构，左侧文件名使用 Expanding 策略
-  - SongResultCard: 新增右侧按钮容器（right_buttons_layout），确保按钮不受文件名长度影响
-  - SongResultCard: 在文件名和右侧按钮间添加 8px 间距保护
-  - 新增 17 个测试用例覆盖不同文件名长度场景
-  - 涉及文件: `song_result_card.py`, `tests/test_song_result_card.py`
+- fix(ui): 修复歌曲卡片长文件名导致刷新/收起按钮被隐藏的问题（左右分离布局）
 
 ## v0.4.71 (2026-04-27)
-- fix(gui): 修复首页歌曲搜索导致内存持续增长的问题
-  - CoverImageWidget: 新增 _stop_loader() 方法，在组件销毁前正确停止封面加载线程
-  - CoverImageWidget: 新增 deleteLater() 覆盖，停止线程并断开 themeChanged 信号连接
-  - CoverImageWidget: 新增 closeEvent() 覆盖，确保组件关闭时线程被清理
-  - PlatformResultWidget: 新增 deleteLater() 覆盖，断开 themeChanged 信号连接
-  - SongResultCard: 新增 deleteLater() 覆盖，停止所有子组件加载线程并断开信号
-  - home_page.py: _on_refresh_song_search() 中增加 shazam.close() 正确关闭 aiohttp 会话
-  - recognize_worker.py: _process_files() 中增加 finally 块确保 shazam.close() 被调用
-  - 涉及文件: `song_result_card.py`, `home_page.py`, `recognize_worker.py`
+- fix(gui): 修复首页搜索导致内存持续增长的问题（组件销毁前停止加载线程）
 
-## v0.4.70 (2026-04-26)
-- fix(ci): 修复 GitHub Actions 发布流程
-  - 简化测试步骤，添加 continue-on-error 避免阻塞发布
-  - 移除 --capture=no 避免 Windows CI 环境 I/O 错误
-  - 跳过网络依赖型测试，仅运行核心功能测试
-  - 涉及文件: `.github/workflows/release.yml`
-
-## v0.4.69 (2026-04-26)
-- feat(ci): 首次发布正式版本，启用 GitHub Actions 自动构建发布
-  - 新增 GitHub Actions workflow 自动构建 Windows 可执行文件
-  - 自动从 history.md 提取变更日志生成 Release 说明
-  - 更新 README.md 添加项目截图和功能说明
-  - 清理临时调试脚本和过期资源
-  - 涉及文件: `.github/workflows/release.yml`, `Readme.md`, `assets/`
-
-## v0.4.68 (2026-04-26)
-- fix(ui): 修复转换器页面浅色模式背景色问题
-  - 移除硬编码颜色值，使用 transparent 透明背景
-  - 让 QFluentWidgets 自动处理深浅色主题适配
-  - _on_theme_changed() 同时调用 _apply_page_scroll_theme() 确保主题切换生效
-  - 涉及文件: `converter_page.py`
-
-## v0.4.67 (2026-04-26)
-- fix(ui): 修复转换器页面深色模式背景色适配问题
-  - 将 QPalette 方式改为 QSS 样式表方式，参考 home_page.py 的成功实现
-  - 使用 QScrollArea > QWidget > QWidget 选择器处理嵌套 widget 层级
-  - 修正 QScrollArea 类名选择器（大写 Q）
-  - 移除 setAutoFillBackground(True) 和 PySide6.QtGui 导入
-  - 确保深色模式下内容区域显示 #1e1e1e 深色背景
-  - 涉及文件: `converter_page.py`
-
-## v0.4.66 (2026-04-26)
-- fix(ui): 修复转换器页面变量名错误
-  - 修复 setWidget() 调用中 content_widget → self.content_widget 的引用错误
-  - 解决 NameError: name 'content_widget' is not defined 运行时异常
-  - 涉及文件: `converter_page.py`
-
-## v0.4.65 (2026-04-26)
-- fix(ui): 修复转换器页面深色模式背景色适配问题
-  - 使用 QPalette 设置 content_widget 和页面自身的背景色，比样式表更可靠
-  - 设置 content_widget.setAutoFillBackground(True) 确保背景色正确填充
-  - 同时设置 Window 和 Base 调色板角色，确保所有子控件继承正确的背景色
-  - 保留样式表作为辅助，确保深色/浅色主题切换时背景色正确更新
-  - 涉及文件: `converter_page.py`
-
-## v0.4.64 (2026-04-26)
-- refactor(ui): 转换器页面从局部滚动改为全页面滚动
-  - 将原先仅文件列表区域的独立 ScrollArea 调整为包裹整个页面内容的统一 ScrollArea
-  - 当页面内容（格式过滤、自定义格式、文件列表等）超出视口时，整个页面一起滚动
-  - 移除 file_list_scroll 的独立滚动容器和最小高度限制
-  - 新增 page_scroll 属性，保留 file_list_scroll 别名确保向后兼容
-  - 新增 _apply_page_scroll_theme() 方法替代原 _apply_scroll_area_theme()
-  - 操作按钮和内容区域布局结构保持不变，视觉一致性不受影响
-  - 涉及文件: `converter_page.py`
-
-## v0.4.63 (2026-04-26)
-- feat(ui): 文件列表页面实现垂直滚动功能
-  - 使用 QFluentWidgets ScrollArea 包裹文件表格和操作按钮容器
-  - 文件表格和操作按钮始终在一起滚动，按钮固定在容器底部
-  - 操作按钮（全选/取消全选/开始转换/停止转换/清除数据）随内容一起滚动
-  - 滚动区域最小高度 400px，支持 expand 尺寸策略自动适配窗口大小
-  - 新增 _apply_scroll_area_theme() 方法，适配深色/浅色主题背景色
-  - 隐藏表格内置滚动条，由外层 ScrollArea 统一接管垂直滚动
-  - 新增 file_list_scroll 属性，方便测试和后续扩展
-  - 新增 23 个测试用例，全部通过（9个滚动区域测试 + 14个其他测试）
-  - 涉及文件: `converter_page.py`, `tests/test_converter_page.py`
+## v0.4.70 ~ v0.4.63 (2026-04-26)
+- fix(ci): 简化 GitHub Actions 发布流程
+- feat(ci): 首次启用 GitHub Actions 自动构建发布
+- fix(ui): 修复转换器页面深色/浅色模式背景色适配（多版本迭代）
+- refactor(ui): 转换器页面从局部滚动改为全页面滚动 + 文件列表垂直滚动
 
 ## v0.4.62 (2026-04-26)
-- fix(lyric): 修复歌词数据在切换歌曲或重新选择目录后丢失的问题
-  - _load_file_info(): 优先从 lyrics_cache 加载歌词，缓存未命中时才从文件标签提取
-  - _scan_audio_files(): 重选目录时自动清理 lyrics_cache，避免缓存污染
-  - _on_lyric_fetched(): 增加 file_path in self.files 校验，防止异步回调污染新目录界面
-  - _on_clear_data(): 同步清理 lyrics_cache，修复 self.lyrics_edit 拼写错误为 self.lyric_text
-  - 涉及文件: `music_manager_page.py`
-
-## v0.4.61 (2026-04-26)
-- feat(ui): 文件列表页面实现垂直滚动功能
-  - 使用 QFluentWidgets ScrollArea 包裹文件表格和操作按钮容器
-  - 文件表格和操作按钮始终在一起滚动，按钮固定在容器底部
-  - 操作按钮（全选/取消全选/开始转换/停止转换/清除数据）随内容一起滚动
-  - 滚动区域最小高度 400px，支持 expand 尺寸策略自动适配窗口大小
-  - 新增 _apply_scroll_area_theme() 方法，适配深色/浅色主题背景色
-  - 隐藏表格内置滚动条，由外层 ScrollArea 统一接管垂直滚动
-  - 新增 file_list_scroll 属性，方便测试和后续扩展
-  - 涉及文件: `converter_page.py`
+- fix(lyric): 修复歌词数据在切换歌曲或重新选择目录后丢失的问题（lyrics_cache 管理）
 
 ## v0.4.60 (2026-04-26)
-- feat(ui): 搜索结果栏显示复合来源标识
-  - 当通过音频指纹引擎（Acoustid/Shazam/音频标签）识别后再搜索网易云等平台时，显示组合来源
-  - 新增 SearchResult.fingerprint_engine 字段和 get_combined_source() 方法
-  - 新增 combined_source 字段到 SearchResult.to_dict()，返回如 "Acoustid + 网易云音乐" 的格式
-  - PlatformResultWidget 优先使用 combined_source 显示平台名称，备选传统映射
-  - 支持 fingerprint_engine 值：acoustid、shazam、metadata、filename、none
-  - audio_recognize.py: 在 _search_netease_rest、_search_qqmusic 中传递 fingerprint_engine
-  - song_result_card.py: 修改 _get_platform_display_name() 支持复合来源
-  - 涉及文件: `audio_recognize.py`, `song_result_card.py`
+- feat(ui): 搜索结果栏显示复合来源标识（如 "Acoustid + 网易云音乐"）
 
 ## v0.4.59 (2026-04-26)
-- feat(settings): 设置页面新增「搜索关键词模式」选项
-  - 用户可选择传给网易云/QQ音乐等平台的关键词格式
-  - 「仅歌曲名」(title_only)：默认选项，用纯歌名搜索，对冷门/日文歌曲更精准
-  - 「艺术家 + 歌曲名」(artist_title)：传统组合搜索方式
-  - config.py: 新增 search_keyword_mode 属性及 VALID_KEYWORD_MODES 常量
-  - settings_page.py: 新增 keyword_mode ComboBox 行及回调方法
-  - audio_recognize.py: 根据 config.search_keyword_mode 动态构建 keyword
-  - zh.json / en.json: 新增 keyword_mode_label、keyword_modes 翻译键
+- feat(settings): 设置页面新增「搜索关键词模式」选项（仅歌名 / 艺术家+歌名 / 智能回退）
 
 ## v0.4.58 (2026-04-26)
-- feat(core): 新增音频元数据回退策略 - 无意义文件名文件的搜索增强
-  - 当音频指纹引擎（Acoustid/Shazam）全部失败，且文件名无意义时，从文件内部标签读取元数据作为搜索关键词
-  - 新增 `_read_audio_metadata_from_file()` 函数：支持 MP3 (ID3) 和 OGG (Vorbis/Opus) 格式的标签读取
-  - 新增 `_is_metadata_valid()` 函数：验证元数据是否可用于搜索（排除占位符值）
-  - 新增 `_build_keyword_from_metadata()` 函数：从元数据构建搜索关键词
-  - 优化 fallback 流程：文件名无意义 → 尝试读取文件标签 → 用标签内容搜索网易云等平台
-  - 涉及文件: `audio_recognize.py`
+- feat(core): 新增音频元数据回退策略——无意义文件名时从文件标签读取元数据作为搜索关键词
 
 ## v0.4.57 (2026-04-26)
-- feat(settings): 设置页面搜索源拆分为「识别引擎」和「补充搜索」两行
-  - 将混在一起的5个搜索源按类型分组展示，用户可清晰区分音频指纹识别与关键词文本搜索
-  - 第一行「识别引擎」：Acoustid (Chromaprint)、Shazam（真正的音频内容识别）
-  - 第二行「补充搜索」：网易云音乐、酷狗音乐、QQ音乐（关键词文本匹配）
-  - 调整最小选中校验逻辑：确保至少保留一个识别引擎（而非任意源）
-  - settings_page.py: 拆分 CheckBox 布局为 engine_layout + supplement_layout 两行
-  - zh.json / en.json: 新增 engine_label、supplement_label 翻译键
-- fix(search): 网易云/QQ音乐搜索关键词改为仅使用歌曲名
-  - 原逻辑用 "艺术家 歌曲名" 组合搜索，对冷门/日文名艺术家匹配不准确
-  - 改为仅传歌曲名(title)作为关键词，提升网易云等平台的搜索精准度
-  - audio_recognize.py: keyword 从 f"{artist} {title}" 改为 title
-
-## v0.4.56 (2026-04-25)
-- fix(build): 回退打包工具链从 Nuitka 至 PyInstaller（Nuitka 4.0.8 上游 bug）
-  - 原因: Nuitka 依赖的 winlibs-gcc 下载链接返回 HTTP 404 (Not Found)
-  - 影响: 无法完成编译，必须回退到稳定的 PyInstaller 方案
-  - build_exe.py: 完全重写回 PyInstaller 版本（移除 Nuitka 相关代码）
-  - pyproject.toml: 版本升级至 0.4.56
-  - pyproject.toml: dev 依赖改回 pyinstaller>=6.0（移除 nuitka 和 ordered-set）
-  - .gitignore: 恢复 spec 文件保留规则（!build_tools/*.spec）
-  - .gitignore: 保留 Nuitka 构建产物忽略规则以备将来迁移
-  - Imusic.spec: 恢复为活跃配置文件（移除废弃标记）
-  - Imusic.spec: 更新文档字符串添加迁移历史说明
-  - program.md: 全面更新构建文档（8.3 节改回 PyInstaller 说明）
-  - program.md: 更新版本号和开发依赖列表
-  - program.md: 添加迁移历史记录和未来计划说明
-  - 涉及文件: `build_tools/build_exe.py`, `pyproject.toml`, `.gitignore`, `build_tools/Imusic.spec`, `program.md`
-
-## v0.4.55 (2026-04-25)
-- refactor(build): 将打包工具链从 PyInstaller 迁移至 Nuitka
-  - build_exe.py: 完全重写为 Nuitka 构建脚本，新增 C 编译器检测功能
-  - build_exe.py: 实现 Nuitka 参数生成（Qt 插件、数据文件、模块包含等）
-  - build_exe.py: 新增 --skip-compiler-check 参数（跳过编译器检测）
-  - pyproject.toml: 版本升级至 0.4.55
-  - pyproject.toml: dev 依赖添加 nuitka>=2.0 和 ordered-set
-  - .gitignore: 添加 Nuitka 构建产物忽略规则（*.build/, *.dist/ 等）
-  - .gitignore: 更新 spec 文件规则为忽略模式
-  - Imusic.spec: 标记为已废弃并归档（保留作为回退参考）
-  - program.md: 全面更新构建文档（8.3 节重写为 Nuitka 说明）
-  - program.md: 更新版本号和开发依赖列表
-  - 涉及文件: `build_tools/build_exe.py`, `pyproject.toml`, `.gitignore`, `build_tools/Imusic.spec`, `program.md`
-
-## v0.4.54 (2026-04-25)
-- refactor(build): 根据 python-pyinstaller-onedir skill 优化打包流程
-  - spec 文件: 添加 lrxy/pymusiclibrary 库的自动收集支持
-  - spec 文件: 启用 UPX 压缩（自动检测可用性）
-  - spec 文件: 添加资源路径验证和打包统计输出
-  - build_exe.py: 添加虚拟环境复用逻辑（--force-rebuild 控制）
-  - build_exe.py: 添加可选参数（--skip-tests 跳过测试）
-  - build_exe.py: 添加打包体积统计和 Top 10 大文件列表
-  - build_exe.py: 修复 Windows 控制台 UTF-8 编码问题
-  - 涉及文件: `build_tools/Imusic.spec`, `build_tools/build_exe.py`, `pyproject.toml`
-
-## v0.4.53 (2026-04-25)
-- fix(build): 修复单目录打包后 soundfile 模块缺失问题
-  - 在 hiddenimports 中添加 `_soundfile_data` 和 `cffi`
-  - 修复 EXE 段结构（目录模式不应在 EXE 中传递 a.binaries）
-  - 完全禁用 UPX 压缩避免 DLL 损坏
-  - 修复 "Failed to start embedded python interpreter!" 和 "No module named soundfile" 问题
-  - 涉及文件: `build_tools/Imusic.spec`
-
-## v0.4.52 (2026-04-25)
-- fix(qqmusic): 优化 QQ 音乐搜索 - 增强日志输出和空结果诊断
-  - 添加元数据信息提取（estimate_sum, actual_sum）
-  - 区分"API有结果但列表为空"和"完全无结果"两种情况
-  - 提示可能的原因：认证或参数问题
-  - 涉及文件: `auto_tag/audio_recognize.py`
-
-## v0.4.51 (2026-04-25)
-- fix(qqmusic): 修复 QQ 音乐搜索功能 - 从废弃公共代理迁移到官方统一网关接口
-  - 将 API 端点从 `http://api.qq.jsososo.com`（DNS 失败）改为 `https://u.y.qq.com/cgi-bin/musicu.fcg`
-  - 请求方式从 GET 改为 POST（JSON 格式请求体）
-  - 更新响应数据路径：`search.data.body.item_song[]`
-  - 更新字段映射：songname→name, songid→id, albumname→album.name（嵌套对象）
-  - 保持 SearchResult 数据结构和 [QQMusic] 日志前缀不变
-  - 涉及文件: `auto_tag/audio_recognize.py`, `tests/debug_qq_music.py`
-
-## v0.4.50 (2026-04-25)
-- fix(build): 修复 UPX 排除配置导致嵌入 Python 解释器启动失败
-  - 将 upx_exclude 中的 `python313.dll` 更正为 `python312.dll`（匹配实际 Python 3.12 运行时）
-  - 同步更新 EXE 和 COLLECT 两处的 UPX 排除列表
-  - 涉及文件: `build_tools/Imusic.spec`
-- chore(build): 执行单目录模式打包（PyInstaller --onedir）
-  - 输出目录结构：dist/Imusic/Imusic.exe + _internal/ 依赖文件夹
-
-## v0.4.49 (2026-04-25)
-- chore(build): 执行单目录打包（PyInstaller onedir 模式）
-  - 使用 build_tools/Imusic.spec 打包配置
-  - 输出目录模式可执行文件到 dist/Imusic/
-  - 涉及文件: `build_tools/Imusic.spec`, `pyproject.toml`
-
-## v0.4.48 (2026-04-25)
-- fix(i18n): 修复音乐管理页面歌词提供商下拉框未翻译的问题
-  - 将 `tr(provider_name)` 改为 `tr(f'lyrics.providers.{provider_name}')` 匹配嵌套翻译键路径
-  - 涉及文件: `music_manager_page.py`
-
-## v0.4.47 (2026-04-25)
-- feat(settings): 搜索源支持多选 - ComboBox 单选改为 CheckBox 多选（保持原有布局结构）
-  - UI层: 搜索源行从 ComboBox 改为 CheckBox 水平多选，保持左右行布局不变
-  - 配置层: search_source (str) → search_sources (list[str])，兼容旧版单字符串自动转列表
-  - 搜索层: multi_source_search() 传入 config.search_sources 列表
-  - 网易云条件选项：选中包含 netease 时显示搜索类型和电台开关
-  - 修复循环导入: audio_recognize.py 中 config 模块导入改为函数内懒加载
-  - 涉及文件: `config.py`, `settings_page.py`, `audio_recognize.py`
-
-## v0.4.46 (2026-04-25)
-- refactor(build): 将项目构建配置中的 mp3ShazamAutoTag 统一替换为 Imusic
-  - 重命名 `mp3ShazamAutoTag.spec` 为 `Imusic.spec`
-  - 更新 `build_exe.py` 中的 spec 文件引用和输出目录名
-  - 更新 `netease_recognize.py` 和 `acoustid_recognize.py` 中的测试路径
-  - 涉及文件: `Imusic.spec`, `build_exe.py`, `netease_recognize.py`, `acoustid_recognize.py`
-
-## v0.4.45 (2026-04-25)
-- refactor(i18n): 优化国际化文件为嵌套分组结构，支持点号分隔的嵌套键访问
-  - 涉及文件: `translator.py`, `zh.json`, `en.json`
-
-## v0.4.42 (2026-04-25)
-- fix(core): 修复 MP3 封面写入失败 - urlopen 缺少 User-Agent 导致 CDN 拒绝请求
-  - 涉及文件: `audio_recognize.py`, `home_page.py`
-
-## v0.4.41 (2026-04-25)
-- fix(gui): 修复重新获取歌曲数据后卡片背景色未更新的问题
-  - 涉及文件: `song_result_card.py`
-
-## v0.4.40 (2026-04-25)
-- fix(gui): 修复重新获取歌曲数据后封面图片组件主题颜色未更新的问题
-  - 涉及文件: `song_result_card.py`
-
-## v0.4.39 (2026-04-24)
-- chore(build): 优化 PyInstaller 打包配置 - 切换目录模式，体积从 700MB 优化到 240MB
-  - 涉及文件: `build_exe.py`, `mp3ShazamAutoTag.spec`
-
-## v0.4.38 (2026-04-24)
-- feat(core): 优化文件名识别策略 - 不像歌曲名时优先 Shazam 音频识别
-  - 涉及文件: `audio_recognize.py`
-
-## v0.4.37 (2026-04-24)
-- feat(core): 添加清除数据功能和修复 WinError 32 错误
-  - 涉及文件: `home_page.py`, `music_manager_page.py`, `zh.json`, `en.json`
-
-## v0.4.36 (2026-04-24)
-- refine(gui): 增强搜索加载对话框视觉效果（旋转图标、取消按钮、文本换行）
-  - 涉及文件: `home_page.py`
-
-## v0.4.36 (2026-04-24)
-- fix(core): 完善网易云封面获取 - 通过歌曲详情接口获取封面URL
-  - 涉及文件: `audio_recognize.py`
-
-## v0.4.35 (2026-04-24)
-- fix(gui): 歌词搜索异步化 - 消除UI未响应卡顿
-  - 涉及文件: `song_search_worker.py`, `music_manager_page.py`
-
-## v0.4.34 (2026-04-24)
-- fix(core): 修复网易云封面显示问题 - 游客登录+URL解析
-  - 涉及文件: `audio_recognize.py`, `song_result_card.py`
-
-## v0.4.33 (2026-04-24)
-- fix(lyric): 歌词搜索增强 - 增加 REST API 备用方案
-  - 涉及文件: `manager.py`
-
-## v0.4.32 (2026-04-23)
-- fix(core): 优化封面图片获取逻辑 - 多策略封面获取
-  - 涉及文件: `audio_recognize.py`, `song_result_card.py`
-
-## v0.4.31 (2026-04-23)
-- feat(gui): 音乐封面图片展示功能 - CoverImageWidget 异步加载组件
-  - 涉及文件: `song_result_card.py`
-
-## v0.4.30 (2026-04-23)
-- fix(core): 保留多语言原始字符 - 解决标签写入时日语/中文等被转成拼音的问题
-  - 涉及文件: `home_page.py`
-
-## v0.4.29 (2026-04-23)
-- fix(gui): 解决"点击应用后歌曲信息未改变"问题 - 添加平台选择回调机制
-  - 涉及文件: `song_result_card.py`
-
-## v0.4.28 (2026-04-23)
-- fix(gui): 解决应用后文件信息仍未改变的问题 - 实现多策略路径查找算法
-  - 涉及文件: `home_page.py`
-
-## v0.4.27 (2026-04-23)
-- fix(core): 解决点击"应用"后文件信息未改变的问题 - 增强标签写入错误处理
-  - 涉及文件: `audio_recognize.py`, `home_page.py`
-
-## v0.4.26 (2026-04-20)
-- feat(ui): 优化窗口尺寸并添加手动调整大小功能（1200×580，最小 900×500，最大 1920×1080）
-  - 涉及文件: `main_window.py`
-
-## v0.4.25 (2026-04-22)
-- chore(tool): 将虚拟环境从 venv 迁移到 uv
-  - 涉及文件: `pyproject.toml`
-
-## v0.4.24 (2026-04-20)
-- fix(core): 彻底修复选择目录后程序崩溃的问题 - 默认禁用 pymusiclibrary
-  - 涉及文件: `audio_recognize.py`, `recognize_worker.py`
-
-## v0.4.23 (2026-04-20)
-- feat(core): 重新启用网易云/酷狗搜索（线程安全版本）- 使用 threading.local()
-  - 涉及文件: `audio_recognize.py`
-
-## v0.4.22 (2026-04-20)
-- fix(core): 修复选择文件夹后应用直接崩溃的问题 - 移除 pymusiclibrary 初始化
-  - 涉及文件: `recognize_worker.py`
-
-## v0.4.21 (2026-04-20)
-- fix(core): 修复 pymusiclibrary 原生库崩溃导致进度卡死的问题
-  - 涉及文件: `audio_recognize.py`
-
-## v0.4.20 (2026-04-20)
-- fix(ui): 完成深色模式样式适配
-  - 涉及文件: `home_page.py`
-
-## v0.4.19 (2026-04-20)
-- fix(core+ui): 修复搜索结果卡片创建失败导致完全不显示的问题
-  - 涉及文件: `home_page.py`, `song_result_card.py`
-
-## v0.4.18 (2026-04-20)
-- fix(ui): 修复卡片式布局搜索结果完全不显示的问题
-  - 涉及文件: `home_page.py`
-
-## v0.4.17 (2026-04-20)
-- fix(ui): 修复展开/收起按钮图标不显示问题
-  - fix(core): 增强 MusicLibrary 初始化日志
-  - 涉及文件: `home_page.py`, `audio_recognize.py`
-
-## v0.4.16 (2026-04-20)
-- fix(ui): 修复深色模式下搜索结果卡片文本不可见问题
-  - 涉及文件: `song_result_card.py`
-
-## v0.4.15 (2026-04-20)
-- fix(core): 修复多平台搜索结果未显示在歌曲卡片中的问题
-  - 涉及文件: `recognize_worker.py`
-
-## v0.4.14 (2026-04-20)
-- fix(ui): 适配卡片式搜索结果组件的深浅色主题
-  - 涉及文件: `song_result_card.py`
-
-## v0.4.13 (2026-04-20)
-- feat(ui): 优化主窗口尺寸为更宽扁的比例（1600×480）
-  - 涉及文件: `main_window.py`
-
-## v0.4.12 (2026-04-20)
-- feat(ui): 重构首页搜索结果展示为卡片式布局
-  - 涉及文件: `home_page.py`, `song_result_card.py`
-
-## v0.4.11 (2026-04-20)
-- feat(ui): 调整主窗口尺寸为扁平化布局（1200×650）
-  - 涉及文件: `main_window.py`
-
-## v0.4.10 (2026-04-20)
-- feat(ui): 调整主窗口尺寸为扁平化布局（1200×650）
-- feat(lyric): 重构歌词嵌入架构，MP3 使用 eyed3，其他格式使用 mutagen
-- fix(lyric): 修复 eyed3 v0.9.9 歌词嵌入失败问题
-- fix(lyric): 修复保存歌词和嵌入歌词按钮的错误提示
-- feat(lyric): 新增歌词嵌入模式选择器
-- feat(lyric): 新增保存歌词按钮
-- fix(core): 修复 pymusiclibrary 多线程崩溃问题
-  - 涉及文件: `main_window.py`, `manager.py`, `music_library_manager.py`, `lyric_worker.py`
-
-## v0.4.9 (2026-04-20)
-- refactor(ui): 调整窗口尺寸为扁平化布局，还原内部组件样式
-  - 涉及文件: `main_window.py`, `style.qss`, 各页面文件
-
-## v0.4.8 (2026-04-20)
-- chore: 升级版本号至 0.4.8
-- docs: 在 Readme.md 的 Acknowledgments 部分添加对原仓库的感谢
-
-## v0.4.6 (2026-04-20)
-- refactor: 将项目名称修改为 Imusic，作者修改为 ling
-  - 涉及文件: `pyproject.toml`, `Readme.md`, `program.md`
-
-## v0.4.5 (2026-04-20)
-- feat(ui): 全面重构 UI 为扁平化设计风格（QSS 样式表、统一组件高度和圆角）
-  - 涉及文件: `style.qss`, `main_window.py`, 各页面和对话框文件
-
-## v0.4.4 (2026-04-20)
-- docs(program): 全面更新项目技术规范文档
-  - 涉及文件: `program.md`
-
-## v0.4.3 (2026-04-19)
-- fix(core): 解决 Shazam API 返回数据结构变化导致的解析崩溃
-- fix(threading): 解决 pymusiclibrary 多线程初始化崩溃问题
-- fix(ui): 修复 Shazam 识别后标题、艺术家等信息不显示的问题
-- fix(core): 修复网易云音乐和酷狗音乐多源搜索未生效的问题
-- refactor(logging): 统一日志规范
-  - 涉及文件: `audio_recognize.py`, `home_page.py`, `recognize_worker.py`
-
-## v0.4.2 (2026-04-17)
-- feat(lyric): 添加网易云歌词模式选择功能（original/merged/translation）
-  - 涉及文件: `manager.py`
-
-## v0.4.1 (2026-04-17)
-- feat(lyric): 使用 MusicLibrary (pymusiclibrary) 替换 lrxy 库
-- feat(ui): 新增搜索结果多选功能（SongSearchResultDialog）
-- fix(ui): 修复歌词提供商下拉框未显示网易云和酷狗的问题
-- fix(worker): 改进 LyricWorker 错误处理和日志输出
-  - 涉及文件: `manager.py`, `song_search_dialog.py`, `music_manager_page.py`, `lyric_worker.py`
-
-## v0.4.0 (2026-04-16)
-- feat(lyric): 添加歌词获取功能的全面测试用例和修复API调用逻辑
-- feat(lyric): 新增歌词管理模块（LyricManager）
-- fix(lyric): 修复歌词嵌入和提取功能
-  - 涉及文件: `manager.py`, `provider.py`
-
-## v0.3.9 (2026-04-16)
-- fix(gui): 优化主窗口初始尺寸（1000×600）
-  - 涉及文件: `main_window.py`
-
-## v0.3.8 (2026-04-15)
-- feat(gui): 创建音乐管理页面 MusicManagerPage
-  - 涉及文件: `music_manager_page.py`
-
-## v0.3.7 (2026-04-14)
-- feat(converter): 新增自定义文件格式管理功能
-- feat(converter): 新增文件格式过滤功能
-- fix(converter): 修复 ConverterWorker 导入错误
-- fix(i18n): 修复语言切换问题
-- fix(converter): 修复删除格式对话框错误
-  - 涉及文件: `custom_format.py`, `converter_page.py`, `converter_worker.py`, 翻译文件
-
-## v0.3.6 (2026-04-14)
-- docs: 全面更新 Readme.md 文档
-  - 涉及文件: `Readme.md`
-
-## v0.3.5 (2026-04-13)
-- fix(i18n): 修复转换页面语言切换问题
-  - 涉及文件: `converter_page.py`, `zh.json`, `en.json`
-
-## v0.3.4 (2026-04-13)
-- test(converter): 完善 MetadataManager 单元测试
-  - 涉及文件: `test_metadata_manager.py`
-
-## v0.3.3 (2026-04-13)
-- feat(converter): 创建 ConverterWorker 音频转换工作线程
-  - 涉及文件: `converter_worker.py`
-
-## v0.3.2 (2026-04-13)
-- feat(converter): 创建 AudioConverter 音频转换器类
-  - 涉及文件: `converter.py`, `requirements.txt`
-
-## v0.3.1 (2026-04-13)
-- feat(converter): 创建元数据管理器 MetadataManager
-  - 涉及文件: `metadata_manager.py`
+- feat(settings): 搜索源拆分为「识别引擎」和「补充搜索」两行展示 + 网易云/QQ音乐关键词改为仅使用歌曲名
+
+## v0.4.56 ~ v0.4.49 (2026-04-25)
+- fix(build): 回退打包工具链从 Nuitka 至 PyInstaller（Nuitka 上游 bug）
+- refactor(build): Nuitka 迁移尝试（已回退）
+- refactor(build): PyInstaller onedir 打包流程优化（UPX压缩、依赖收集、体积统计）
+- fix(build): 修复 soundfile 模块缺失、UPX 排除配置等打包问题
+- fix(qqmusic): QQ 音乐搜索迁移到官方统一网关接口（u.y.qq.com）
+- refactor(build): 项目名称统一为 Imusic
+
+## v0.4.45 ~ v0.4.42 (2026-04-25)
+- refactor(i18n): 国际化文件改为嵌套分组结构
+- fix(core): MP3 封面写入失败（User-Agent 缺失）
+- fix(gui): 歌曲卡片主题颜色/背景色更新问题
+
+## v0.4.39 ~ v0.4.30 (2026-04-23~24)
+- chore(build): PyInstaller 打包体积优化（700MB → 240MB）
+- feat/core: 文件名识别策略优化、清除数据功能、封面获取增强
+- refine/gui): 搜索加载对话框视觉优化
+- fix(gui): 歌词搜索异步化、网易云封面显示修复、多语言字符保留、应用按钮回调机制
+
+## v0.4.26 ~ v0.4.10 (2026-04-20)
+- feat(ui): 窗口尺寸优化（1200×580 可调）、扁平化布局
+- fix(core): pymusiclibrary 崩溃修复（默认禁用/线程安全版本/移除初始化）
+- fix(ui): 深色模式适配、搜索结果卡片式布局重构、展开收起图标修复
+
+## v0.4.2 ~ v0.4.0 (2026-04-16~17)
+- feat(lyric): 歌词模式选择（original/merged/translation）、MusicLibrary 替代 lrxy、LyricManager 模块、搜索结果多选
+
+## v0.3.7 ~ v0.3.0 (2026-04-13~14)
+- feat(converter): 自定义文件格式管理、格式过滤、AudioConverter、ConverterWorker、MetadataManager
+- test(converter): MetadataManager 单元测试
+- fix(i18n): 语言切换问题修复
 
 ## v0.3.0 (2026-04-13)
-- **BREAKING**: GUI 框架从 tkinter 迁移到 PySide6 + QFluentWidgets
-- feat(gui): 完成 Fluent Design 风格 UI 重构
-- feat(i18n): 国际化系统支持英文/中文切换
-- feat(config): 配置管理模块
-  - 涉及文件: 全部 GUI 相关文件
+- **BREAKING**: GUI 框架从 tkinter 迁移到 PySide6 + QFluentWidgets（Fluent Design 风格）
+- feat(i18n): 国际化系统（中英文切换）
+- feat(config): 配置管理模块 AppConfig
 
-## v0.2.5 (2026-04-13)
-- feat(gui): 创建设置页面 SettingsPage
-  - 涉及文件: `settings_page.py`
-
-## v0.2.4 (2026-04-13)
-- feat(gui): 创建主页（音频识别页面）HomePage
-  - 涉及文件: `home_page.py`
-
-## v0.2.3 (2026-04-13)
-- feat(config): 创建配置管理模块 AppConfig
-  - 涉及文件: `config.py`
-
-## v0.2.2 (2026-04-13)
-- feat(i18n): 创建国际化模块支持多语言
-  - 涉及文件: `translator.py`, `zh.json`, `en.json`
-
-## v0.2.1 (2026-04-13)
-- feat(gui): 创建识别工作线程模块 RecognizeWorker
-  - 涉及文件: `recognize_worker.py`
+## v0.2.5 ~ v0.2.0 (2026-04-13)
+- feat(gui): 创建设置页面 SettingsPage、主页 HomePage、识别工作线程 RecognizeWorker
+- feat(config/i18n): 配置管理模块 AppConfig、国际化模块（translator.py + zh.json + en.json）
 
 ## v0.2.0 (2026-04-13)
 - 初始化项目：克隆 mp3ShazamAutoTag 仓库
-- 配置环境：安装 Rust 工具链解决 shazamio-core 编译依赖
-- 兼容性修复：安装 audioop-lts 解决 Python 3.13 兼容性问题
-- 依赖安装：完成项目所有依赖包的安装配置
+- 配置环境：Rust 工具链（shazamio-core）、Python 3.13 兼容性（audioop-lts）

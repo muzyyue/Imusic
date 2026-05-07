@@ -31,6 +31,7 @@ auto_tag/gui/components/__init__.py
 auto_tag/gui/components/cover_preview_dialog.py
 auto_tag/gui/components/song_result_card.py
 auto_tag/gui/components/song_search_dialog.py
+auto_tag/gui/dialogs/cookie_expired_dialog.py
 auto_tag/gui/i18n/__init__.py
 auto_tag/gui/i18n/translator.py
 auto_tag/gui/i18n/locales/__init__.py
@@ -63,6 +64,8 @@ tests/test_cloudsearch_api.py
 tests/test_converter.py
 tests/test_converter_page.py
 tests/test_converter_worker.py
+tests/test_cookie_expired_dialog.py
+tests/test_cookie_refresh.py
 tests/test_cover_preview_dialog.py
 tests/test_custom_format.py
 tests/test_editor_overwrite.py
