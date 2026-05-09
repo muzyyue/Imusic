@@ -123,6 +123,8 @@ jobs:
 
           if ($match.Success) {
             $changelog = $match.Value.Trim()
+            # Escape backticks for PowerShell (critical!)
+            $changelog = $changelog -replace '`', '``'
           } else {
             $changelog = "See [history.md](https://github.com/${{ github.repository }}/blob/main/history.md) for details."
           }
