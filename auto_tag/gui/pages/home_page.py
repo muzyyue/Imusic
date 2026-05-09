@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from auto_tag.gui.components.song_result_card import SongResultCard
 
 from auto_tag.audio_recognize import (
+    update_audio_tags,
     update_mp3_cover_art,
     update_mp3_tags,
     update_ogg_tags,
@@ -913,12 +914,14 @@ class HomePage(QWidget):
             title = selected_result.get("title", entry.get("title", ""))
             artist = selected_result.get("artist", entry.get("author", ""))
             album = selected_result.get("album", entry.get("album", ""))
+            year = selected_result.get("year", "")
+            genre = selected_result.get("genre", "")
             cover_link = selected_result.get(
                 "cover_link", entry.get("cover_link", "")
             )
 
             logger.info(f"[HomePage] Metadata extracted - title='{title}', "
-                        f"artist='{artist}', album='{album}', cover={'yes' if cover_link else 'no'}")
+                        f"artist='{artist}', album='{album}', year='{year}', genre='{genre}', cover={'yes' if cover_link else 'no'}")
 
             # DEBUG: 输出元数据
             print(f"[DEBUG] Raw metadata: title='{title}', artist='{artist}', album='{album}'")
@@ -960,38 +963,24 @@ class HomePage(QWidget):
                     if not os.path.exists(src):
                         raise FileNotFoundError(f"源文件不存在: {src}")
 
-                    # 文件占用重试逻辑
                     max_retries = 3
                     retry_delay = 0.5
                     for attempt in range(max_retries + 1):
                         try:
-                            if src.lower().endswith(".mp3"):
-                                logger.info(f"[HomePage] Calling update_mp3_tags for MP3...")
-                                print(f"[DEBUG] Writing MP3 tags with ORIGINAL text (not sanitized)")
-                                update_mp3_tags(src, title, artist, album)
-                                logger.info(f"[HomePage] update_mp3_tags completed successfully")
-                                if cover_link:
-                                    logger.info(f"[HomePage] Calling update_mp3_cover_art...")
-                                    update_mp3_cover_art(
-                                        src, cover_link, trace=False
-                                    )
-                                    logger.info(f"[HomePage] update_mp3_cover_art completed")
-                            elif src.lower().endswith(".ogg"):
-                                logger.info(f"[HomePage] Calling update_ogg_tags for OGG...")
-                                print(f"[DEBUG] Writing OGG tags with ORIGINAL text (not sanitized)")
-                                update_ogg_tags(
-                                    src, title, artist, album,
-                                    cover_link,
-                                    trace=False
-                                )
-                                logger.info(f"[HomePage] update_ogg_tags completed")
-                            else:
-                                raise ValueError(f"不支持的文件格式: {ext}")
+                            print(f"[DEBUG] Writing audio tags with ORIGINAL text (not sanitized)")
+                            update_audio_tags(
+                                src, title, artist, album,
+                                cover_url=cover_link,
+                                trace=False,
+                                year=year or None,
+                                genre=genre or None,
+                            )
+                            logger.info(f"[HomePage] update_audio_tags completed successfully")
 
                             success_count += 1
                             logger.info(f"[HomePage] ✓ Tags updated successfully for {os.path.basename(src)}")
                             print(f"[DEBUG] ✓✓✓ TAG-ONLY mode completed successfully!")
-                            break  # 成功则跳出重试循环
+                            break
                         except Exception as tag_exc:
                             if is_file_in_use_error(tag_exc) and attempt < max_retries:
                                 wait_time = retry_delay * (attempt + 1)

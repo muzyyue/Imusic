@@ -2,7 +2,7 @@
 """
 元数据管理器模块
 提供音频文件元数据的读取、写入、批量编辑等功能
-支持 MP3（ID3）和 OGG（Vorbis/Opus）格式
+支持多种音频格式：MP3, OGG/OPUS, FLAC, M4A/MP4, WMA, AAC 等
 """
 
 from __future__ import annotations
@@ -15,7 +15,8 @@ from typing import Any
 
 import eyed3
 from mutagen import File
-from mutagen.flac import Picture
+from mutagen.flac import Picture, FLAC
+from mutagen.mp4 import MP4
 from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
 
@@ -23,11 +24,15 @@ from mutagen.oggvorbis import OggVorbis
 class MetadataManager:
     """
     音频文件元数据管理器
-    
+
     支持格式：
     - MP3（ID3 标签）
     - OGG（Vorbis/Opus 标签）
-    
+    - OPUS（Vorbis Comment 标签）
+    - FLAC（Vorbis Comment + PICTURE）
+    - M4A/MP4（iTunes Metadata）
+    - WMA/AAC（通用接口）
+
     功能：
     - 读取/写入元数据
     - 从文件名解析元数据
@@ -71,15 +76,22 @@ class MetadataManager:
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"文件不存在: {file_path}")
-        
+
         ext = os.path.splitext(file_path)[1].lower()
-        
+
         if ext == '.mp3':
             return self._read_mp3_metadata(file_path)
-        elif ext == '.ogg':
+        elif ext in ('.ogg', '.opus'):
             return self._read_ogg_metadata(file_path)
+        elif ext == '.flac':
+            return self._read_flac_metadata(file_path)
+        elif ext in ('.m4a', '.mp4'):
+            return self._read_mp4_metadata(file_path)
+        elif ext in ('.wma', '.aac', '.wav'):
+            return self._read_generic_metadata(file_path)
         else:
-            raise ValueError(f"不支持的文件格式: {ext}")
+            self.logger.warning(f"未优化的格式，尝试通用读取: {ext}")
+            return self._read_generic_metadata(file_path)
     
     def _read_mp3_metadata(self, file_path: str) -> dict[str, Any]:
         """
@@ -179,7 +191,136 @@ class MetadataManager:
             
         except Exception as e:
             self.logger.error(f"读取 OGG 元数据失败: {file_path}, 错误: {e}")
-        
+
+        return metadata
+
+    def _read_flac_metadata(self, file_path: str) -> dict[str, Any]:
+        """
+        读取 FLAC 文件的 Vorbis Comment 标签
+
+        Args:
+            file_path: FLAC 文件路径
+
+        Returns:
+            dict: 元数据字典
+        """
+        metadata = {
+            'title': '',
+            'artist': '',
+            'album': '',
+            'year': '',
+            'genre': '',
+            'cover': None
+        }
+
+        try:
+            audio = FLAC(file_path)
+            if audio is None:
+                self.logger.warning(f"无法加载 FLAC 文件: {file_path}")
+                return metadata
+
+            metadata['title'] = audio.get('TITLE', [''])[0]
+            metadata['artist'] = audio.get('ARTIST', [''])[0]
+            metadata['album'] = audio.get('ALBUM', [''])[0]
+            metadata['year'] = audio.get('DATE', [''])[0]
+            metadata['genre'] = audio.get('GENRE', [''])[0]
+
+            if audio.pictures:
+                metadata['cover'] = audio.pictures[0].data
+
+            self.logger.info(f"成功读取 FLAC 元数据: {file_path}")
+
+        except Exception as e:
+            self.logger.error(f"读取 FLAC 元数据失败: {file_path}, 错误: {e}")
+
+        return metadata
+
+    def _read_mp4_metadata(self, file_path: str) -> dict[str, Any]:
+        """
+        读取 M4A/MP4 文件的 iTunes Metadata
+
+        Args:
+            file_path: M4A/MP4 文件路径
+
+        Returns:
+            dict: 元数据字典
+        """
+        metadata = {
+            'title': '',
+            'artist': '',
+            'album': '',
+            'year': '',
+            'genre': '',
+            'cover': None
+        }
+
+        try:
+            audio = MP4(file_path)
+            if audio is None:
+                self.logger.warning(f"无法加载 M4A/MP4 文件: {file_path}")
+                return metadata
+
+            metadata['title'] = audio.get('©nam', [''])[0]
+            metadata['artist'] = audio.get('©ART', [''])[0]
+            metadata['album'] = audio.get('©alb', [''])[0]
+            metadata['year'] = audio.get('\xa9day', [''])[0]
+            metadata['genre'] = audio.get('\xa9gen', [''])[0]
+
+            if 'covr' in audio:
+                cover_data = audio['covr']
+                if cover_data:
+                    metadata['cover'] = cover_data[0]
+
+            self.logger.info(f"成功读取 M4A/MP4 元数据: {file_path}")
+
+        except Exception as e:
+            self.logger.error(f"读取 M4A/MP4 元数据失败: {file_path}, 错误: {e}")
+
+        return metadata
+
+    def _read_generic_metadata(self, file_path: str) -> dict[str, Any]:
+        """
+        通用元数据读取（用于 WMA、AAC、WAV 等其他格式）
+
+        使用 mutagen 的 File 接口自动检测文件类型。
+
+        Args:
+            file_path: 音频文件路径
+
+        Returns:
+            dict: 元数据字典
+        """
+        metadata = {
+            'title': '',
+            'artist': '',
+            'album': '',
+            'year': '',
+            'genre': '',
+            'cover': None
+        }
+
+        try:
+            audio = File(file_path)
+            if audio is None:
+                self.logger.warning(f"无法识别的音频格式: {file_path}")
+                return metadata
+
+            if hasattr(audio, 'tags') and audio.tags:
+                tags = audio.tags
+                if hasattr(tags, 'get'):
+                    metadata['title'] = tags.get('TIT2', tags.get('title', ['']))[0] if isinstance(tags.get('TIT2', tags.get('title', [''])), list) else str(tags.get('TIT2', tags.get('title', '')))
+                    metadata['artist'] = tags.get('TPE1', tags.get('artist', ['']))[0] if isinstance(tags.get('TPE1', tags.get('artist', [''])), list) else str(tags.get('TPE1', tags.get('artist', '')))
+                    metadata['album'] = tags.get('TALB', tags.get('album', ['']))[0] if isinstance(tags.get('TALB', tags.get('album', [''])), list) else str(tags.get('TALB', tags.get('album', '')))
+                elif hasattr(audio, '__getitem__'):
+                    metadata['title'] = audio.get('title', [''])[0] if isinstance(audio.get('title', ['']), list) else str(audio.get('title', ''))
+                    metadata['artist'] = audio.get('artist', [''])[0] if isinstance(audio.get('artist', ['']), list) else str(audio.get('artist', ''))
+                    metadata['album'] = audio.get('album', [''])[0] if isinstance(audio.get('album', ['']), list) else str(audio.get('album', ''))
+
+            self.logger.info(f"成功读取通用元数据: {file_path}")
+
+        except Exception as e:
+            self.logger.error(f"读取通用元数据失败: {file_path}, 错误: {e}")
+
         return metadata
     
     def write_metadata(self, file_path: str, metadata: dict[str, Any]) -> bool:
@@ -203,12 +344,21 @@ class MetadataManager:
             return False
         
         ext = os.path.splitext(file_path)[1].lower()
-        
+
         try:
             if ext == '.mp3':
                 return self._write_mp3_metadata(file_path, metadata)
-            elif ext == '.ogg':
+            elif ext in ('.ogg', '.opus'):
                 return self._write_ogg_metadata(file_path, metadata)
+            elif ext == '.flac':
+                return self._write_flac_metadata(file_path, metadata)
+            elif ext in ('.m4a', '.mp4'):
+                return self._write_mp4_metadata(file_path, metadata)
+            elif ext in ('.wma', '.aac'):
+                return self._write_generic_metadata(file_path, metadata)
+            elif ext == '.wav':
+                self.logger.warning(f"WAV 格式不支持元数据写入: {file_path}")
+                return False
             else:
                 self.logger.error(f"不支持的文件格式: {ext}")
                 return False
@@ -294,6 +444,129 @@ class MetadataManager:
         audio.save()
         self.logger.info(f"成功写入 OGG 元数据: {file_path}")
         return True
+
+    def _write_flac_metadata(self, file_path: str, metadata: dict[str, Any]) -> bool:
+        """
+        写入 FLAC 文件的 Vorbis Comment 标签
+
+        Args:
+            file_path: FLAC 文件路径
+            metadata: 元数据字典
+
+        Returns:
+            bool: 写入成功返回 True
+        """
+        try:
+            audio = FLAC(file_path)
+            if audio is None:
+                self.logger.error(f"无法加载 FLAC 文件: {file_path}")
+                return False
+
+            if 'title' in metadata:
+                audio['TITLE'] = metadata['title']
+            if 'artist' in metadata:
+                audio['ARTIST'] = metadata['artist']
+            if 'album' in metadata:
+                audio['ALBUM'] = metadata['album']
+            if 'year' in metadata:
+                audio['DATE'] = metadata['year']
+            if 'genre' in metadata:
+                audio['GENRE'] = metadata['genre']
+
+            audio.save()
+            self.logger.info(f"成功写入 FLAC 元数据: {file_path}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"写入 FLAC 元数据失败: {file_path}, 错误: {e}")
+            return False
+
+    def _write_mp4_metadata(self, file_path: str, metadata: dict[str, Any]) -> bool:
+        """
+        写入 M4A/MP4 文件的 iTunes Metadata
+
+        Args:
+            file_path: M4A/MP4 文件路径
+            metadata: 元数据字典
+
+        Returns:
+            bool: 写入成功返回 True
+        """
+        try:
+            audio = MP4(file_path)
+            if audio is None:
+                self.logger.error(f"无法加载 M4A/MP4 文件: {file_path}")
+                return False
+
+            if 'title' in metadata:
+                audio['©nam'] = metadata['title']
+            if 'artist' in metadata:
+                audio['©ART'] = metadata['artist']
+            if 'album' in metadata:
+                audio['©alb'] = metadata['album']
+            if 'year' in metadata:
+                audio['\xa9day'] = metadata['year']
+            if 'genre' in metadata:
+                audio['\xa9gen'] = metadata['genre']
+
+            audio.save()
+            self.logger.info(f"成功写入 M4A/MP4 元数据: {file_path}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"写入 M4A/MP4 元数据失败: {file_path}, 错误: {e}")
+            return False
+
+    def _write_generic_metadata(self, file_path: str, metadata: dict[str, Any]) -> bool:
+        """
+        通用元数据写入（用于 WMA、AAC 等其他格式）
+
+        使用 mutagen 的 File 接口自动检测文件类型并尝试写入。
+
+        Args:
+            file_path: 音频文件路径
+            metadata: 元数据字典
+
+        Returns:
+            bool: 写入成功返回 True
+        """
+        try:
+            audio = File(file_path)
+            if audio is None or not hasattr(audio, 'tags') or audio.tags is None:
+                self.logger.error(f"无法读取文件标签: {file_path}")
+                return False
+
+            tags = audio.tags
+            if hasattr(tags, 'set'):
+                try:
+                    tags.remove('TIT2', '')
+                    tags.remove('TPE1', '')
+                    tags.remove('TALB', '')
+                except (KeyError, ValueError):
+                    pass
+
+                from mutagen.id3 import TIT2, TPE1, TALB
+                if 'title' in metadata and metadata['title']:
+                    tags.add(TIT2(encoding=3, text=metadata['title']))
+                if 'artist' in metadata and metadata['artist']:
+                    tags.add(TPE1(encoding=3, text=metadata['artist']))
+                if 'album' in metadata and metadata['album']:
+                    tags.add(TALB(encoding=3, text=metadata['album']))
+            elif hasattr(audio, '__setitem__'):
+                if 'title' in metadata:
+                    audio['title'] = metadata['title']
+                if 'artist' in metadata:
+                    audio['artist'] = metadata['artist']
+                if 'album' in metadata:
+                    audio['album'] = metadata['album']
+
+            audio.save()
+            self.logger.info(f"成功写入通用元数据: {file_path}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"写入通用元数据失败: {file_path}, 错误: {e}")
+            return False
     
     def parse_filename(self, filename: str) -> dict[str, str]:
         """
@@ -395,14 +668,18 @@ class MetadataManager:
             return None
         
         ext = os.path.splitext(file_path)[1].lower()
-        
+
         try:
             if ext == '.mp3':
                 return self._get_mp3_cover(file_path)
-            elif ext == '.ogg':
+            elif ext in ('.ogg', '.opus'):
                 return self._get_ogg_cover(file_path)
+            elif ext == '.flac':
+                return self._get_flac_cover(file_path)
+            elif ext in ('.m4a', '.mp4'):
+                return self._get_mp4_cover(file_path)
             else:
-                self.logger.error(f"不支持的文件格式: {ext}")
+                self.logger.warning(f"封面读取未优化: {ext}")
                 return None
         except Exception as e:
             self.logger.error(f"获取封面失败: {file_path}, 错误: {e}")
@@ -459,31 +736,79 @@ class MetadataManager:
             return pic.data
         
         return None
-    
+
+    def _get_flac_cover(self, file_path: str) -> bytes | None:
+        """
+        获取 FLAC 文件的封面图片
+
+        Args:
+            file_path: FLAC 文件路径
+
+        Returns:
+            bytes | None: 封面图片数据
+        """
+        try:
+            audio = FLAC(file_path)
+            if audio is None:
+                return None
+
+            if audio.pictures:
+                return audio.pictures[0].data
+        except Exception as e:
+            self.logger.error(f"获取 FLAC 封面失败: {file_path}, 错误: {e}")
+
+        return None
+
+    def _get_mp4_cover(self, file_path: str) -> bytes | None:
+        """
+        获取 M4A/MP4 文件的封面图片
+
+        Args:
+            file_path: M4A/MP4 文件路径
+
+        Returns:
+            bytes | None: 封面图片数据
+        """
+        try:
+            audio = MP4(file_path)
+            if audio is None:
+                return None
+
+            if 'covr' in audio and audio['covr']:
+                return audio['covr'][0]
+        except Exception as e:
+            self.logger.error(f"获取 M4A/MP4 封面失败: {file_path}, 错误: {e}")
+
+        return None
+
     def set_cover(self, file_path: str, cover_data: bytes) -> bool:
         """
         设置音频文件的封面图片
-        
+
         Args:
             file_path: 音频文件路径
             cover_data: 封面图片数据（JPEG 或 PNG 格式）
-            
+
         Returns:
             bool: 设置成功返回 True，失败返回 False
         """
         if not os.path.exists(file_path):
             self.logger.error(f"文件不存在: {file_path}")
             return False
-        
+
         ext = os.path.splitext(file_path)[1].lower()
-        
+
         try:
             if ext == '.mp3':
                 return self._set_mp3_cover(file_path, cover_data)
-            elif ext == '.ogg':
+            elif ext in ('.ogg', '.opus'):
                 return self._set_ogg_cover(file_path, cover_data)
+            elif ext == '.flac':
+                return self._set_flac_cover(file_path, cover_data)
+            elif ext in ('.m4a', '.mp4'):
+                return self._set_mp4_cover(file_path, cover_data)
             else:
-                self.logger.error(f"不支持的文件格式: {ext}")
+                self.logger.warning(f"封面设置未优化: {ext}")
                 return False
         except Exception as e:
             self.logger.error(f"设置封面失败: {file_path}, 错误: {e}")
@@ -557,10 +882,80 @@ class MetadataManager:
         pic.mime = mime_type
         pic.width = pic.height = pic.depth = pic.colors = 0
         
-        # Base64 编码
-        pic_data = base64.b64encode(pic.write()).decode('ascii')
         audio['METADATA_BLOCK_PICTURE'] = [pic_data]
         audio.save()
-        
+
         self.logger.info(f"成功设置 OGG 封面: {file_path}")
         return True
+
+    def _set_flac_cover(self, file_path: str, cover_data: bytes) -> bool:
+        """
+        设置 FLAC 文件的封面图片
+
+        Args:
+            file_path: FLAC 文件路径
+            cover_data: 封面图片数据
+
+        Returns:
+            bool: 设置成功返回 True
+        """
+        try:
+            audio = FLAC(file_path)
+            if audio is None:
+                self.logger.error(f"无法加载 FLAC 文件: {file_path}")
+                return False
+
+            mime_type = 'image/jpeg'
+            if cover_data[:8] == b'\x89PNG\r\n\x1a\n':
+                mime_type = 'image/png'
+
+            picture = Picture()
+            picture.data = cover_data
+            picture.type = 3  # Front cover
+            picture.mime = mime_type
+            picture.width = 0
+            picture.height = 0
+            picture.depth = 0
+            picture.colors = 0
+
+            audio.clear_pictures()
+            audio.add_picture(picture)
+            audio.save()
+
+            self.logger.info(f"成功设置 FLAC 封面: {file_path}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"设置 FLAC 封面失败: {file_path}, 错误: {e}")
+            return False
+
+    def _set_mp4_cover(self, file_path: str, cover_data: bytes) -> bool:
+        """
+        设置 M4A/MP4 文件的封面图片
+
+        Args:
+            file_path: M4A/MP4 文件路径
+            cover_data: 封面图片数据
+
+        Returns:
+            bool: 设置成功返回 True
+        """
+        try:
+            audio = MP4(file_path)
+            if audio is None:
+                self.logger.error(f"无法加载 M4A/MP4 文件: {file_path}")
+                return False
+
+            imageformat = MP4.FORMAT_JPEG
+            if cover_data[:8] == b'\x89PNG\r\n\x1a\n':
+                imageformat = MP4.FORMAT_PNG
+
+            audio['covr'] = [MP4.Cover(cover_data, imageformat=imageformat)]
+            audio.save()
+
+            self.logger.info(f"成功设置 M4A/MP4 封面: {file_path}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"设置 M4A/MP4 封面失败: {file_path}, 错误: {e}")
+            return False

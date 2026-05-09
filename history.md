@@ -1,5 +1,19 @@
 # 项目变更历史
 
+## v0.5.9.3 (2026-05-09) 扩展音频标签元数据支持，统一多格式标签写入接口
+- **功能增强**：
+  - `update_audio_tags()` 新增 `year` 和 `genre` 参数，支持年份和流派信息写入
+  - 所有音频格式（MP3/FLAC/M4A/OGG/OPUS/WMA/AAC）统一支持完整元数据字段
+  - `_write_*_tags()` 内部函数全部更新为接受 year 和 genre 参数
+- **UI 集成**：
+  - HomePage 搜索结果提取 year 和 genre 字段并传递给标签写入函数
+  - 日志输出增加年份和流派信息显示
+- **测试覆盖**：
+  - 新增 `test_update_audio_tags.py` 覆盖所有格式的标签写入测试
+  - 新增 `test_chinese_english_split.py` 多语言文本分离测试
+  - 新增 `test_enhanced_extraction.py` 增强型歌名提取测试
+- **涉及文件**: `auto_tag/audio_recognize.py`, `auto_tag/converter/metadata_manager.py`, `auto_tag/gui/pages/home_page.py`
+
 ## v0.5.9.2 (2026-05-09) 修复正则表达式反向范围错误，解决日文歌曲搜索崩溃问题
 - **根本原因**：`japanese_hiragana` 模式包含反向 Unicode 范围 `\u30a0-\u309f`（12448 > 12447）
   - 正则引擎编译时报错 `bad character range \u-\u at position 22`
