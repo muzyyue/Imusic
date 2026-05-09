@@ -123,17 +123,14 @@ jobs:
 
           if ($match.Success) {
             $changelog = $match.Value.Trim()
-            # Escape special characters for PowerShell here-string
-            $changelog = $changelog -replace '\$', '$$'
-            $changelog = $changelog -replace '`', '``'
-            $changelog = $changelog -replace '"', '""'
           } else {
             $changelog = "See [history.md](https://github.com/${{ github.repository }}/blob/main/history.md) for details."
           }
 
-          # Output using ::set-output to avoid parsing issues
-          $changelog | Out-File -FilePath "$env:GITHUB_OUTPUT" -Append -Encoding UTF8
-          echo "changelog=$changelog" >> $env:GITHUB_OUTPUT
+          # Output using heredoc syntax for multiline values
+          echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
+          echo $changelog >> $env:GITHUB_OUTPUT
+          echo "EOF" >> $env:GITHUB_OUTPUT
 
       - name: Generate release notes
         id: release_notes
