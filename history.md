@@ -1,5 +1,88 @@
 # 项目变更历史
 
+## v0.5.9.2 (2026-05-09) 修复正则表达式反向范围错误，解决日文歌曲搜索崩溃问题
+- **根本原因**：`japanese_hiragana` 模式包含反向 Unicode 范围 `\u30a0-\u309f`（12448 > 12447）
+  - 正则引擎编译时报错 `bad character range \u-\u at position 22`
+  - 导致刷新搜索功能崩溃，无法搜索日文歌曲
+- **修复内容**：
+  1. 移除 `japanese_hiragana` 中的非法反向范围（`\u30a0` 属于片假名，不应出现在平假名模式）
+  2. 给 `armenian` 模式补上方括号（与其他语言模式保持一致）
+  3. 将 `re.findall` 的捕获组改为非捕获组，避免只返回最后一个匹配字符
+- **验证结果**：
+  - ✅ `準備フェイズ-アリスソフト-..._Vol.31_ランス 10.mp3` → 正确提取 `準備フェイズアリスソフトアリスサウンドアルバムランス`
+  - ✅ 正则表达式编译通过，不再报错
+  - ✅ 多语言文本分离功能正常工作
+- **涉及文件**: `auto_tag/utils/__init__.py` (第 244、264、296 行)
+
+## v0.5.9.1 (2026-05-09)
+- fix(japanese-candidate): 修复候选选择算法，解决核心歌名被遗漏的问题
+  - **问题**：v0.5.9 使用 `min(candidates, key=len)` 选择绝对最短候选
+  - **后果**：`ランス 10`(5 字符) 击败 `準備フェイズ`(6 字符)，导致搜索失败
+  - **修复**：实现 `_candidate_score()` 智能评分函数
+    - 优先级 0：不含数字后缀的纯文本（更可能是歌名）
+    - 优先级 1：含数字后缀的文本（可能是曲目号/卷号）
+    - 同等条件下选择较短的候选
+  - **验证结果**：
+    - ✅ `準備フェイズ-..._Vol.31_ランス 10.mp3` → 正确返回 `準備フェイズ`
+    - ✅ `Track01_Vol.2_イントロダクション_Introduction.mp3` → 返回 `イントロダクション`
+    - ✅ `アニメソング_Anime_Song_Vol.3.mp3` → 返回 `アニメソング`
+
+- fix(regex-syntax): 修复 split_multilingual_text 的正则表达式语法错误
+  - **错误**：`bad character range \u-\u at position 22`（刷新搜索时崩溃）
+  - **原因**：使用了 PCRE/Perl 语法 `\x{00C0}`，Python re 模块不支持
+  - **修复**：改为 Python 兼容格式 `\u00C0`
+  - **涉及文件**: `auto_tag/utils/__init__.py` (第 268 行)
+
+- 涉及文件：`auto_tag/audio_recognize.py`, `auto_tag/utils/__init__.py`
+
+## v0.5.9 (2026-05-09)
+- fix(japanese-priority): 修复多语言智能提取的优先级错误，解决日文文件名识别失败问题
+  - **根本原因**：多语言提取逻辑错误地将元数据词汇（Vol.31）当作歌名返回
+  - **修复方案**：实现「非拉丁字符优先」的两轮筛选策略 + 元数据词汇黑名单
+  - 修复文件：`準備フェイズ-アリスソフト-..._Vol.31_ランス10.mp3` → 正确返回 `ランス10`
+  - 新增 `_is_metadata_word()` 函数过滤 Volume/Track/Disc 等非歌名词汇
+  - 优化候选选择逻辑：优先选最短的非拉丁片段（核心歌名），其次选英文片段
+
+- 涉及文件: `auto_tag/audio_recognize.py`
+
+## v0.5.8 (2026-05-08)
+- feat(multi-language): 实现多语言文本分离和智能搜索功能
+  - 新增 `split_chinese_english_text()` 多语言文本分离器，支持 10+ 种语言（中日韩泰俄阿拉伯等）
+  - 重构返回值格式：`chinese/english` → `native/latin`，新增 `detected_languages` 字段
+  - 特殊语言智能处理：日文保持连贯性，韩文/泰文/阿拉伯文完整保留
+
+- feat(search): 优化搜索策略，解决中文歌曲搜索失败问题
+  - 修复 OST 格式中文被丢弃的 BUG（如 "A Small Miracle 小小奇迹"）
+  - 新增无效指纹结果过滤（自动过滤 "Unknown Title"）
+  - Fallback 搜索优先使用 native 部分作为关键词
+  - 修复 `ascii_only` 变量作用域错误
+
+- feat(metadata): 扩展音频标签元数据字段
+  - `SearchResult` 新增 `year` 和 `genre` 字段
+  - `update_audio_tags()` 支持年份和流派写入（MP3/OGG/FLAC/M4A）
+  - 网易云音乐新增年份提取，Shazam 新增流派提取
+
+- fix(japanese): 修复日文歌曲名被错误拆分的问题（如 "準備フェイズ"）
+
+- 涉及文件: `auto_tag/utils/__init__.py`, `auto_tag/audio_recognize.py`, `auto_tag/gui/pages/home_page.py`, `tests/test_chinese_english_split.py`
+
+## v0.5.7 (2026-05-08)
+- feat(audio-tags): 实现通用音频标签写入函数，支持所有音频格式
+  - 新增 update_audio_tags() 统一接口，自动识别文件格式并选择合适的标签写入方式
+  - 实现 FLAC 格式完整支持（Vorbis Comment + FLAC Picture 封面）
+  - 实现 M4A/MP4 格式支持（iTunes Metadata + Cover Art）
+  - 实现 WMA/AAC 等格式的通用标签写入
+  - WAV 格式优雅跳过（输出警告但不报错）
+  - 重构 home_page.py 标签保存逻辑，从 if-elif 改为调用统一函数
+  - 保持向后兼容：原有的 update_mp3_tags() 和 update_ogg_tags() 仍可正常使用
+  - 新增测试用例覆盖所有支持格式（test_update_audio_tags.py）
+  - **修复 MusicManagerPage 点击FLAC文件报错的问题**
+    - 扩展 metadata_manager.py 支持所有音频格式
+    - 新增 FLAC/M4A/OPUS/WMA/AAC 的元数据读取和写入方法
+    - 新增各格式的封面图片读取和设置方法
+    - 解决用户反馈：点击FLAC文件时提示"不支持的文件格式: .flac"的错误
+  - 涉及文件: `audio_recognize.py`, `home_page.py`, `metadata_manager.py`, `test_update_audio_tags.py`
+
 ## v0.5.6 (2026-05-07)
 - feat(audio-formats): 扩展音频格式支持，统一各模块格式列表
   - MusicManagerPage 文件扫描支持从 5 种扩展到 8 种（新增 aac/wma/opus）

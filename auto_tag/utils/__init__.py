@@ -176,6 +176,244 @@ def retry_on_file_in_use(
     raise last_exception
 
 
+# ==================== 中英文文本处理工具 ====================
+
+def split_multilingual_text(text: str) -> dict:
+    """
+    多语言文本分离器 - 支持中日韩泰越俄阿等多语言
+
+    智能识别并提取混合名称中的各种语言成分，
+    将非拉丁字母语言统一归类为 native 部分，拉丁字母归为 latin 部分。
+
+    支持的语言：
+    - 🇨🇳 中文: 小小奇迹、晴天
+    - 🇯🇵 日文: 準備フェイズ、アニメソング
+    - 🇰🇷 韩文: 사랑해요、안녕하세요
+    - 🇹🇭 泰文: สวัสดี、รักเธอ
+    - 🇻🇳 越南文: Xin chào、Yêu bạn
+    - 🇷🇺 俄文: Привет、Люблю тебя
+    - 🇸🇦 阿拉伯文: مرحبا、أحبك
+    - 🇮🇳 印地文: नमस्ते、प्यार करता हूँ
+
+    Args:
+        text: 输入文本（可能包含多语言混合）
+
+    Returns:
+        dict: 分离结果字典
+            - native (str): 非拉丁字母部分（中日韩泰越俄阿等）
+            - latin (str): 拉丁字母/数字部分（英文等）
+            - original (str): 原始输入文本
+            - has_both (bool): 是否同时包含 native 和 latin
+            - detected_languages (list): 检测到的语言列表
+
+    Example:
+        >>> split_chinese_english_text("A Small Miracle 小小奇迹")
+        {'native': '小小奇迹', 'latin': 'A Small Miracle', ...}
+
+        >>> split_chinese_english_text("準備フェイズ Vol.31")
+        {'native': '準備フェイズ', 'latin': 'Vol 31', ...}
+
+        >>> split_chinese_english_text("사랑해요 Love Song")
+        {'native': '사랑해요', 'latin': 'Love Song', ...}
+    """
+    if not text or not isinstance(text, str):
+        return {
+            'native': '',
+            'latin': '',
+            'original': '',
+            'has_both': False,
+            'detected_languages': []
+        }
+
+    original = text.strip()
+    if not original:
+        return {
+            'native': '',
+            'latin': '',
+            'original': '',
+            'has_both': False,
+            'detected_languages': []
+        }
+
+    # ==================== 语言定义 ====================
+    # 各语言的 Unicode 范围
+
+    LANGUAGE_PATTERNS = {
+        # 东亚语言
+        'chinese': r'[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]',  # CJK Unified Ideographs
+        'japanese_hiragana': r'[\u3040-\u309f]',                   # 平假名
+        'japanese_katakana': r'[\u30a0-\u30ff\u31f0-\u31ff]',     # 片假名（含片假名语音扩展）
+        'korean': r'[\uac00-\ud7af\u1100-\u11ff]',                 # 韩文音节 + Jamo
+
+        # 东南亚语言
+        'thai': r'[\u0e00-\u0e7f]',                               # 泰文
+        'vietnamese_tone': r'[\u0300-\u036f\u1ab0-\u1aff]',       # 越南语声调符号（组合字符）
+
+        # 西里尔字母（俄文等）
+        'cyrillic': r'[\u0400-\u04ff\u0500-\u052f]',              # 西里尔字母
+
+        # 阿拉伯字母
+        'arabic': r'[\u0600-\u06ff\u0750-\u077f\ufb50-\ufdff\ufe70-\ufeff]',  # 阿拉伯文
+
+        # 印度语言（天城文等）
+        'devanagari': r'[\u0900-\u097f]',                         # 天城文（印地语等）
+
+        # 其他可能的非拉丁文字
+        'greek': r'[\u0370-\u03ff]',                              # 希腊字母
+        'georgian': r'[\u10a0-\u10ff]',                          # 格鲁吉亚文
+        'armenian': r'[\u0530-\u058f]',                         # 亚美尼亚文
+    }
+
+    # 拉丁字母和数字模式
+    # 使用 Python re 模块支持的 \uXXXX 格式（不是 PCRE 的 \x{} 格式）
+    LATIN_PATTERN = r'[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF][a-zA-Z0-9\s\'\-]*'
+    DIGIT_PATTERN = r'[0-9]+'
+
+    # ==================== 语言检测 ====================
+    detected_languages = []
+
+    for lang_name, pattern in LANGUAGE_PATTERNS.items():
+        if re.search(pattern, original):
+            if lang_name not in detected_languages:
+                detected_languages.append(lang_name)
+
+    has_latin = bool(re.search(r'[a-zA-Z]', original))
+    has_digit = bool(re.search(r'[0-9]', original))
+
+    # 判断是否为特殊语言文本（需要保持连贯性）
+    is_japanese = any(l in detected_languages for l in ['japanese_hiragana', 'japanese_katakana'])
+    is_korean = 'korean' in detected_languages
+    is_thai = 'thai' in detected_languages
+    is_arabic = 'arabic' in detected_languages
+    is_cyrillic = 'cyrillic' in detected_languages
+
+    is_special_language = is_japanese or is_korean or is_thai or is_arabic or is_cyrillic
+
+    # ==================== 文本提取 ====================
+
+    # 构建统一的非拉丁字符模式（所有非拉丁语言）
+    NON_LATIN_PATTERN = '|'.join(LANGUAGE_PATTERNS.values())
+    non_latins_pattern = f'(?:{NON_LATIN_PATTERN})+'
+
+    # 提取非拉丁字符片段
+    native_matches = re.findall(non_latins_pattern, original)
+
+    # 提取拉丁字符/数字片段
+    latin_matches = re.findall(LATIN_PATTERN, original)
+    digit_matches = re.findall(DIGIT_PATTERN, original)
+
+    # 合并非拉丁字符
+    if is_special_language:
+        # 特殊语言：用空字符串连接（保持连贯性）
+        native_part = ''.join(''.join(m) if isinstance(m, tuple) else m for m in native_matches)
+    else:
+        # 中文等：可以适当分隔
+        native_raw = ''.join(''.join(m) if isinstance(m, tuple) else m for m in native_matches)
+
+        # 对于纯中文或中英混合，尝试按语义单位分割（可选）
+        # 这里简单处理：直接连接
+        native_part = native_raw
+
+    native_part = native_part.strip()
+
+    # 合并拉丁字符
+    latin_raw = ' '.join(latin_matches) + ' ' + ' '.join(digit_matches)
+    latin_part = re.sub(r'\s+', ' ', latin_raw).strip()
+
+    # 清理拉丁部分
+    def _clean_latin(text: str) -> str:
+        """清理拉丁部分，移除无效内容"""
+        if not text:
+            return ''
+        words = text.split()
+        cleaned_words = []
+        for word in words:
+            if len(word) >= 2 or (word.isdigit() and len(word) >= 2):
+                cleaned_words.append(word)
+            elif word and not word.isdigit():
+                cleaned_words.append(word)
+        result = ' '.join(cleaned_words)
+        return result if len(result) >= 2 else ''
+
+    latin_part = _clean_latin(latin_part)
+
+    has_both = bool(native_part) and bool(latin_part)
+
+    # ==================== 智能优化 ====================
+
+    # 如果提取的 native 部分太短但原文很长，说明可能是错误拆分
+    if is_special_language and len(native_part) < 4 and len(original) > 8:
+        first_latin_match = re.search(LATIN_PATTERN, original)
+        if first_latin_match:
+            lat_start = first_latin_match.start()
+            native_before_lat = original[:lat_start].strip()
+            if len(native_before_lat) > len(native_part):
+                native_part = native_before_lat
+
+    # 语言名称映射（用于日志输出）
+    LANG_DISPLAY_NAMES = {
+        'chinese': 'Chinese',
+        'japanese_hiragana': 'Japanese(Hiragana)',
+        'japanese_katakana': 'Japanese(Katakana)',
+        'korean': 'Korean',
+        'thai': 'Thai',
+        'cyrillic': 'Cyrillic(Russian)',
+        'arabic': 'Arabic',
+        'devanagari': 'Devanagari(Hindi)',
+        'greek': 'Greek',
+    }
+
+    detected_display = [LANG_DISPLAY_NAMES.get(l, l) for l in detected_languages]
+
+    logger.debug(
+        f"[TextSplit] Input: '{original[:50]}...' "
+        f"→ Native: '{native_part[:30]}...', Latin: '{latin_part[:30]}...', "
+        f"Languages: {detected_display}"
+    )
+
+    return {
+        'native': native_part,
+        'latin': latin_part,
+        'original': original,
+        'has_both': has_both,
+        'detected_languages': detected_display
+    }
+
+
+def is_multilingual_text(text: str) -> bool:
+    """
+    检测文本是否同时包含非拉丁字符和拉丁/英文字符
+
+    支持检测中日韩泰越俄阿等多语言与英文的混合。
+
+    Args:
+        text: 待检测的文本
+
+    Returns:
+        bool: 如果同时包含非拉丁字符（CJK、韩文、泰文等）和英文字符返回 True，否则返回 False
+    """
+    if not text or not isinstance(text, str):
+        return False
+
+    # 非拉丁字母模式（包含所有支持的语言）
+    NON_LATIN_PATTERN = (
+        r'[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff'  # CJK Unified Ideographs
+        r'\u3040-\u309f\u31f0-\u31ff'              # Japanese Hiragana
+        r'\u30a0-\u30ff'                             # Japanese Katakana
+        r'\uac00-\ud7af\u1100-\u11ff'               # Korean
+        r'\u0e00-\u0e7f'                             # Thai
+        r'\u0400-\u04ff\u0500-\u052f'               # Cyrillic
+        r'\u0600-\u06ff\u0750-\u077f'               # Arabic
+        r'\u0900-\u097f'                             # Devanagari
+        r']'
+    )
+
+    has_non_latin = bool(re.search(NON_LATIN_PATTERN, text))
+    has_latin = bool(re.search(r'[a-zA-Z]', text))
+
+    return has_non_latin and has_latin
+
+
 # ==================== FFmpeg 静默执行功能 ====================
 
 import subprocess
@@ -361,6 +599,10 @@ __all__ = [
     'sanitize_filename_safe',
     'is_file_in_use_error',
     'retry_on_file_in_use',
+
+    # === 中英文文本处理工具 ===
+    'split_multilingual_text',
+    'is_multilingual_text',
 
     # === FFmpeg 静默执行相关函数 ===
     'is_windows',
