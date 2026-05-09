@@ -15,7 +15,7 @@
 - **涉及文件**: `auto_tag/audio_recognize.py`, `auto_tag/converter/metadata_manager.py`, `auto_tag/gui/pages/home_page.py`
 
 ## v0.5.9.2 (2026-05-09) 修复正则表达式反向范围错误，解决日文歌曲搜索崩溃问题
-- **根本原因**：`japanese_hiragana` 模式包含反向 Unicode 范围（U+30A0-U+309F，12448 > 12447）
+- **根本原因**：`japanese_hiragana` 模式包含反向 Unicode 范围
   - 正则引擎编译时报错（"bad character range" at position 22）
   - 导致刷新搜索功能崩溃，无法搜索日文歌曲
 - **修复内容**：
