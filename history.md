@@ -1,5 +1,22 @@
 # 项目变更历史
 
+## v0.6.0 (2026-05-11) 关于页面与导航栏重构
+- **新增关于页面**：
+  - 展示应用信息（名称、版本号、检查更新、反馈链接等）
+  - 使用 CardWidget 卡片式布局（更新设置卡片、反馈卡片、其他链接卡片）
+  - 支持国际化，语言切换时自动刷新文本
+  - 创建 LinkRowWidget 自定义组件处理链接点击事件
+- **导航栏调整**：
+  - 将「设置」和「关于」导航项移至侧边栏底部（`NavigationItemPosition.BOTTOM`）
+  - 去除 FluentWindow 左上角返回按钮
+- **自动检查更新功能**：
+  - 新增 `auto_check_update` 配置项到 AppConfig（持久化存储）
+  - 调用 GitHub Releases API 检查最新版本（`muzyyue/Imusic`）
+  - 使用 InfoBar 显示更新提示（新版本可用/已是最新）
+  - 点击「检查更新」按钮在应用内执行版本检查，不再跳转浏览器
+- **新增文件**: `auto_tag/gui/pages/about_page.py`
+- **修改文件**: `auto_tag/gui/main_window.py`, `auto_tag/gui/pages/__init__.py`, `auto_tag/gui/config.py`, `auto_tag/gui/i18n/locales/*.json`
+
 ## v0.5.9.6 (2026-05-11) 修正GitHub链接并修复检查更新按钮行为
 - **修正 GitHub 项目链接**：将所有链接从 `ling/Imusic` 修正为正确的 `muzyyue/Imusic`
   - 仓库主页、Issues、Discussions、许可证、API 端点
