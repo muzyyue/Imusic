@@ -27,9 +27,10 @@ from qfluentwidgets import (
     FluentIcon as FIF,
     setTheme,
     Theme,
+    NavigationItemPosition,
 )
 
-from auto_tag.gui.pages import HomePage, SettingsPage, ConverterPage, MusicManagerPage, EditorPage
+from auto_tag.gui.pages import HomePage, SettingsPage, ConverterPage, MusicManagerPage, EditorPage, AboutPage
 from auto_tag.gui.i18n import tr, translator
 from auto_tag.gui.config import config
 
@@ -105,6 +106,9 @@ class MainWindow(FluentWindow):
         self.settings_page = SettingsPage(self)
         self.settings_page.setObjectName("settings_page")
 
+        self.about_page = AboutPage(self)
+        self.about_page.setObjectName("about_page")
+
         # 添加导航项
         self._setup_navigation()
 
@@ -148,11 +152,20 @@ class MainWindow(FluentWindow):
             tr("navigation.editor")
         )
 
-        # 添加设置导航项
+        # 添加关于导航项（底部）
+        self.addSubInterface(
+            self.about_page,
+            FIF.INFO,
+            tr("about"),
+            position=NavigationItemPosition.BOTTOM
+        )
+
+        # 添加设置导航项（底部）
         self.addSubInterface(
             self.settings_page,
             FIF.SETTING,
-            tr("settings")
+            tr("settings"),
+            position=NavigationItemPosition.BOTTOM
         )
 
     def _apply_theme_from_config(self) -> None:
@@ -184,8 +197,8 @@ class MainWindow(FluentWindow):
         仅在各页面和导航项已创建后调用。
         """
         # 刷新导航项文本
-        nav_keys = ["home_page", "converter_page", "music_manager_page", "editor_page", "settings_page"]
-        tr_keys = ["home", "navigation.converter", "navigation.music_manager", "navigation.editor", "settings"]
+        nav_keys = ["home_page", "converter_page", "music_manager_page", "editor_page", "about_page", "settings_page"]
+        tr_keys = ["home", "navigation.converter", "navigation.music_manager", "navigation.editor", "about", "settings"]
         for nav_key, tr_key in zip(nav_keys, tr_keys):
             nav_item = self.navigationInterface.widget(nav_key)
             if nav_item is not None:
@@ -200,6 +213,8 @@ class MainWindow(FluentWindow):
             self.music_manager_page.refresh_texts()
         if hasattr(self.editor_page, 'refresh_texts'):
             self.editor_page.refresh_texts()
+        if hasattr(self.about_page, 'refresh_texts'):
+            self.about_page.refresh_texts()
         if hasattr(self.settings_page, 'refresh_texts'):
             self.settings_page.refresh_texts()
 
@@ -236,8 +251,8 @@ class MainWindow(FluentWindow):
             lang (str): 新的语言代码，如 "en" 或 "zh"
         """
         # 更新侧边栏导航项文本
-        nav_keys = ["home_page", "converter_page", "music_manager_page", "settings_page"]
-        tr_keys = ["home", "navigation.converter", "navigation.music_manager", "settings"]
+        nav_keys = ["home_page", "converter_page", "music_manager_page", "editor_page", "about_page", "settings_page"]
+        tr_keys = ["home", "navigation.converter", "navigation.music_manager", "navigation.editor", "about", "settings"]
         for nav_key, tr_key in zip(nav_keys, tr_keys):
             nav_item = self.navigationInterface.widget(nav_key)
             if nav_item is not None:
@@ -250,6 +265,10 @@ class MainWindow(FluentWindow):
             self.converter_page.refresh_texts()
         if hasattr(self.music_manager_page, 'refresh_texts'):
             self.music_manager_page.refresh_texts()
+        if hasattr(self.editor_page, 'refresh_texts'):
+            self.editor_page.refresh_texts()
+        if hasattr(self.about_page, 'refresh_texts'):
+            self.about_page.refresh_texts()
         if hasattr(self.settings_page, 'refresh_texts'):
             self.settings_page.refresh_texts()
 

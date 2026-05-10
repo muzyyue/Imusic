@@ -1,6 +1,6 @@
 {
   "app_name": "Imusic",
-  "navigation": { "home": "首页", "settings": "设置", "history": "历史记录", "converter": "转换", "music_manager": "音乐管理", "editor": "音频编辑" },
+  "navigation": { "home": "首页", "settings": "设置", "history": "历史记录", "converter": "转换", "music_manager": "音乐管理", "editor": "音频编辑", "about": "关于" },
   "home": "首页",
   "settings": "设置",
   "select_directory": "选择目录",
@@ -411,6 +411,21 @@
     "success_apply": "标签已成功应用到 {count} 个文件",
     "warning_no_files": "请先添加要处理的音频文件",
     "info_search_config_updated": "搜索配置已更新，将在下次搜索时生效"
+  },
+  "about": "关于",
+  "about_page": {
+    "title": "关于",
+    "version_prefix": "版本",
+    "check_update": "检查更新",
+    "update_settings": "更新设置",
+    "auto_check_update": "自动检查更新",
+    "feedback": "反馈",
+    "report_bug": "报告错误",
+    "suggest_feature": "建议功能",
+    "discussions": "讨论区",
+    "other_links": "其他链接",
+    "github_repo": "GitHub 仓库",
+    "license": "许可证"
   },
   "editor": {
     "title": "音频编辑",

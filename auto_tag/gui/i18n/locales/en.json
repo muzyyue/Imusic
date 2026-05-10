@@ -6,7 +6,8 @@
     "history": "History",
     "converter": "Converter",
     "music_manager": "Music Manager",
-    "editor": "Audio Editor"
+    "editor": "Audio Editor",
+    "about": "About"
   },
   "home": "Home",
   "settings": "Settings",
@@ -424,6 +425,21 @@
     "success_apply": "Tags successfully applied to {count} files",
     "warning_no_files": "Please add audio files to process first",
     "info_search_config_updated": "Search configuration updated, will take effect on next search"
+  },
+  "about": "About",
+  "about_page": {
+    "title": "About",
+    "version_prefix": "Version",
+    "check_update": "Check for Updates",
+    "update_settings": "Update Settings",
+    "auto_check_update": "Auto Check for Updates",
+    "feedback": "Feedback",
+    "report_bug": "Report Bug",
+    "suggest_feature": "Suggest Feature",
+    "discussions": "Discussions",
+    "other_links": "Other Links",
+    "github_repo": "GitHub Repository",
+    "license": "License"
   },
   "editor": {
     "title": "Audio Editor",

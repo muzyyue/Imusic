@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.5.9.4 (2026-05-11) 将设置按钮移到导航栏底部并新增关于页面
+- **UI 调整**：
+  - 将「设置」导航项从顶部移至侧边栏底部（`NavigationItemPosition.BOTTOM`）
+  - 新增「关于」页面，展示项目信息（应用名称、版本号、检查更新、反馈链接等）
+  - 关于页面支持国际化，语言切换时自动刷新文本
+- **新增文件**: `auto_tag/gui/pages/about_page.py`
+- **修改文件**: `auto_tag/gui/main_window.py`, `auto_tag/gui/pages/__init__.py`, `auto_tag/gui/i18n/locales/zh.json`, `auto_tag/gui/i18n/locales/en.json`
+
 ## v0.5.9.3 (2026-05-09) 扩展音频标签元数据支持，统一多格式标签写入接口
 - **功能增强**：
   - `update_audio_tags()` 新增 `year` 和 `genre` 参数，支持年份和流派信息写入

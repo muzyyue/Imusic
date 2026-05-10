@@ -26,5 +26,6 @@ from .converter_page import ConverterPage
 from .settings_page import SettingsPage
 from .music_manager_page import MusicManagerPage
 from .editor_page import EditorPage
+from .about_page import AboutPage
 
-__all__ = ['HomePage', 'ConverterPage', 'SettingsPage', 'MusicManagerPage', 'EditorPage']
+__all__ = ['HomePage', 'ConverterPage', 'SettingsPage', 'MusicManagerPage', 'EditorPage', 'AboutPage']
