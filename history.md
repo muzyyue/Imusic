@@ -1,5 +1,19 @@
 # 项目变更历史
 
+## v0.5.9.5 (2026-05-11) 优化关于页面UI并修复链接点击问题
+- **UI 优化**：
+  - 去除 FluentWindow 左上角返回按钮（`setReturnButtonVisible(False)`）
+  - 使用 CardWidget 优化关于页面布局（更新设置卡片、反馈卡片、其他链接卡片）
+- **修复反馈链接点击问题**：
+  - 创建 LinkRowWidget 自定义组件，正确重写 mousePressEvent
+  - 修正报告错误、建议功能等链接 URL（使用 issues/new 表单）
+- **实现自动检查更新功能**：
+  - 新增 auto_check_update 配置项到 AppConfig（持久化存储）
+  - 调用 GitHub Releases API 检查最新版本
+  - 使用 InfoBar 显示更新提示（新版本可用/已是最新）
+- **新增 i18n 翻译键**: new_version_available, latest_version, up_to_date
+- **修改文件**: `auto_tag/gui/main_window.py`, `auto_tag/gui/pages/about_page.py`, `auto_tag/gui/config.py`, `auto_tag/gui/i18n/locales/*.json`
+
 ## v0.5.9.4 (2026-05-11) 将设置按钮移到导航栏底部并新增关于页面
 - **UI 调整**：
   - 将「设置」导航项从顶部移至侧边栏底部（`NavigationItemPosition.BOTTOM`）

@@ -439,7 +439,10 @@
     "discussions": "Discussions",
     "other_links": "Other Links",
     "github_repo": "GitHub Repository",
-    "license": "License"
+    "license": "License",
+    "new_version_available": "New Version Available",
+    "latest_version": "Version {version} is available",
+    "up_to_date": "Up to Date"
   },
   "editor": {
     "title": "Audio Editor",

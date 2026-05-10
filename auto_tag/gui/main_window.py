@@ -115,6 +115,9 @@ class MainWindow(FluentWindow):
         # 连接设置页面信号
         self._connect_signals()
 
+        # 隐藏返回按钮（FluentWindow 默认显示）
+        self.navigationInterface.setReturnButtonVisible(False)
+
         # 设置窗口图标
         self._setup_icon()
 

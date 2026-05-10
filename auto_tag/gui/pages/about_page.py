@@ -23,8 +23,10 @@ Example:
     >>> page.show()
 """
 
+import logging
 import os
 import sys
+import urllib.request
 from typing import Optional
 
 from PySide6.QtCore import Qt, QUrl
@@ -41,10 +43,17 @@ from qfluentwidgets import (
     SubtitleLabel,
     PushButton,
     SwitchButton,
+    CardWidget,
     FluentIcon as FIF,
+    InfoBar,
+    InfoBarPosition,
 )
 
 from auto_tag.gui.i18n import tr
+from auto_tag.gui.config import config
+
+
+logger = logging.getLogger(__name__)
 
 
 def _base_dir() -> str:
@@ -87,11 +96,48 @@ def _get_version() -> str:
         return "unknown"
 
 
+class LinkRowWidget(QWidget):
+    """
+    可点击的链接行组件
+
+    继承自 QWidget，正确重写 mousePressEvent 处理点击事件。
+    包含图标、文本和箭头图标。
+    """
+
+    def __init__(self, icon_text: str, text: str, url: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+
+        self._url = url
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(12)
+
+        icon_label = QLabel(icon_text)
+        icon_label.setFixedWidth(24)
+        layout.addWidget(icon_label)
+
+        self._text_label = BodyLabel(text)
+        layout.addWidget(self._text_label)
+        layout.addStretch()
+
+        arrow_label = QLabel("↗")
+        arrow_label.setStyleSheet("color: gray;")
+        layout.addWidget(arrow_label)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            QDesktopServices.openUrl(QUrl(self._url))
+        super().mousePressEvent(event)
+
+
 class AboutPage(QWidget):
     """
     关于页面类
 
     提供应用程序关于界面，展示项目相关信息和外部链接。
+    使用 CardWidget 实现卡片式布局。
 
     Example:
         >>> page = AboutPage()
@@ -99,28 +145,18 @@ class AboutPage(QWidget):
     """
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
-        """
-        初始化关于页面
-
-        Args:
-            parent: 父窗口，默认为 None
-        """
         super().__init__(parent)
 
         self._version = _get_version()
         self._github_url = "https://github.com/ling/Imusic"
-        self._issues_url = "https://github.com/ling/Imusic/issues"
+        self._issues_url = "https://github.com/ling/Imusic/issues/new"
+        self._suggest_feature_url = "https://github.com/ling/Imusic/issues/new?labels=enhancement"
         self._discussions_url = "https://github.com/ling/Imusic/discussions"
         self._license_url = "https://github.com/ling/Imusic/blob/main/LICENSE"
 
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        """
-        初始化 UI
-
-        创建关于页面的所有控件和布局。
-        """
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(40, 30, 40, 30)
         main_layout.setSpacing(20)
@@ -168,14 +204,23 @@ class AboutPage(QWidget):
         self._check_update_button.clicked.connect(self._on_check_update_clicked)
         main_layout.addWidget(self._check_update_button)
 
-        # 更新设置分组
+        # 更新设置卡片
+        update_card = CardWidget(self)
+        update_card_layout = QVBoxLayout(update_card)
+        update_card_layout.setContentsMargins(16, 16, 16, 16)
+        update_card_layout.setSpacing(0)
+
         self._update_settings_section = SubtitleLabel(tr("about_page.update_settings"))
         section_font = QFont()
         section_font.setPointSize(14)
         self._update_settings_section.setFont(section_font)
-        main_layout.addWidget(self._update_settings_section)
+        update_card_layout.addWidget(self._update_settings_section)
 
-        auto_update_layout = QHBoxLayout()
+        auto_update_row = QWidget()
+        auto_update_layout = QHBoxLayout(auto_update_row)
+        auto_update_layout.setContentsMargins(4, 6, 4, 6)
+        auto_update_layout.setSpacing(12)
+
         self._auto_update_icon = QLabel("🔄")
         self._auto_update_icon.setFixedWidth(24)
         auto_update_layout.addWidget(self._auto_update_icon)
@@ -185,54 +230,66 @@ class AboutPage(QWidget):
         auto_update_layout.addStretch()
 
         self._auto_update_switch = SwitchButton()
-        self._auto_update_switch.setChecked(False)
+        self._auto_update_switch.setChecked(config.auto_check_update)
+        self._auto_update_switch.checkedChanged.connect(self._on_auto_update_changed)
         auto_update_layout.addWidget(self._auto_update_switch)
-        main_layout.addLayout(auto_update_layout)
 
-        # 反馈分组
+        update_card_layout.addWidget(auto_update_row)
+        main_layout.addWidget(update_card)
+
+        # 反馈卡片
+        feedback_card = CardWidget(self)
+        feedback_card_layout = QVBoxLayout(feedback_card)
+        feedback_card_layout.setContentsMargins(16, 16, 16, 16)
+        feedback_card_layout.setSpacing(2)
+
         self._feedback_section = SubtitleLabel(tr("about_page.feedback"))
         self._feedback_section.setFont(section_font)
-        main_layout.addWidget(self._feedback_section)
+        feedback_card_layout.addWidget(self._feedback_section)
 
-        self._report_bug_row = self._create_link_row(
+        self._report_bug_row = LinkRowWidget(
             "🐛", tr("about_page.report_bug"), self._issues_url
         )
-        main_layout.addWidget(self._report_bug_row)
+        feedback_card_layout.addWidget(self._report_bug_row)
 
-        self._suggest_feature_row = self._create_link_row(
-            "💡", tr("about_page.suggest_feature"), self._issues_url
+        self._suggest_feature_row = LinkRowWidget(
+            "💡", tr("about_page.suggest_feature"), self._suggest_feature_url
         )
-        main_layout.addWidget(self._suggest_feature_row)
+        feedback_card_layout.addWidget(self._suggest_feature_row)
 
-        self._discussions_row = self._create_link_row(
+        self._discussions_row = LinkRowWidget(
             "💬", tr("about_page.discussions"), self._discussions_url
         )
-        main_layout.addWidget(self._discussions_row)
+        feedback_card_layout.addWidget(self._discussions_row)
 
-        # 其他链接分组
+        main_layout.addWidget(feedback_card)
+
+        # 其他链接卡片
+        links_card = CardWidget(self)
+        links_card_layout = QVBoxLayout(links_card)
+        links_card_layout.setContentsMargins(16, 16, 16, 16)
+        links_card_layout.setSpacing(2)
+
         self._other_links_section = SubtitleLabel(tr("about_page.other_links"))
         self._other_links_section.setFont(section_font)
-        main_layout.addWidget(self._other_links_section)
+        links_card_layout.addWidget(self._other_links_section)
 
-        self._github_repo_row = self._create_link_row(
+        self._github_repo_row = LinkRowWidget(
             "📦", tr("about_page.github_repo"), self._github_url
         )
-        main_layout.addWidget(self._github_repo_row)
+        links_card_layout.addWidget(self._github_repo_row)
 
-        self._license_row = self._create_link_row(
+        self._license_row = LinkRowWidget(
             "📄", tr("about_page.license"), self._license_url
         )
-        main_layout.addWidget(self._license_row)
+        links_card_layout.addWidget(self._license_row)
+
+        main_layout.addWidget(links_card)
 
         # 弹性空间
         main_layout.addStretch()
 
     def _load_app_icon(self) -> None:
-        """
-        加载应用图标到图标标签
-
-        尝试从 assets 目录加载 imusic.ico，失败则留空。
-        """
         try:
             from PySide6.QtGui import QPixmap
 
@@ -249,63 +306,46 @@ class AboutPage(QWidget):
         except Exception:
             pass
 
-    def _create_link_row(self, icon_text: str, text: str, url: str) -> QWidget:
-        """
-        创建可点击的链接行
-
-        Args:
-            icon_text: 图标文本（emoji）
-            text: 显示的文本
-            url: 点击后打开的 URL
-
-        Returns:
-            QWidget: 可点击的行控件
-        """
-        row = QWidget()
-        row.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(12)
-
-        icon_label = QLabel(icon_text)
-        icon_label.setFixedWidth(24)
-        layout.addWidget(icon_label)
-
-        text_label = BodyLabel(text)
-        layout.addWidget(text_label)
-        layout.addStretch()
-
-        arrow_label = BodyLabel("↗")
-        arrow_label.setStyleSheet("color: gray;")
-        layout.addWidget(arrow_label)
-
-        row.mousePressEvent = lambda _event: self._open_url(url)  # type: ignore[method-assign]
-
-        return row
-
     def _open_url(self, url: str) -> None:
-        """
-        使用系统默认浏览器打开 URL
-
-        Args:
-            url: 要打开的 URL 字符串
-        """
         QDesktopServices.openUrl(QUrl(url))
 
     def _on_check_update_clicked(self) -> None:
-        """
-        检查更新按钮点击回调
-
-        打开 GitHub Releases 页面检查更新。
-        """
         QDesktopServices.openUrl(QUrl(f"{self._github_url}/releases"))
 
-    def refresh_texts(self) -> None:
-        """
-        刷新页面文本
+    def _on_auto_update_changed(self, checked: bool) -> None:
+        config.set_auto_check_update(checked)
+        if checked:
+            self.check_for_updates()
 
-        当语言切换时调用此方法，更新所有 UI 文本为当前语言的翻译。
-        """
+    def check_for_updates(self) -> None:
+        """调用 GitHub API 获取最新版本信息"""
+        try:
+            api_url = "https://api.github.com/repos/ling/Imusic/releases/latest"
+            req = urllib.request.Request(api_url, headers={"User-Agent": "Imusic"})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = __import__("json").loads(response.read().decode())
+                latest_version = data.get("tag_name", "").lstrip("v")
+
+                if latest_version and latest_version != self._version:
+                    InfoBar.info(
+                        title=tr("about_page.new_version_available"),
+                        content=tr("about_page.latest_version").format(version=latest_version),
+                        parent=self.window(),
+                        position=InfoBarPosition.TOP,
+                        duration=5000,
+                    )
+                else:
+                    InfoBar.success(
+                        title=tr("about_page.up_to_date"),
+                        content="",
+                        parent=self.window(),
+                        position=InfoBarPosition.TOP,
+                        duration=3000,
+                    )
+        except Exception as e:
+            logger.warning(f"检查更新失败: {e}")
+
+    def refresh_texts(self) -> None:
         self._title_label.setText(tr("about_page.title"))
         self._version_label.setText(
             f"{tr('about_page.version_prefix')} {self._version}"
@@ -316,22 +356,12 @@ class AboutPage(QWidget):
         self._feedback_section.setText(tr("about_page.feedback"))
         self._other_links_section.setText(tr("about_page.other_links"))
 
-        # 刷新链接行文本（通过重新创建或查找子控件）
-        self._refresh_link_row_text(self._report_bug_row, "🐛", tr("about_page.report_bug"))
-        self._refresh_link_row_text(self._suggest_feature_row, "💡", tr("about_page.suggest_feature"))
-        self._refresh_link_row_text(self._discussions_row, "💬", tr("about_page.discussions"))
-        self._refresh_link_row_text(self._github_repo_row, "📦", tr("about_page.github_repo"))
-        self._refresh_link_row_text(self._license_row, "📄", tr("about_page.license"))
+        self._refresh_link_row_text(self._report_bug_row, tr("about_page.report_bug"))
+        self._refresh_link_row_text(self._suggest_feature_row, tr("about_page.suggest_feature"))
+        self._refresh_link_row_text(self._discussions_row, tr("about_page.discussions"))
+        self._refresh_link_row_text(self._github_repo_row, tr("about_page.github_repo"))
+        self._refresh_link_row_text(self._license_row, tr("about_page.license"))
 
-    def _refresh_link_row_text(self, row: QWidget, icon_text: str, text: str) -> None:
-        """
-        刷新链接行的文本标签
-
-        Args:
-            row: 链接行控件
-            icon_text: 图标文本
-            text: 新的显示文本
-        """
-        labels = row.findChildren(BodyLabel)
-        if labels:
-            labels[0].setText(text)
+    def _refresh_link_row_text(self, row: LinkRowWidget, text: str) -> None:
+        if hasattr(row, '_text_label'):
+            row._text_label.setText(text)

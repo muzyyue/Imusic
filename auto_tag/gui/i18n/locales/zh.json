@@ -425,7 +425,10 @@
     "discussions": "讨论区",
     "other_links": "其他链接",
     "github_repo": "GitHub 仓库",
-    "license": "许可证"
+    "license": "许可证",
+    "new_version_available": "发现新版本",
+    "latest_version": "最新版本 {version} 可用",
+    "up_to_date": "已是最新版本"
   },
   "editor": {
     "title": "音频编辑",

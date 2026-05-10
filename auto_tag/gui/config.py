@@ -83,6 +83,7 @@ class AppConfig:
     DEFAULT_NETEASE_SEARCH_TYPE: int = 1  # 单曲
     DEFAULT_INCLUDE_RADIO: bool = True
     DEFAULT_SEARCH_KEYWORD_MODE: str = "smart_fallback"  # 默认使用智能回退模式（推荐）
+    DEFAULT_AUTO_CHECK_UPDATE: bool = False  # 默认不自动检查更新
 
     # ===== 新增：文件名编码配置默认值 (2026-05-02) =====
     DEFAULT_ASCII_ONLY_FILENAMES: bool = False  # 默认保留原始 Unicode 字符
@@ -179,6 +180,9 @@ class AppConfig:
         # ===== 新增：初始化QQ音乐Cookie配置属性 (2026-05-05) =====
         self._qq_music_cookie: str = self.DEFAULT_QQ_MUSIC_COOKIE
 
+        # ===== 新增：初始化自动检查更新配置属性 (2026-05-11) =====
+        self._auto_check_update: bool = self.DEFAULT_AUTO_CHECK_UPDATE
+
         # 加载配置文件
         self._load_config()
 
@@ -248,6 +252,12 @@ class AppConfig:
                     self._qq_music_cookie = self.DEFAULT_QQ_MUSIC_COOKIE
             else:
                 self._qq_music_cookie = self.DEFAULT_QQ_MUSIC_COOKIE
+
+            # ===== 新增：加载自动检查更新配置 (2026-05-11) =====
+            if 'auto_check_update' in config_data and isinstance(config_data['auto_check_update'], bool):
+                self._auto_check_update = config_data['auto_check_update']
+            else:
+                self._auto_check_update = self.DEFAULT_AUTO_CHECK_UPDATE
 
             self._output_format = config_data.get(
                 "output_format", self.DEFAULT_OUTPUT_FORMAT
@@ -319,6 +329,7 @@ class AppConfig:
                 "custom_formats": self.custom_formats_manager.to_dict_list(),
                 "ascii_only_filenames": self._ascii_only_filenames,  # 新增 (2026-05-02)
                 "qq_music_cookie": self._qq_music_cookie,  # 新增 (2026-05-05)
+                "auto_check_update": self._auto_check_update,  # 新增 (2026-05-11)
             }
 
             # 写入配置文件
@@ -661,6 +672,37 @@ class AppConfig:
 
         if self._qq_music_cookie != cookie:
             self._qq_music_cookie = cookie
+            self.save()
+
+    @property
+    def auto_check_update(self) -> bool:
+        """
+        获取自动检查更新开关状态 (2026-05-11 新增)
+
+        Returns:
+            bool: True 表示启用自动检查更新，False 表示禁用
+
+        Example:
+            >>> config.auto_check_update
+            False  # 默认禁用
+        """
+        return self._auto_check_update
+
+    def set_auto_check_update(self, value: bool) -> None:
+        """
+        设置自动检查更新开关并保存 (2026-05-11 新增)
+
+        Args:
+            value (bool): True 启用自动检查更新，False 禁用
+
+        Example:
+            >>> config.set_auto_check_update(True)
+            # 启用自动检查更新功能
+        """
+        if not isinstance(value, bool):
+            raise ValueError(f"auto_check_update 必须是布尔类型，当前类型: {type(value).__name__}")
+        if self._auto_check_update != value:
+            self._auto_check_update = value
             self.save()
 
     def __repr__(self) -> str:
