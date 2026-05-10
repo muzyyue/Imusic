@@ -148,11 +148,11 @@ class AboutPage(QWidget):
         super().__init__(parent)
 
         self._version = _get_version()
-        self._github_url = "https://github.com/ling/Imusic"
-        self._issues_url = "https://github.com/ling/Imusic/issues/new"
-        self._suggest_feature_url = "https://github.com/ling/Imusic/issues/new?labels=enhancement"
-        self._discussions_url = "https://github.com/ling/Imusic/discussions"
-        self._license_url = "https://github.com/ling/Imusic/blob/main/LICENSE"
+        self._github_url = "https://github.com/muzyyue/Imusic"
+        self._issues_url = "https://github.com/muzyyue/Imusic/issues/new"
+        self._suggest_feature_url = "https://github.com/muzyyue/Imusic/issues/new?labels=enhancement"
+        self._discussions_url = "https://github.com/muzyyue/Imusic/discussions"
+        self._license_url = "https://github.com/muzyyue/Imusic/blob/main/LICENSE"
 
         self._setup_ui()
 
@@ -310,7 +310,7 @@ class AboutPage(QWidget):
         QDesktopServices.openUrl(QUrl(url))
 
     def _on_check_update_clicked(self) -> None:
-        QDesktopServices.openUrl(QUrl(f"{self._github_url}/releases"))
+        self.check_for_updates()
 
     def _on_auto_update_changed(self, checked: bool) -> None:
         config.set_auto_check_update(checked)
@@ -320,7 +320,7 @@ class AboutPage(QWidget):
     def check_for_updates(self) -> None:
         """调用 GitHub API 获取最新版本信息"""
         try:
-            api_url = "https://api.github.com/repos/ling/Imusic/releases/latest"
+            api_url = "https://api.github.com/repos/muzyyue/Imusic/releases/latest"
             req = urllib.request.Request(api_url, headers={"User-Agent": "Imusic"})
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = __import__("json").loads(response.read().decode())

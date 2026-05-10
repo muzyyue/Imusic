@@ -1,5 +1,13 @@
 # 项目变更历史
 
+## v0.5.9.6 (2026-05-11) 修正GitHub链接并修复检查更新按钮行为
+- **修正 GitHub 项目链接**：将所有链接从 `ling/Imusic` 修正为正确的 `muzyyue/Imusic`
+  - 仓库主页、Issues、Discussions、许可证、API 端点
+- **修复检查更新按钮异常跳转问题**：
+  - 原因：`_on_check_update_clicked` 直接打开浏览器跳转到 releases 页面
+  - 修复：改为调用 `check_for_updates()` 方法，在应用内通过 GitHub API 检查更新并显示 InfoBar 提示
+- **修改文件**: `auto_tag/gui/pages/about_page.py`
+
 ## v0.5.9.5 (2026-05-11) 优化关于页面UI并修复链接点击问题
 - **UI 优化**：
   - 去除 FluentWindow 左上角返回按钮（`setReturnButtonVisible(False)`）
