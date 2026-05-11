@@ -23,7 +23,7 @@ import sys
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from qfluentwidgets import (
-    FluentWindow,
+    MSFluentWindow,
     FluentIcon as FIF,
     setTheme,
     Theme,
@@ -48,18 +48,19 @@ def _base_dir() -> str:
     return os.path.abspath(os.path.join(here, os.pardir, os.pardir))
 
 
-class MainWindow(FluentWindow):
+class MainWindow(MSFluentWindow):
     """
-    应用程序主窗口
+    Application main window
 
-    继承自 FluentWindow，提供 Fluent Design 风格的用户界面。
-    包含侧边导航栏，支持在主页和设置页面之间切换。
+    Inherits from MSFluentWindow to provide a Fluent Design style interface
+    with a full-width title bar at the top and navigation bar below.
+    Includes sidebar navigation, theme switching, and language switching support.
 
     Attributes:
-        home_page (HomePage): 主页面实例
-        converter_page (ConverterPage): 转换页面实例
-        music_manager_page (MusicManagerPage): 音乐管理页面实例
-        settings_page (SettingsPage): 设置页面实例
+        home_page (HomePage): Home page instance
+        converter_page (ConverterPage): Converter page instance
+        music_manager_page (MusicManagerPage): Music manager page instance
+        settings_page (SettingsPage): Settings page instance
 
     Example:
         >>> window = MainWindow()
@@ -115,8 +116,8 @@ class MainWindow(FluentWindow):
         # 连接设置页面信号
         self._connect_signals()
 
-        # 隐藏返回按钮（FluentWindow 默认显示）
-        self.navigationInterface.setReturnButtonVisible(False)
+        # MSFluentWindow uses NavigationBar (not NavigationInterface)
+        # No return button to hide in this layout
 
         # 设置窗口图标
         self._setup_icon()

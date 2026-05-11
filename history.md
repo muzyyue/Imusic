@@ -1,5 +1,16 @@
 # 项目变更历史
 
+## v0.6.1 (2026-05-12) 主窗口布局优化
+- **UI 布局重构**：
+  - 将主窗口从 `FluentWindow` 改为 `MSFluentWindow`
+  - 标题栏现在占满整个窗口宽度（显示应用图标 + 名称 + 窗口控制按钮）
+  - 侧边导航栏移至标题栏下方，不再沾满整个窗口高度
+  - 整体布局更符合现代 Fluent Design 规范（类似 Microsoft Store 应用风格）
+- **代码清理**：
+  - 移除不再需要的标题栏按钮隐藏逻辑（`_customize_title_bar` 等方法）
+  - 修复 `MSFluentWindow` 的 API 兼容性问题（移除 `setReturnButtonVisible` 调用）
+- **涉及文件**: `auto_tag/gui/main_window.py`, `pyproject.toml`
+
 ## v0.6.0 (2026-05-11) 关于页面与导航栏重构
 - **新增关于页面**：
   - 展示应用信息（名称、版本号、检查更新、反馈链接等）
