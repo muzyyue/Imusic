@@ -1,5 +1,15 @@
 # 项目变更历史
 
+## v0.6.2 (2026-05-11) 修复打包应用版本号显示为 unknown 的问题
+- **问题修复**：
+  - 从 GitHub 下载的 PyInstaller 打包应用在关于页面显示"版本 unknown"
+  - 根因：`_get_version()` 函数依赖 `pyproject.toml` 文件，但该文件未包含在 PyInstaller 打包中
+- **解决方案**：
+  - 新增 `auto_tag/version.py` 模块，在模块加载时从 `pyproject.toml` 读取版本号并导出 `__version__`
+  - PyInstaller 打包时会自动编译该模块为 `.pyc`，无需依赖外部文件
+  - 修改 `_get_version()` 函数，优先从 `auto_tag.version` 导入版本号，保留原逻辑作为 fallback
+- **涉及文件**: `auto_tag/version.py`(新增), `auto_tag/gui/pages/about_page.py`
+
 ## v0.6.1 (2026-05-12) 主窗口布局优化
 - **UI 布局重构**：
   - 将主窗口从 `FluentWindow` 改为 `MSFluentWindow`

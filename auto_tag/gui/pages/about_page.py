@@ -71,11 +71,18 @@ def _base_dir() -> str:
 
 def _get_version() -> str:
     """
-    从 pyproject.toml 读取版本号
+    获取应用版本号（优先从 auto_tag.version 模块导入）
 
     Returns:
         str: 版本号字符串，读取失败时返回 "unknown"
     """
+    try:
+        from auto_tag.version import __version__
+
+        return __version__
+    except Exception:
+        pass
+
     try:
         import tomllib
     except ImportError:
