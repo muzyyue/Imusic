@@ -6,7 +6,7 @@
 - **根因分析**：
   - v0.6.2 的 `version.py` 虽然被编译为 `.pyc`，但版本号是**运行时动态读取**的
   - `_load_version_from_pyproject()` 函数仍依赖 `pyproject.toml` 文件存在
-  - PyInstaller 打包后该文件不存在，导致读取失败返回 "unknown"
+  - PyInstaller 打包后该文件不存在，导致读取失败返回 unknown
 - **解决方案**：
   - 新增 `build_tools/update_version.py` 构建脚本，在打包前自动提取版本号并**硬编码**到 `version.py`
   - 简化 `auto_tag/version.py` 为纯硬编码（`__version__ = "0.6.3"`），移除所有运行时读取逻辑
