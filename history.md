@@ -4,18 +4,18 @@
 - **问题现象**：
   - v0.6.2 修复后，从 GitHub Release 下载的应用仍然显示「版本 unknown」
 - **根因分析**：
-  - v0.6.2 的 `version.py` 虽然被编译为 `.pyc`，但版本号是**运行时动态读取**的
-  - `_load_version_from_pyproject()` 函数仍依赖 `pyproject.toml` 文件存在
+  - v0.6.2 的 version.py 虽然被编译为 .pyc，但版本号是运行时动态读取的
+  - _load_version_from_pyproject 函数仍依赖 pyproject.toml 文件存在
   - PyInstaller 打包后该文件不存在，导致读取失败返回 unknown
 - **解决方案**：
-  - 新增 `build_tools/update_version.py` 构建脚本，在打包前自动提取版本号并**硬编码**到 `version.py`
-  - 简化 auto_tag/version.py 为纯硬编码（__version__ = "0.6.3"），移除所有运行时读取逻辑
-  - 修改 `Imusic.spec` 在构建 Analysis 前自动调用更新脚本，确保版本号始终同步
+  - 新增 build_tools/update_version.py 构建脚本，在打包前自动提取版本号并硬编码到 version.py
+  - 简化 auto_tag/version.py 为纯硬编码形式，移除所有运行时读取逻辑
+  - 修改 Imusic.spec 在构建 Analysis 前自动调用更新脚本，确保版本号始终同步
 - **技术优势**：
-  - ✅ 零运行时依赖：不依赖任何外部文件
-  - ✅ 自动化同步：每次构建自动从 pyproject.toml 提取最新版本号
-  - ✅ 符合 Python 惯例：与 requests、flask 等主流库做法一致
-- **涉及文件**: `build_tools/update_version.py`(新增), `auto_tag/version.py`(重构), `build_tools/Imusic.spec`
+  - 零运行时依赖：不依赖任何外部文件
+  - 自动化同步：每次构建自动从 pyproject.toml 提取最新版本号
+  - 符合 Python 惯例：与 requests、flask 等主流库做法一致
+- **涉及文件**: build_tools/update_version.py(新增), auto_tag/version.py(重构), build_tools/Imusic.spec
 
 ## v0.6.2 (2026-05-11) 修复打包应用版本号显示为 unknown 的问题
 - **问题修复**：
