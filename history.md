@@ -9,7 +9,7 @@
   - PyInstaller 打包后该文件不存在，导致读取失败返回 unknown
 - **解决方案**：
   - 新增 `build_tools/update_version.py` 构建脚本，在打包前自动提取版本号并**硬编码**到 `version.py`
-  - 简化 `auto_tag/version.py` 为纯硬编码（`__version__ = "0.6.3"`），移除所有运行时读取逻辑
+  - 简化 auto_tag/version.py 为纯硬编码（__version__ = "0.6.3"），移除所有运行时读取逻辑
   - 修改 `Imusic.spec` 在构建 Analysis 前自动调用更新脚本，确保版本号始终同步
 - **技术优势**：
   - ✅ 零运行时依赖：不依赖任何外部文件
