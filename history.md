@@ -2,7 +2,7 @@
 
 ## v0.6.2 (2026-05-11) 修复打包应用版本号显示为 unknown 的问题
 - **问题修复**：
-  - 从 GitHub 下载的 PyInstaller 打包应用在关于页面显示"版本 unknown"
+  - 从 GitHub 下载的 PyInstaller 打包应用在关于页面显示「版本 unknown」
   - 根因：`_get_version()` 函数依赖 `pyproject.toml` 文件，但该文件未包含在 PyInstaller 打包中
 - **解决方案**：
   - 新增 `auto_tag/version.py` 模块，在模块加载时从 `pyproject.toml` 读取版本号并导出 `__version__`
