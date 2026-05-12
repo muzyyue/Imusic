@@ -15,11 +15,26 @@ Imusic 的 PyInstaller 规格文件（目录模式）
 
 import os
 import sys
+import subprocess
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all
 
 # 项目根目录
 spec_dir = os.path.dirname(os.path.abspath(SPEC))
 project_root = os.path.dirname(spec_dir)
+
+# 自动更新版本号（从 pyproject.toml 提取并写入 auto_tag/version.py）
+print("[Spec] 正在更新版本号...")
+update_script = os.path.join(project_root, "build_tools", "update_version.py")
+result = subprocess.run(
+    [sys.executable, update_script],
+    cwd=project_root,
+    capture_output=True,
+    text=True
+)
+if result.returncode != 0:
+    print(f"[Spec] Warning: 版本号更新失败: {result.stderr}")
+else:
+    print(result.stdout.strip())
 
 # 数据文件收集
 datas = []
@@ -84,6 +99,7 @@ hiddenimports = [
     'pydub',
     'pydub.generators',
     'pydub.utils',
+    'audioop_lts',  # Python 3.13+ audioop 替代品
     'asyncio',
     'concurrent.futures',
     'threading',
